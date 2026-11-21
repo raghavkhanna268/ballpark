@@ -144,11 +144,32 @@ describe("submissions", () => {
     const named = spaceDay().find((question) => question.type === "name_one");
     if (!named) throw new Error("missing name_one");
     const rare = await guess(DEVICE, named.id, { type: "name_one", text: "Ethiopia" });
-    const rareBody = (await rare.json()) as { reveal: { band: string; points: number; answerText: string; crowd: { kind: string; rare: string[] } } };
+    const rareBody = (await rare.json()) as {
+      reveal: {
+        band: string;
+        points: number;
+        answerText: string;
+        detail: string;
+        crowd: {
+          kind: string;
+          percent: number;
+          fromPrior: boolean;
+          blendedPercent: number | null;
+          rare: string[];
+          top: { label: string; percent: number }[];
+        };
+      };
+    };
     expect(rareBody.reveal.band).toBe("green");
     expect(rareBody.reveal.answerText).toBe("Ethiopia");
     expect(rareBody.reveal.crowd.kind).toBe("named");
     expect(rareBody.reveal.crowd.rare.length).toBeGreaterThan(0);
+    const ethiopia = rareBody.reveal.crowd.top.find((row) => row.label === "Ethiopia");
+    expect(ethiopia?.percent).toBe(rareBody.reveal.crowd.percent);
+    expect(rareBody.reveal.crowd.percent).toBe(100);
+    expect(rareBody.reveal.detail).toContain("100% of players said Ethiopia");
+    expect(rareBody.reveal.crowd.fromPrior).toBe(true);
+    expect(rareBody.reveal.crowd.blendedPercent).toBeLessThan(100);
 
     const common = await guess(OTHER, named.id, { type: "name_one", text: "Bharat" });
     const commonBody = (await common.json()) as { reveal: { band: string; points: number; answerText: string } };

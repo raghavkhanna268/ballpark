@@ -528,7 +528,16 @@ function Crowd({ crowd, type }: { crowd: CrowdStat; type: PublicQuestion["type"]
   if (crowd.kind === "named") {
     return (
       <div className="crowd">
-        <p>{crowd.answer ? `Only ${crowd.percent}% of players said ${crowd.answer}.` : "That answer was not accepted."}</p>
+        <p>
+          {crowd.answer
+            ? crowd.percent < 50
+              ? `Only ${crowd.percent}% of players said ${crowd.answer}.`
+              : `${crowd.percent}% of players said ${crowd.answer}.`
+            : "That answer was not accepted."}
+        </p>
+        {crowd.fromPrior && crowd.blendedPercent !== null ? (
+          <p>Rarity points blend a prior until 20 answers (effective share {crowd.blendedPercent}%).</p>
+        ) : null}
         {crowd.top.length > 0 ? (
           <ul className="name-list">
             {crowd.top.map((item) => (

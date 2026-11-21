@@ -1,4 +1,5 @@
 import {
+  COLD_START_RESPONSES,
   blendShare,
   estimateCrowdBonus,
   estimatePriorFarther,
@@ -99,7 +100,7 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
   }
   if (mine) counts.set(mine.canonical, (counts.get(mine.canonical) ?? 0) + 1);
   const ranked = [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-  const top = ranked.slice(0, 3).map(([label, count]) => ({ label, percent: Math.round((100 * count) / total) }));
+  const top = ranked.slice(0, 3).map(([label, count]) => ({ label, percent: livePercent(count, total) }));
   const topNames = new Set(top.map((item) => item.label));
   const rare = [...accepted]
     .filter((item) => !topNames.has(item.canonical) && item.canonical !== mine?.canonical)
@@ -107,22 +108,42 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
     .slice(0, 3)
     .map((item) => item.canonical);
 
+  const fromPrior = total < COLD_START_RESPONSES;
   if (!mine) {
     return {
       ...plain("black", 0),
       answerText: "Not on the list",
       detail: "That answer is not accepted.",
-      named: { kind: "named", answer: null, percent: 0, submissions: total, top, rare },
+      named: { kind: "named", answer: null, percent: 0, submissions: total, top, rare, blendedPercent: null, fromPrior },
     };
   }
 
-  const liveShare = (counts.get(mine.canonical) ?? 1) / total;
+  const said = counts.get(mine.canonical) ?? 1;
+  const live = livePercent(said, total);
+  const liveShare = said / total;
   const share = blendShare(liveShare, total, priorShare(mine, accepted));
   const points = nameOnePoints(share);
+  const blendedPercent = Math.round(share * 100);
+  const headline =
+    live < 50 ? `Only ${live}% of players said ${mine.canonical}.` : `${live}% of players said ${mine.canonical}.`;
   return {
     ...plain("green", points),
     answerText: mine.canonical,
-    detail: `Only ${Math.round(share * 100)}% of players said ${mine.canonical}.`,
-    named: { kind: "named", answer: mine.canonical, percent: Math.round(share * 100), submissions: total, top, rare },
+    detail: headline,
+    named: {
+      kind: "named",
+      answer: mine.canonical,
+      percent: live,
+      submissions: total,
+      top,
+      rare,
+      blendedPercent,
+      fromPrior,
+    },
   };
+}
+
+function livePercent(count: number, total: number): number {
+  if (total <= 0) return 0;
+  return Math.round((100 * count) / total);
 }
