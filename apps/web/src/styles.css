@@ -312,6 +312,10 @@ main {
 .rank-list button:disabled { opacity: 0.35; }
 
 .reveal {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   border-radius: 22px;
   padding: 18px;
   animation: rise 280ms ease;
@@ -424,11 +428,35 @@ footer { margin-top: 28px; display: flex; flex-direction: column; gap: 12px; }
   border: 0;
 }
 
+.h2h-count {
+  margin: 0;
+  font-family: Fraunces, Georgia, serif;
+  font-size: 2.4rem;
+  line-height: 1;
+}
+.h2h-count.bump { animation: bump 280ms ease; }
+.practice-flag { margin: 0; color: var(--clay); font-weight: 600; }
+.shown-value {
+  margin: 0;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.shown-value strong { font-family: Fraunces, Georgia, serif; font-size: 1.8rem; font-weight: 600; }
+.best-today { margin: 0; font-weight: 600; }
+
+@keyframes bump {
+  50% { transform: scale(1.12); }
+}
 @keyframes rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .pin.answer { animation: none; transition: none; }
+  .reveal, .pin.answer, .h2h-count { animation: none; transition: none; }
 }

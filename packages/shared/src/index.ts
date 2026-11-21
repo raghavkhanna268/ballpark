@@ -33,7 +33,15 @@ export {
   utcToday,
 } from "./dates.js";
 
-export { classicShareText } from "./share.js";
+export { classicShareText, headToHeadShareText } from "./share.js";
+export {
+  METRIC_COPY,
+  buildHeadToHeadSequence,
+  scoreHeadToHead,
+  toPublicRound,
+  valueRatio,
+} from "./head-to-head.js";
+export type { H2HFact, H2HKind, H2HRound, MetricCopy, PublicH2HRound } from "./head-to-head.js";
 export { parseShorthand } from "./parse.js";
 export { formatFactor, formatFactValue, formatNumber, roundSig } from "./format.js";
 export { sliderRange, sliderToValue, valueToSlider } from "./slider.js";

@@ -10,5 +10,6 @@
     "skipLibCheck": true,
     "types": ["@cloudflare/vitest-plugin/types"]
   },
-  "include": ["./**/*.ts", "../src/**/*.ts", "../seed/**/*.ts", "../worker-configuration.d.ts"]
+  "include": ["./**/*.ts", "../src/**/*.ts", "../seed/**/*.ts", "../worker-configuration.d.ts"],
+  "exclude": ["../src/deploy.ts", "../src/assets.generated.ts"]
 }

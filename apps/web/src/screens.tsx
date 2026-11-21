@@ -22,13 +22,19 @@ const BUCKETS = ["0–20", "21–40", "41–60", "61–80", "81–100"];
 export function HomeScreen({
   puzzle,
   stats,
+  h2hStreak,
+  h2hLabel,
   onPlay,
   onResult,
+  onHeadToHead,
 }: {
   puzzle: PuzzleResponse;
   stats: Stats;
+  h2hStreak: number;
+  h2hLabel: string;
   onPlay: () => void;
   onResult: () => void;
+  onHeadToHead: () => void;
 }) {
   const done = puzzle.result !== null;
   const started = puzzle.questions.some((question) => question.reveal);
@@ -71,12 +77,15 @@ export function HomeScreen({
         )}
       </section>
 
-      <section className="card quiet-card">
+      <section className="card mode-card">
         <div className="mode-top">
           <h2>Head-to-head</h2>
-          <p className="soon">Coming next</p>
+          <p className="streak">Streak {h2hStreak}</p>
         </div>
-        <p>A run of higher-or-lower until you miss, with its own streak. Same facts, not in this milestone.</p>
+        <p>One tap per pair. The run ends on the first miss.</p>
+        <button className="primary" type="button" onClick={onHeadToHead}>
+          {h2hLabel}
+        </button>
       </section>
 
       <section className="stats" aria-label="Your stats on this device">

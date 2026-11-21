@@ -9,5 +9,6 @@
     "skipLibCheck": true,
     "types": []
   },
-  "include": ["src/**/*.ts", "worker-configuration.d.ts"]
+  "include": ["src/**/*.ts", "worker-configuration.d.ts"],
+  "exclude": ["src/deploy.ts", "src/assets.generated.ts"]
 }
