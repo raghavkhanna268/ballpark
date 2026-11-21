@@ -1,5 +1,6 @@
 node_modules/
 apps/api/worker-configuration.d.ts
+apps/api/src/assets.generated.ts
 dist/
 .wrangler/
 .dev.vars

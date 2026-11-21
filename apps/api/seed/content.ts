@@ -6,7 +6,9 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import type { SliderScale } from "@ballpark/shared";
+import { METRIC_COPY, type SliderScale } from "@ballpark/shared";
+import { extraFacts } from "./more-facts.ts";
+import { metricForExisting } from "./metrics.ts";
 
 export type SeedFact = {
   id: string;
@@ -22,6 +24,7 @@ export type SeedFact = {
   difficulty: 1 | 2 | 3;
   verified: false;
   vintage: string | null;
+  metric: string;
 };
 
 export type SeedQuestion = {
@@ -79,12 +82,13 @@ function fact(
     license,
     context,
     vintage,
+    metric: "",
     retrievedAt: ON,
     verified: false,
   };
 }
 
-export const facts: SeedFact[] = [
+const baseFacts: SeedFact[] = [
   fact("f-moon-distance", "Earth–Moon distance", 384400, "km", "space", 2, "NASA Science", "https://science.nasa.gov/moon/facts/", PD, "NASA gives the Moon's average distance as 384,400 km. The orbit is slightly oval, so the distance changes through the month.", "NASA mean distance"),
   fact("f-earth-diameter", "Earth", 12756.274, "km", "space", 2, "NASA Planetary Fact Sheet", "https://nssdc.gsfc.nasa.gov/planetary/factsheet/earthfact.html", PD, "Earth's equatorial diameter is twice the 6,378.137 km radius on NASA's fact sheet.", "NASA fact sheet"),
   fact("f-jupiter-diameter", "Jupiter", 142984, "km", "space", 2, "NASA Planetary Fact Sheet", "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html", PD, "Jupiter's equatorial diameter is about 142,984 km, more than eleven Earths across.", "NASA fact sheet"),
@@ -282,7 +286,7 @@ export const questions: SeedQuestion[] = [
   question("q-long-trenches", "Which ocean trench is deeper?", "compare", "higher", ["f-challenger", "f-puerto-rico"], ["f-puerto-rico", "f-challenger"], "Challenger Deep reaches about 10,935 m. The Puerto Rico Trench, the deepest part of the Atlantic, is about 8,400 m.", "NOAA Ocean Exploration", "https://oceanexplorer.noaa.gov/ocean-fact/ocean-depth/", PD, "geography", 2),
 ];
 
-export const puzzles: SeedPuzzle[] = [
+const basePuzzles: SeedPuzzle[] = [
   { slot: 0, theme: "Space", blurb: "Distances, sizes, and how long a year really is.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
   { slot: 1, theme: "Planet Earth", blurb: "Peaks, seas, and the deepest place in the ocean.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
   { slot: 2, theme: "The human body", blurb: "Bones, cells, and the long road through the gut.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
@@ -293,6 +297,17 @@ export const puzzles: SeedPuzzle[] = [
   { slot: 7, theme: "Laboratory", blurb: "Melting points, a half-life, and the speed of sound.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
   { slot: 8, theme: "Culture", blurb: "Books, premieres, paintings, and one very exact race.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
   { slot: 9, theme: "Measured Earth", blurb: "The equator, the Moon, and the rocky planets.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
+];
+
+export const puzzles = basePuzzles;
+
+export const facts: SeedFact[] = [
+  ...baseFacts.map((item) => {
+    const metric = metricForExisting[item.id];
+    if (!metric) throw new Error(`Missing metric for ${item.id}`);
+    return { ...item, metric };
+  }),
+  ...extraFacts,
 ];
 
 export function assertSeed(): void {
@@ -307,7 +322,10 @@ export function assertSeed(): void {
     if (item.verified !== false) throw new Error(`${item.id} must stay unverified in the sample`);
     if (!item.sourceUrl.startsWith("https://")) throw new Error(`${item.id} needs an https source`);
     if (!Number.isFinite(item.value)) throw new Error(`${item.id} has a bad value`);
+    if (!item.metric) throw new Error(`${item.id} needs a metric`);
+    if (item.metric !== "unpaired" && !METRIC_COPY[item.metric]) throw new Error(`${item.id} has unknown metric ${item.metric}`);
   }
+  if (facts.length < 150) throw new Error(`Head-to-head needs at least 150 facts, found ${facts.length}`);
 
   const seenSlots = new Set<number>();
   for (const puzzle of puzzles) {

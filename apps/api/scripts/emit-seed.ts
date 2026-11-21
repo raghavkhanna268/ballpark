@@ -26,7 +26,7 @@ const lines: string[] = [
 
 for (const item of facts) {
   lines.push(
-    `INSERT INTO facts (id, label, value, unit, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, vintage) VALUES (${[
+    `INSERT INTO facts (id, label, value, unit, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, vintage, metric) VALUES (${[
       sqlString(item.id),
       sqlString(item.label),
       sqlNumber(item.value),
@@ -40,6 +40,7 @@ for (const item of facts) {
       String(item.difficulty),
       "0",
       item.vintage ? sqlString(item.vintage) : "NULL",
+      sqlString(item.metric),
     ].join(", ")});`,
   );
 }

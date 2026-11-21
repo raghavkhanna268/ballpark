@@ -1,8 +1,6 @@
 # Ballpark
 
-Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. This milestone is **Classic** only: five questions, scored on the server, playable in a browser with no account.
-
-Head-to-head (a run of higher-or-lower until you miss) is not built yet. The fact table is shaped so it can be added without a new data model: a fact is a named number with a unit, a source, and a short context. Classic questions point at those facts. A later mode can pair any two facts and ask which value is larger.
+Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. Two modes share one fact table: **Classic** (five questions) and **Head-to-head** (a run of pairs until the first miss). Both are scored on the server. There is no account.
 
 Nothing here is deployed. Do not run `wrangler deploy`, `wrangler d1 create`, or any command that talks to a Cloudflare account.
 
@@ -42,6 +40,20 @@ ballpark.local
 
 `ballpark.local` is a placeholder host, not a registered domain.
 
+## Head-to-head
+
+Head-to-head is a second daily on the home screen, with its own streak. The Worker builds one sequence per UTC date from facts that share a metric (population with population, height with height). Early pairs are far apart, at least 5×, and later pairs sit inside 1.5×. Some rounds show one value and ask whether the other is higher or lower. One round in the sequence, when the facts allow it, is an odd-one-out among four.
+
+`GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. The first miss ends the run. A second scored run the same day is rejected. After that, a practice run uses a different sequence and is not written to the board.
+
+A correct pick reveals both values, one line of context, and a source, then advances after about 1.2 seconds. The end screen shows the run length, the percent of players beaten, and the best scored run that day (a number, no names). The share card is:
+
+```text
+Ballpark #325 · Head-to-head
+🟩🟩🟩🟩🟩🟩🟩❌ 7 in a row
+ballpark.local
+```
+
 ## Scoring
 
 Estimate distance is `d = |log10(guess) − log10(answer)|`. Cutoffs are rounded to four decimal places, so a guess of exactly twice the answer counts as within 2× (`log10(2)` is 0.30103, published as 0.3010).
@@ -80,14 +92,14 @@ The web package imports the public helpers from `@ballpark/shared`. Scoring live
 
 Schema, in short:
 
-- `facts` — id, label, value, unit, context, source, retrieved date, license, topic, difficulty, `verified`
+- `facts` — id, label, value, unit, metric, context, source, retrieved date, license, topic, difficulty, `verified`. Head-to-head pairs facts that share a metric.
 - `questions` — prompt, type (`estimate` | `compare` | `rank`), unit, polarity, the fact ids, the display order
 - `puzzles` — a theme and five question ids
 - `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column so head-to-head can sit beside Classic
 
 ## Sample content, and what has to change before a public game
 
-`apps/api/seed/content.ts` is the sample set: 10 days, 50 questions, across space, Earth, the body, inventions, landmarks, nature, maps, science, and culture. Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from that file.
+`apps/api/seed/content.ts` and `apps/api/seed/more-facts.ts` are the sample set: 10 Classic days, 50 questions, and at least 150 facts for Head-to-head pairs (populations, areas, GDP, peaks, rivers, planets, animals, landmarks, inventions). Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from those files. Give a new fact a `metric` that matches one in `METRIC_COPY`, or `unpaired` if nothing should be compared with it.
 
 This repository is public. Anyone can read the seed. That is acceptable for a local sample and a bad idea for official answers. Before a real launch, stop committing puzzle values. Load them with an admin script from a file that is not in git, or from a private content repository, and keep D1 as the only copy the Worker reads. The client should keep receiving prompts only, the way it does now.
 
@@ -111,6 +123,16 @@ npm test
 
 Worker tests use `@cloudflare/vitest-plugin` and a local D1. They check that a fresh puzzle payload has no answer fields, and that a second submission for the same device and question is rejected.
 
+## Building a single Worker
+
+Local development still uses `wrangler dev` for the API and Vite for the web app. A test deploy that cannot upload static assets can instead embed the built site in the Worker:
+
+```bash
+npm run build:deploy
+```
+
+That builds `apps/web`, writes `apps/api/src/assets.generated.ts` (gitignored), and runs `wrangler deploy --dry-run --outdir dist/worker` with `apps/api/wrangler.deploy.jsonc`. The dry run does not upload anything. The bundle's `src/deploy.ts` serves those files, falls back to `index.html` for client routes, and forwards `/api/*` to the game handler. The everyday `wrangler.jsonc` is unchanged. Do not add deploy secrets, and do not put a deploy step in CI.
+
 ## Ethics
 
-Classic is free. There is no account wall, no ad, no paywall, no loot box, and no streak-shame copy. A missed day simply ends the streak. Head-to-head, archive play, and any paid plan are out of scope for this milestone.
+Both daily modes are free. There is no account wall, no ad, no paywall, no loot box, and no streak-shame copy. A missed day simply ends that mode's streak. Archive play and any paid plan are out of scope.

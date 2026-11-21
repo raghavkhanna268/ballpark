@@ -8,6 +8,7 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM rate_limits"),
     db.prepare("DELETE FROM puzzles"),
     db.prepare("DELETE FROM questions"),
+    db.prepare("DELETE FROM h2h_runs"),
     db.prepare("DELETE FROM facts"),
   ]);
 
@@ -16,8 +17,8 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     inserts.push(
       db
         .prepare(
-          `INSERT INTO facts (id, label, value, unit, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, vintage)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          `INSERT INTO facts (id, label, value, unit, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, vintage, metric)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         )
         .bind(
           item.id,
@@ -32,6 +33,7 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
           item.topic,
           item.difficulty,
           item.vintage,
+          item.metric,
         ),
     );
   }

@@ -61,3 +61,57 @@ export function recordScore(date: string, score: number): StoredStats {
   localStorage.setItem(KEY, JSON.stringify(next));
   return next;
 }
+
+const H2H_KEY = "ballpark.h2h.stats.v1";
+
+export type HeadToHeadStats = {
+  played: number;
+  currentStreak: number;
+  maxStreak: number;
+  lastPlayedDate: string | null;
+  completedDates: string[];
+  bestRun: number;
+};
+
+function emptyHead(): HeadToHeadStats {
+  return { played: 0, currentStreak: 0, maxStreak: 0, lastPlayedDate: null, completedDates: [], bestRun: 0 };
+}
+
+export function loadHeadToHeadStats(): HeadToHeadStats {
+  try {
+    const raw = localStorage.getItem(H2H_KEY);
+    if (!raw) return emptyHead();
+    const parsed = JSON.parse(raw) as Partial<HeadToHeadStats>;
+    return {
+      played: parsed.played ?? 0,
+      currentStreak: parsed.currentStreak ?? 0,
+      maxStreak: parsed.maxStreak ?? 0,
+      lastPlayedDate: parsed.lastPlayedDate ?? null,
+      completedDates: parsed.completedDates ?? [],
+      bestRun: parsed.bestRun ?? 0,
+    };
+  } catch {
+    return emptyHead();
+  }
+}
+
+export function recordHeadToHead(date: string, score: number): HeadToHeadStats {
+  const current = loadHeadToHeadStats();
+  if (current.completedDates.includes(date)) return current;
+  let currentStreak = current.currentStreak;
+  let lastPlayedDate = current.lastPlayedDate;
+  if (!current.lastPlayedDate || date > current.lastPlayedDate) {
+    currentStreak = current.lastPlayedDate && addUtcDays(current.lastPlayedDate, 1) === date ? current.currentStreak + 1 : 1;
+    lastPlayedDate = date;
+  }
+  const next: HeadToHeadStats = {
+    played: current.played + 1,
+    currentStreak,
+    maxStreak: Math.max(current.maxStreak, currentStreak),
+    lastPlayedDate,
+    completedDates: [...current.completedDates, date],
+    bestRun: Math.max(current.bestRun, score),
+  };
+  localStorage.setItem(H2H_KEY, JSON.stringify(next));
+  return next;
+}

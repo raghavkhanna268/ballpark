@@ -1,0 +1,220 @@
+import { useEffect, useState } from "react";
+import type { PublicH2HRound } from "@ballpark/shared";
+import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
+import { haptic, shareText } from "./haptic";
+
+type RevealState = HeadPickResponse & { practice: boolean };
+
+export function HeadToHeadScreen({
+  deviceId,
+  initial,
+  onHome,
+  onOfficialFinish,
+}: {
+  deviceId: string;
+  initial: HeadToHeadState;
+  onHome: () => void;
+  onOfficialFinish: (date: string, score: number) => void;
+}) {
+  const [practice, setPractice] = useState(initial.runKind === "practice" && initial.status === "in-progress");
+  const [round, setRound] = useState<PublicH2HRound | null>(initial.round);
+  const [correct, setCorrect] = useState(initial.correct);
+  const [reveal, setReveal] = useState<RevealState | null>(null);
+  const [result, setResult] = useState(initial.result);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "failed">("idle");
+
+  useEffect(() => {
+    if (!reveal?.correct || !reveal.next) return;
+    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 400 : 1200;
+    const id = window.setTimeout(() => {
+      setRound(reveal.next);
+      setReveal(null);
+    }, delay);
+    return () => window.clearTimeout(id);
+  }, [reveal]);
+
+  async function choose(body: { choiceId?: string; direction?: "higher" | "lower" }) {
+    if (!round || busy) return;
+    setBusy(true);
+    setError(null);
+    haptic("tap");
+    try {
+      const response = await postHeadPick(deviceId, { index: round.index, ...body });
+      setCorrect(response.correctCount);
+      haptic(response.correct ? "good" : "bad");
+      if (response.finished) {
+        setRound(null);
+        setReveal(null);
+        setResult(response.result);
+        if (response.result?.official) onOfficialFinish(initial.date, response.result.score);
+      } else {
+        setReveal({ ...response, practice });
+      }
+    } catch (caught) {
+      setError(errorCopy(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function practiceRun() {
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await postPractice(deviceId);
+      setPractice(true);
+      setResult(null);
+      setReveal(null);
+      setCorrect(0);
+      setRound(response.round);
+    } catch (caught) {
+      setError(errorCopy(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (result && !round && !reveal) {
+    return (
+      <div className="stack end">
+        <p className="kicker">{result.official ? `Head-to-head · #${initial.puzzleNumber}` : "Practice run"}</p>
+        <p className="score">
+          {result.score}
+          <span> in a row</span>
+        </p>
+        {result.official ? (
+          <>
+            <h2>You beat {result.beatPercent}% of players today</h2>
+            <p className="players">
+              {result.players === 1
+                ? "You’re the only finisher so far, so that’s the whole field."
+                : `${result.players} scored runs today.`}
+            </p>
+            <p className="best-today">Best run today: {result.bestToday}</p>
+            <p className="emoji-row" aria-label="Correct picks">
+              {"🟩".repeat(result.score)}
+              {result.cleared ? "" : "❌"}
+            </p>
+            <pre className="share-card">{result.shareText}</pre>
+            <button
+              className="primary"
+              type="button"
+              onClick={() => {
+                haptic("tap");
+                void shareText(result.shareText).then((outcome) => {
+                  setShareState(outcome === "cancelled" ? "idle" : outcome === "copied" ? "copied" : outcome === "shared" ? "shared" : "failed");
+                });
+              }}
+            >
+              {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "failed" ? "Copy didn’t work" : "Share"}
+            </button>
+          </>
+        ) : (
+          <p className="players">Practice only. This run is not on the board.</p>
+        )}
+        <button className="text-button" type="button" onClick={() => void practiceRun()} disabled={busy}>
+          {busy ? "Starting…" : "Practice an unscored run"}
+        </button>
+        <button className="text-button" type="button" onClick={onHome}>
+          Back home
+        </button>
+        {error ? <p className="form-error">{error}</p> : null}
+      </div>
+    );
+  }
+
+  const showing = reveal ?? null;
+  return (
+    <div className="stack">
+      <div className="play-head">
+        <button className="text-button" type="button" onClick={onHome}>
+          Home
+        </button>
+        <p className={correct > 0 && !showing ? "h2h-count bump" : "h2h-count"}>{correct}</p>
+      </div>
+      {practice ? <p className="practice-flag">Practice · not on the board</p> : <p className="type-kicker">Head-to-head</p>}
+      {showing ? (
+        <section className={`reveal ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
+          <p className="emoji">{showing.correct ? "🟩" : "❌"}</p>
+          <h2>{showing.correct ? "Correct" : "That’s the miss"}</h2>
+          <ul className="rows">
+            {showing.reveal.rows.map((row) => (
+              <li key={row.label}>
+                <strong>{row.label}</strong>
+                <em>{row.valueText}</em>
+              </li>
+            ))}
+          </ul>
+          <p className="context">{showing.reveal.context}</p>
+          <a className="source" href={showing.reveal.sourceUrl} target="_blank" rel="noreferrer">
+            {showing.reveal.sourceName}
+          </a>
+          {showing.correct && showing.next ? (
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => {
+                setRound(showing.next);
+                setReveal(null);
+              }}
+            >
+              Next
+            </button>
+          ) : null}
+        </section>
+      ) : round ? (
+        <RoundForm round={round} busy={busy} onChoose={(body) => void choose(body)} />
+      ) : (
+        <p className="status">No pair is available.</p>
+      )}
+      {error ? <p className="form-error">{error}</p> : null}
+    </div>
+  );
+}
+
+function RoundForm({
+  round,
+  busy,
+  onChoose,
+}: {
+  round: PublicH2HRound;
+  busy: boolean;
+  onChoose: (body: { choiceId?: string; direction?: "higher" | "lower" }) => void;
+}) {
+  return (
+    <form
+      className="guess-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+      }}
+    >
+      <h2 className="prompt">{round.prompt}</h2>
+      {round.kind === "higher-lower" && round.shown ? (
+        <>
+          <p className="shown-value">
+            {round.shown.label}
+            <strong>{round.shown.valueText}</strong>
+          </p>
+          <div className="choices">
+            <button className="choice" type="button" disabled={busy} onClick={() => onChoose({ direction: "higher" })}>
+              {round.higherLabel}
+            </button>
+            <button className="choice" type="button" disabled={busy} onClick={() => onChoose({ direction: "lower" })}>
+              {round.lowerLabel}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="choices">
+          {round.options.map((option) => (
+            <button key={option.id} className="choice" type="button" disabled={busy} onClick={() => onChoose({ choiceId: option.id })}>
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </form>
+  );
+}

@@ -10,7 +10,8 @@
     "seed:check": "tsx scripts/emit-seed.ts --check",
     "types": "wrangler types",
     "test": "vitest run",
-    "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json && tsc --noEmit -p test/tsconfig.json"
+    "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json && tsc --noEmit -p test/tsconfig.json",
+    "bundle:worker": "wrangler deploy --dry-run --outdir ../../dist/worker --config wrangler.deploy.jsonc"
   },
   "dependencies": {
     "@ballpark/shared": "*"

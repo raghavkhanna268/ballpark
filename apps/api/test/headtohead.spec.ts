@@ -1,0 +1,133 @@
+import { env } from "cloudflare:test";
+import { exports } from "cloudflare:workers";
+import { buildHeadToHeadSequence, puzzleSlot, toPublicRound, type H2HFact } from "@ballpark/shared";
+import { beforeEach, describe, expect, it } from "vitest";
+import { facts, puzzles, questions } from "../seed/content.ts";
+import { resetAndSeed } from "./seed-db.ts";
+
+const DEVICE = "33333333-3333-4333-8333-333333333333";
+const OTHER = "44444444-4444-4444-8444-444444444444";
+const DAY = "2026-01-01";
+
+beforeEach(async () => {
+  await resetAndSeed(env.DB);
+});
+
+function headers(deviceId: string): HeadersInit {
+  return { "content-type": "application/json", "x-device-id": deviceId };
+}
+
+function h2hFacts(): H2HFact[] {
+  return facts
+    .filter((item) => item.metric && item.metric !== "unpaired")
+    .map((item) => ({
+      id: item.id,
+      label: item.label,
+      value: item.value,
+      unit: item.unit,
+      metric: item.metric,
+      context: item.context,
+      sourceName: item.sourceName,
+      sourceUrl: item.sourceUrl,
+    }));
+}
+
+function expectedSequence(date: string) {
+  const slot = puzzleSlot(date);
+  const puzzle = puzzles.find((item) => item.slot === slot);
+  const exclude = (puzzle?.questionIds ?? []).flatMap((id) => questions.find((item) => item.id === id)?.factIds ?? []);
+  return buildHeadToHeadSequence(h2hFacts(), `head-to-head:${date}`, exclude);
+}
+
+async function state(deviceId = DEVICE, date = DAY) {
+  return exports.default.fetch(`http://localhost/api/head-to-head?date=${date}`, { headers: headers(deviceId) });
+}
+
+async function pick(deviceId: string, body: unknown, date = DAY) {
+  return exports.default.fetch(`http://localhost/api/head-to-head/pick?date=${date}`, {
+    method: "POST",
+    headers: headers(deviceId),
+    body: JSON.stringify(body),
+  });
+}
+
+describe("head-to-head API", () => {
+  it("serves today's pair without the hidden values", async () => {
+    const sequence = expectedSequence(DAY);
+    const opening = sequence[0];
+    expect(opening.kind).toBe("which");
+    const response = await state();
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { round: unknown; status: string };
+    expect(body.status).toBe("ready");
+    expect(body.round).toEqual(toPublicRound(opening));
+    const raw = JSON.stringify(body);
+    for (const item of opening.items) {
+      expect(raw).not.toContain(String(item.value));
+      expect(raw).not.toContain(item.context);
+      expect(raw).not.toContain(item.sourceUrl);
+    }
+  });
+
+  it("rejects a skipped or replayed index and a second scored run", async () => {
+    const sequence = expectedSequence(DAY);
+    const skipped = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
+    expect(skipped.status).toBe(409);
+    expect(await skipped.json()).toEqual({ error: "out_of_order" });
+
+    const first = await pick(DEVICE, { index: 0, choiceId: sequence[0].answer });
+    expect(first.status).toBe(200);
+    const opened = (await first.json()) as { correct: boolean; reveal: { sourceUrl: string; context: string }; next: { index: number } };
+    expect(opened.correct).toBe(true);
+    expect(opened.reveal.sourceUrl.startsWith("https://")).toBe(true);
+    expect(opened.reveal.context.length).toBeGreaterThan(10);
+    expect(opened.next.index).toBe(1);
+
+    const replay = await pick(DEVICE, { index: 0, choiceId: sequence[0].answer });
+    expect(replay.status).toBe(409);
+
+    const leap = await pick(DEVICE, { index: 3, choiceId: sequence[3].answer });
+    expect(leap.status).toBe(409);
+
+    const wrongId = sequence[1].items.find((item) => item.id !== sequence[1].answer)?.id ?? "missing";
+    const miss = await pick(DEVICE, sequence[1].kind === "higher-lower" ? { index: 1, direction: sequence[1].answer === "higher" ? "lower" : "higher" } : { index: 1, choiceId: wrongId });
+    expect(miss.status).toBe(200);
+    const ended = (await miss.json()) as { correct: boolean; finished: boolean; result: { official: boolean; score: number; beatPercent: number; bestToday: number; shareText: string } };
+    expect(ended.correct).toBe(false);
+    expect(ended.finished).toBe(true);
+    expect(ended.result.official).toBe(true);
+    expect(ended.result.score).toBe(1);
+    expect(ended.result.beatPercent).toBe(100);
+    expect(ended.result.bestToday).toBe(1);
+    expect(ended.result.shareText).toContain("1 in a row");
+
+    const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
+    expect(again.status).toBe(409);
+    expect(await again.json()).toEqual({ error: "run_finished" });
+
+    const rows = await env.DB.prepare("SELECT COUNT(*) AS count FROM daily_results WHERE mode = 'head-to-head'").first<{ count: number }>();
+    expect(rows?.count).toBe(1);
+
+    const other = await state(OTHER);
+    expect(other.status).toBe(200);
+    expect(((await other.json()) as { status: string }).status).toBe("ready");
+  });
+
+  it("keeps practice off the board", async () => {
+    const sequence = expectedSequence(DAY);
+    const wrong = sequence[0].items.find((item) => item.id !== sequence[0].answer)?.id ?? "missing";
+    await pick(DEVICE, { index: 0, choiceId: wrong });
+    const before = await env.DB.prepare("SELECT COUNT(*) AS count FROM daily_results WHERE mode = 'head-to-head'").first<{ count: number }>();
+    const practice = await exports.default.fetch(`http://localhost/api/head-to-head/practice?date=${DAY}`, {
+      method: "POST",
+      headers: headers(DEVICE),
+      body: "{}",
+    });
+    expect(practice.status).toBe(200);
+    const after = await env.DB.prepare("SELECT COUNT(*) AS count FROM daily_results WHERE mode = 'head-to-head'").first<{ count: number }>();
+    expect(after?.count).toBe(before?.count);
+    const round = ((await practice.json()) as { round: { index: number } }).round;
+    expect(round.index).toBe(0);
+    expect(JSON.stringify(round)).not.toContain(sequence[0].items[0].context);
+  });
+});
