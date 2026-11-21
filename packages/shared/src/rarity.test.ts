@@ -1,14 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "./entities.js";
 import { matchAccepted, normalizeAnswer, priorShare, type AcceptedAnswer } from "./match.js";
-import {
-  beatPercentRuns,
-  blendShare,
-  estimateCrowdBonus,
-  estimatePriorFarther,
-  h2hPickPoints,
-  nameOnePoints,
-} from "./rarity.js";
+import { blendShare, nameOnePoints } from "./rarity.js";
 import { levelForClassicScore, levelForCorrectCount, zoomShareLine } from "./scale.js";
 
 const accepted: AcceptedAnswer[] = [
@@ -59,43 +52,21 @@ describe("rarity scoring", () => {
     expect(nameOnePoints(1)).toBe(10);
   });
 
-  it("adds an estimate bonus only when the guess is close and the field was farther", () => {
-    expect(estimatePriorFarther(1)).toBeLessThan(estimatePriorFarther(3));
-    expect(estimateCrowdBonus("green", 1)).toBe(6);
-    expect(estimateCrowdBonus("yellow", 0.5)).toBe(3);
-    expect(estimateCrowdBonus("black", 1)).toBe(0);
-    expect(estimateCrowdBonus("blue", 1)).toBe(0);
-  });
-
-  it("breaks a head-to-head tie on points after run length", () => {
-    const field = [
-      { length: 5, points: 3 },
-      { length: 5, points: 1 },
-      { length: 4, points: 100 },
-    ];
-    expect(beatPercentRuns(field[0]!, field)).toBe(100);
-    expect(beatPercentRuns(field[1]!, field)).toBe(50);
-    expect(beatPercentRuns(field[2]!, field)).toBe(0);
-    expect(h2hPickPoints(1)).toBe(5);
-    expect(h2hPickPoints(0)).toBe(1);
-  });
 });
 
 describe("zoom path", () => {
-  it("starts at an atom and steps out once per correct answer", () => {
+  it("starts at an atom and lands on the Milky Way after ten correct answers", () => {
     expect(levelForCorrectCount(0).name).toBe("Atom");
     expect(levelForCorrectCount(1).name).toBe("Cell");
-    expect(levelForCorrectCount(7).name).toBe("Earth");
-    expect(levelForCorrectCount(12).name).toBe("Observable universe");
-    expect(levelForCorrectCount(13).beyond).toBe(true);
-    expect(levelForCorrectCount(15).extra).toBe(3);
+    expect(levelForCorrectCount(10).name).toBe("Milky Way");
+    expect(levelForCorrectCount(12).name).toBe("Milky Way");
   });
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {
     expect(levelForClassicScore(0).id).toBe("atom");
-    expect(levelForClassicScore(100).id).toBe("universe");
-    expect(zoomShareLine(levelForCorrectCount(11))).toBe("⚛️→🏙️→🌌 reached Milky Way");
-    expect(zoomShareLine(levelForCorrectCount(11))).not.toContain("correct");
+    expect(levelForClassicScore(132).name).toBe("Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(10))).toBe("⚛️→🏙️→🌌 reached Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(10))).not.toContain("correct");
   });
 
   it("keeps private aliases out of the public country list", () => {

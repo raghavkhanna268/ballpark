@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { haptic, shareText } from "./haptic";
-import { LevelStrip, ScaleStage } from "./scale-view";
 import {
   formatFactValue,
   formatNumber,
-  levelForClassicScore,
   parseShorthand,
   roundSig,
   type Confidence,
@@ -46,9 +44,8 @@ export function HomeScreen({
         <h1 className="wordmark">
           Ballpark<span>.</span>
         </h1>
-        <p className="lede">How big is the world? Five questions, or a run until you miss.</p>
+        <p className="lede">A small explorer. Five questions, or ten pairs. Every answer moves you.</p>
       </header>
-      <ScaleStage level={levelForClassicScore(puzzle.result?.score ?? 0)} label={done ? "You reached" : "You are here"} />
 
       <section className="card day-card">
         <div className="day-row">
@@ -83,7 +80,7 @@ export function HomeScreen({
           <h2>Head-to-head</h2>
           <p className="streak">Streak {h2hStreak}</p>
         </div>
-        <p>One tap per pair. The run ends on the first miss.</p>
+        <p>Ten pairs, easy to hard. A miss does not end it. You answer every one.</p>
         <button className="primary" type="button" onClick={onHeadToHead}>
           {h2hLabel}
         </button>
@@ -130,7 +127,6 @@ export function QuestionScreen({
 }) {
   return (
     <div className="stack">
-      <ScaleStage level={levelForClassicScore(runningScore(puzzle))} />
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <p className="type-kicker">{typeLabel(question.type)}</p>
       <h2 className="prompt">{question.prompt}</h2>
@@ -170,7 +166,6 @@ export function RevealScreen({
 }) {
   return (
     <div className="stack">
-      <ScaleStage level={levelForClassicScore(puzzle.result?.score ?? runningScore(puzzle))} />
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <section className={`reveal band-${reveal.band}`} aria-live="polite">
         <p className="emoji" aria-hidden="true">
@@ -229,12 +224,10 @@ export function EndScreen({
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
   return (
     <div className="stack end">
-      <ScaleStage level={levelForClassicScore(result.score)} label="You reached" />
       <p className="kicker">
         Classic · #{puzzle.puzzleNumber}
       </p>
-      <h2>You reached: {result.reached}</h2>
-      <LevelStrip level={levelForClassicScore(result.score)} />
+      <h2>You reached {result.reached}</h2>
       <p className="score">
         {result.score}
         <span> pts</span>
@@ -704,10 +697,6 @@ function LogNumberLine({
       </div>
     </div>
   );
-}
-
-function runningScore(puzzle: PuzzleResponse): number {
-  return puzzle.questions.reduce((sum, question) => sum + (question.reveal?.points ?? 0), 0);
 }
 
 function geometricMid(min: number, max: number): number {

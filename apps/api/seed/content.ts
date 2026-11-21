@@ -408,9 +408,10 @@ export function assertSeed(): void {
         throw new Error(`${item.id} rank needs 3 or 4 facts`);
       }
     }
-    for (const required of ["estimate", "compare", "rank", "name_one"]) {
-      if (!types.has(required)) throw new Error(`${puzzle.theme} is missing ${required}`);
-    }
+    const nameCount = puzzle.questionIds.filter((id) => questionById.get(id)?.type === "name_one").length;
+    if (nameCount !== 2) throw new Error(`${puzzle.theme} needs two name-one questions`);
+    if (!types.has("estimate")) throw new Error(`${puzzle.theme} is missing an estimate`);
+    if (!types.has("compare") && !types.has("rank")) throw new Error(`${puzzle.theme} needs a compare or a rank`);
   }
   if (seenSlots.size !== 10) throw new Error("Slots must be 0 through 9");
 }

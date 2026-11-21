@@ -24,32 +24,55 @@ export const SCALE_LEVELS: ScaleLevel[] = [
   { id: "universe", name: "Observable universe", emoji: "🌀", exponent: 26 },
 ];
 
-const BEYOND: ScaleLevel = { id: "beyond", name: "Beyond the universe", emoji: "🔭", exponent: 30, beyond: true };
+/**
+ * Eleven stops for a finished game: index 0 is the start, index 10 is a perfect run.
+ * Building is skipped so ten correct answers land on the Milky Way.
+ */
+const JOURNEY_INDEX = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11] as const;
 
-/** Head-to-head: one zoom-out per correct pick. Past the last rung, the bonus tier keeps counting. */
+/** Two name-one questions (36 each) plus three 20-point questions. */
+export const CLASSIC_SCORE_SPAN = 132;
+
+const PHRASE: Record<string, string> = {
+  atom: "the atom",
+  cell: "the cell",
+  ant: "the ant",
+  human: "the street",
+  building: "the building",
+  city: "the city",
+  country: "the country",
+  earth: "Earth",
+  moon: "the Moon",
+  solar: "the solar system",
+  stars: "the nearby stars",
+  galaxy: "the Milky Way",
+  universe: "the observable universe",
+};
+
+/** Head-to-head: the stop depends on how many picks were right, not how many were answered. */
 export function levelForCorrectCount(correct: number): ScaleLevel {
-  if (correct <= 0) return SCALE_LEVELS[0]!;
-  if (correct < SCALE_LEVELS.length) return SCALE_LEVELS[correct]!;
-  return { ...BEYOND, extra: correct - (SCALE_LEVELS.length - 1) };
+  const clamped = Math.max(0, Math.min(10, Math.round(correct)));
+  return SCALE_LEVELS[JOURNEY_INDEX[clamped]]!;
 }
 
-/** Classic: the day's points slide along the same path. 0 stays on the atom. 100 reaches the last rung. */
-export function levelIndexForClassicScore(score: number): number {
-  const last = SCALE_LEVELS.length - 1;
-  if (score <= 0) return 0;
-  return Math.min(last, Math.round((score / 100) * last));
+export function levelIndexForClassicScore(score: number, span = CLASSIC_SCORE_SPAN): number {
+  if (score <= 0 || span <= 0) return 0;
+  return Math.min(10, Math.round((score / span) * 10));
 }
 
-export function levelForClassicScore(score: number): ScaleLevel {
-  return SCALE_LEVELS[levelIndexForClassicScore(score)]!;
+export function levelForClassicScore(score: number, span = CLASSIC_SCORE_SPAN): ScaleLevel {
+  return levelForCorrectCount(levelIndexForClassicScore(score, span));
+}
+
+export function reachedPhrase(level: ScaleLevel): string {
+  return PHRASE[level.id] ?? level.name;
 }
 
 export function zoomShareLine(level: ScaleLevel): string {
-  const index = level.beyond ? SCALE_LEVELS.length - 1 : SCALE_LEVELS.findIndex((item) => item.id === level.id);
-  const mid = Math.floor(Math.max(0, index) / 2);
-  const end = level.beyond ? BEYOND.emoji : SCALE_LEVELS[index]!.emoji;
+  const index = Math.max(0, SCALE_LEVELS.findIndex((item) => item.id === level.id));
+  const mid = Math.floor(index / 2);
   const parts = [SCALE_LEVELS[0]!.emoji];
   if (mid > 0 && mid < index) parts.push(SCALE_LEVELS[mid]!.emoji);
-  if (index > 0) parts.push(end);
+  if (index > 0) parts.push(SCALE_LEVELS[index]!.emoji);
   return `${parts.join("→")} reached ${level.name}`;
 }

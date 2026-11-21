@@ -4,6 +4,7 @@ import {
   formatFactValue,
   formatFactor,
   levelForClassicScore,
+  reachedPhrase,
   puzzleNumber,
   puzzleSlot,
   sliderRange,
@@ -465,7 +466,7 @@ async function dayResult(
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
     shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(levelForClassicScore(mine.score))),
-    reached: levelForClassicScore(mine.score).name,
+    reached: reachedPhrase(levelForClassicScore(mine.score)),
     provisional: date >= utcToday(),
   };
 }

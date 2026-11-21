@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DayResult, Guess, PuzzleResponse, Reveal } from "@ballpark/shared";
+import { levelForCorrectCount, levelIndexForClassicScore, type DayResult, type Guess, type PuzzleResponse, type Reveal } from "@ballpark/shared";
 import { ApiError, errorCopy, getHeadToHead, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
+import { Hop, Journey } from "./journey";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, type HeadToHeadStats, type StoredStats } from "./storage";
 
@@ -22,6 +23,9 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [h2hCorrect, setH2hCorrect] = useState(0);
+  const [h2hStep, setH2hStep] = useState(0);
+  const [hop, setHop] = useState<Hop>({ id: 0, kind: "idle", travel: 1 });
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -57,6 +61,9 @@ export function App() {
       const nextPuzzle = { ...puzzle, questions, result: response.result };
       setPuzzle(nextPuzzle);
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
+      const max = question.type === "name_one" ? 36 : 20;
+      const travel = Math.max(0.15, response.reveal.points / max);
+      setHop((current) => ({ id: current.id + 1, kind: response.reveal.points > 0 ? "voyage" : "stumble", travel }));
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
@@ -69,7 +76,12 @@ export function App() {
     }
   }
 
+  const classicScore = puzzle?.questions.reduce((sum, question) => sum + (question.reveal?.points ?? 0), 0) ?? 0;
+  const worldId = levelForCorrectCount(phase.name === "h2h" ? h2hCorrect : levelIndexForClassicScore(classicScore)).id;
+  const classicIndex = phase.name === "ask" || phase.name === "reveal" ? phase.index : (puzzle?.questions.filter((question) => question.reveal).length ?? 0);
+
   return (
+    <Journey worldId={worldId} hop={hop} dots={phase.name === "h2h" ? { total: 10, current: h2hStep } : { total: 5, current: classicIndex }}>
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
@@ -79,7 +91,11 @@ export function App() {
           stats={stats}
           h2hStreak={h2hStats.currentStreak}
           h2hLabel={h2h?.status === "finished" ? `See today’s run · ${h2h.result?.score ?? 0}` : h2h?.status === "in-progress" ? "Continue Head-to-head" : "Play Head-to-head"}
-          onHeadToHead={() => setPhase({ name: "h2h" })}
+          onHeadToHead={() => {
+            setH2hCorrect(h2h?.correct ?? 0);
+            setH2hStep(h2h?.round?.index ?? 0);
+            setPhase({ name: "h2h" });
+          }}
           onPlay={() => {
             const index = puzzle.questions.findIndex((question) => question.reveal === null);
             setPhase({ name: "ask", index: index === -1 ? 0 : index });
@@ -127,6 +143,11 @@ export function App() {
             void refresh();
           }}
           onOfficialFinish={(date, score) => setH2hStats(recordHeadToHead(date, score))}
+          onHop={(correct, correctCount, index) => {
+            setH2hCorrect(correctCount);
+            setH2hStep(index + 1);
+            setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.28 }));
+          }}
         />
       ) : null}
       <footer>
@@ -134,5 +155,6 @@ export function App() {
         <DevDate />
       </footer>
     </main>
+    </Journey>
   );
 }

@@ -1,4 +1,3 @@
-import { blendShare, estimateCrowdBonus, estimatePriorFarther } from "@ballpark/shared";
 import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -42,7 +41,7 @@ describe("today's questions hide the answers", () => {
       questions: Array<{ type: string; reveal: unknown; items: Array<Record<string, unknown>> }>;
     };
     expect(body.theme).toBe("Space");
-    expect(body.questions.map((question) => question.type)).toEqual(["estimate", "compare", "rank", "estimate", "name_one"]);
+    expect(body.questions.map((question) => question.type)).toEqual(["estimate", "name_one", "rank", "estimate", "name_one"]);
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("384400");
     expect(raw).not.toContain("299792458");
@@ -94,9 +93,8 @@ describe("submissions", () => {
     const revealed = (await first.json()) as { reveal: { answerText: string; points: number; context: string } };
     expect(revealed.reveal.answerText).toContain("384,400");
     expect(revealed.reveal.context.length).toBeGreaterThan(20);
-    const bonus = estimateCrowdBonus("green", blendShare(0, 0, estimatePriorFarther(2)));
-    expect(bonus).toBeGreaterThan(0);
-    expect(revealed.reveal.points).toBe(20 + bonus);
+    expect(revealed.reveal.points).toBe(20);
+    expect(revealed.reveal.bonusPoints).toBe(0);
 
     const second = await guess(DEVICE, question.id, { type: "estimate", value: 10, confidence: "wide" });
     expect(second.status).toBe(409);
@@ -141,7 +139,7 @@ describe("submissions", () => {
   });
 
   it("pays more for a rare name than a common one, and zero for an invalid name", async () => {
-    const named = spaceDay().find((question) => question.type === "name_one");
+    const named = spaceDay().find((question) => question.id === "q-space-year");
     if (!named) throw new Error("missing name_one");
     const rare = await guess(DEVICE, named.id, { type: "name_one", text: "Ethiopia" });
     const rareBody = (await rare.json()) as {

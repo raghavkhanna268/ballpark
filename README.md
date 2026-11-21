@@ -1,6 +1,6 @@
 # Ballpark
 
-Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. Two modes share one fact table: **Classic** (five questions) and **Head-to-head** (a run of pairs until the first miss). Both are scored on the server. There is no account.
+Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. Two modes share one fact table: **Classic** (five questions) and **Head-to-head** (ten pairs, and you answer every one). Both are scored on the server. There is no account.
 
 Nothing here is deployed. Do not run `wrangler deploy`, `wrangler d1 create`, or any command that talks to a Cloudflare account.
 
@@ -45,15 +45,15 @@ ballpark.local
 
 ## Head-to-head
 
-Head-to-head is a second daily on the home screen, with its own streak. The Worker builds one sequence per UTC date from facts that share a metric (population with population, height with height). Early pairs are far apart, at least 5×, and later pairs sit inside 1.5×. Some rounds show one value and ask whether the other is higher or lower. One round in the sequence, when the facts allow it, is an odd-one-out among four.
+Head-to-head is a second daily on the home screen, with its own streak. The Worker builds one sequence of ten pairs per UTC date from facts that share a metric (population with population, height with height). The first pairs are far apart, at least 5×, and the last pairs sit inside 1.5×. Some rounds show one value and ask whether the other is higher or lower. One round in the sequence, when the facts allow it, is an odd-one-out among four.
 
-`GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. The first miss ends the run. A second scored run the same day is rejected. After that, a practice run uses a different sequence and is not written to the board.
+`GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. A wrong pick reveals the values and the game continues. The scored game ends after all ten picks. A second scored game the same day is rejected. After that, a practice game uses a different sequence and is not written to the board.
 
-A correct pick reveals both values, one line of context, and a source, then advances after about 1.4 seconds. The end screen shows the rung you reached, the run length, rarity points, the percent of players beaten, and the best scored run that day (a number, no names). Ranking is by run length. Equal lengths break on rarity points. The share card is:
+Each pick moves a mascot through a full-screen world. A correct pick travels outward into the next scale. A miss is a shorter stumble, so the world you reach depends on how many you got right, not on how many you answered. The end screen shows that world, the score out of 10, the percent of players beaten, and the best score that day (a number, no names). Ranking is by correct answers. Equal scores are ties: a faster finish does not rank higher, because timing a knowledge question rewards skimming. The share card is:
 
 ```text
 Ballpark #325 · Head-to-head
-⚛️→🧍→🌍 reached Earth · 7 in a row
+🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached Milky Way
 ballpark.local
 ```
 
@@ -77,13 +77,11 @@ Confidence changes those points. "Right" means within 2× (green or yellow).
 | Medium | +2 | −2 |
 | Narrow | +4 | −4 |
 
-The base estimate score is clamped to 0–20, so a perfect narrow estimate is 20 and a narrow miss cannot go negative. A close estimate (green or yellow) can then add up to 6 crowd points when most other guesses were farther off.
+The estimate score is clamped to 0–20, so a perfect narrow estimate is 20 and a narrow miss cannot go negative. Closeness and confidence are the whole estimate score. Compare is 20 or 0. Rank is 20 for the exact order, 12 for a single adjacent swap, and 0 otherwise. Head-to-head picks are right or wrong, with no rarity bonus.
 
-Compare is 20 or 0 (🟩 or ⬛). Rank is 20 for the exact order (🟩), 12 for a single adjacent swap (🟨), and 0 otherwise (⬛).
+Rarity scoring is only for open `name_one` answers ("Name a country with more than 100 million people"). Each Classic day has two of them. The Worker matches case, accents, aliases, and small typos against a server-side list. The autocomplete list is the whole group (every country, or every element) and is not the answer key. A correct name scores `20 × (0.5 + 1.5 × uniqueness)`, capped at 36. An invalid name scores 0. The reveal's "percent of players" is the live share, the same number as that answer's row in the list. Until 20 responses exist, the points blend a fixed prior from the seed, and the card says so.
 
-Name-one is an open answer ("Name a country with more than 100 million people"). The Worker matches case, accents, aliases, and small typos against a server-side list. The autocomplete list is the whole group (every country, or every element) and is not the answer key. A correct name scores `20 × (0.5 + 1.5 × uniqueness)`, capped at 36. An invalid name scores 0. Rarer accepted answers are worth more.
-
-Until 20 responses exist for an item, that score blends a fixed prior from the seed into the live share. At 20 it is fully live. Points during the UTC day are provisional ("points so far, final at reset"). At 00:00 UTC a Worker cron recomputes yesterday, and any read of a past day does the same. Percentiles use those final points. Head-to-head rarity is the share of players who missed that pair, with the same cold start.
+At 00:00 UTC a Worker cron recomputes yesterday, and any read of a past day does the same. Percentiles use those final points.
 
 The estimate field accepts `k`, `M`, and `B` for thousand, million, and billion. `m` means million, not milli. The control is a zoomable log number line. Its endpoints are fixed for the unit class (every distance-in-kilometres question shares one span) and are not centered on the answer. After you submit, the marker moves to the true value, the gap is marked, and faint dots show other players' guesses. Those dots are not in the question payload.
 
@@ -102,7 +100,7 @@ Schema, in short:
 - `facts` — id, label, value, unit, metric, context, source, retrieved date, license, topic, difficulty, `verified`. Head-to-head pairs facts that share a metric.
 - `questions` — prompt, type (`estimate` | `compare` | `rank` | `name_one`), unit, polarity, the fact ids, the display order, and for name-one an accepted-answer list that never leaves the server
 - `puzzles` — a theme and five question ids, one of them a name-one
-- `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. `daily_results.points` is the rarity total. `finalized` flips when the UTC day is recomputed
+- `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. Head-to-head `score` is correct picks out of 10. `finalized` flips when the UTC day is recomputed
 - `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
 
 ## Sample content, and what has to change before a public game

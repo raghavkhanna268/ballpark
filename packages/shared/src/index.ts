@@ -37,33 +37,21 @@ export {
 export { classicShareText, headToHeadShareText } from "./share.js";
 export type { AcceptedAnswer } from "./match.js";
 export { levenshtein, matchAccepted, normalizeAnswer, priorShare } from "./match.js";
-export type { RankedRun } from "./rarity.js";
-export {
-  COLD_START_RESPONSES,
-  ESTIMATE_BONUS_CAP,
-  NAME_BASE,
-  NAME_CAP,
-  beatPercentRuns,
-  beatsRun,
-  blendShare,
-  estimateCrowdBonus,
-  estimatePriorFarther,
-  h2hPickPoints,
-  h2hPriorWrongShare,
-  nameOnePoints,
-  rarityMultiplier,
-} from "./rarity.js";
+export { COLD_START_RESPONSES, NAME_BASE, NAME_CAP, blendShare, nameOnePoints, rarityMultiplier } from "./rarity.js";
 export type { ScaleLevel } from "./scale.js";
 export {
+  CLASSIC_SCORE_SPAN,
   SCALE_LEVELS,
   levelForClassicScore,
   levelForCorrectCount,
   levelIndexForClassicScore,
+  reachedPhrase,
   zoomShareLine,
 } from "./scale.js";
 export type { EntitySet } from "./entities.js";
 export { COUNTRIES, ELEMENTS, suggestionsFor } from "./entities.js";
 export {
+  H2H_LENGTH,
   METRIC_COPY,
   buildHeadToHeadSequence,
   scoreHeadToHead,

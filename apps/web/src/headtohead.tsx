@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
-import { levelForCorrectCount, type PublicH2HRound } from "@ballpark/shared";
+import type { PublicH2HRound } from "@ballpark/shared";
 import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
 import { haptic, shareText } from "./haptic";
-import { LevelStrip, ScaleStage } from "./scale-view";
 
 type RevealState = HeadPickResponse & { practice: boolean };
 
@@ -11,11 +10,13 @@ export function HeadToHeadScreen({
   initial,
   onHome,
   onOfficialFinish,
+  onHop,
 }: {
   deviceId: string;
   initial: HeadToHeadState;
   onHome: () => void;
   onOfficialFinish: (date: string, score: number) => void;
+  onHop: (correct: boolean, correctCount: number, index: number) => void;
 }) {
   const [practice, setPractice] = useState(initial.runKind === "practice" && initial.status === "in-progress");
   const [round, setRound] = useState<PublicH2HRound | null>(initial.round);
@@ -27,11 +28,20 @@ export function HeadToHeadScreen({
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "failed">("idle");
 
   useEffect(() => {
-    if (!reveal?.correct || !reveal.next) return;
-    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 400 : 1400;
+    if (!reveal) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delay = reduced ? 400 : reveal.correct ? 1300 : 800;
     const id = window.setTimeout(() => {
-      setRound(reveal.next);
-      setReveal(null);
+      if (reveal.next) {
+        setRound(reveal.next);
+        setReveal(null);
+        return;
+      }
+      if (reveal.finished) {
+        setRound(null);
+        setResult(reveal.result);
+        setReveal(null);
+      }
     }, delay);
     return () => window.clearTimeout(id);
   }, [reveal]);
@@ -44,15 +54,10 @@ export function HeadToHeadScreen({
     try {
       const response = await postHeadPick(deviceId, { index: round.index, ...body });
       setCorrect(response.correctCount);
+      onHop(response.correct, response.correctCount, round.index);
       haptic(response.correct ? "good" : "bad");
-      if (response.finished) {
-        setRound(null);
-        setReveal(null);
-        setResult(response.result);
-        if (response.result?.official) onOfficialFinish(initial.date, response.result.score);
-      } else {
-        setReveal({ ...response, practice });
-      }
+      if (response.finished && response.result?.official) onOfficialFinish(initial.date, response.result.score);
+      setReveal({ ...response, practice });
     } catch (caught) {
       setError(errorCopy(caught));
     } finally {
@@ -78,18 +83,14 @@ export function HeadToHeadScreen({
   }
 
   if (result && !round && !reveal) {
-    const reached = levelForCorrectCount(result.score);
     return (
       <div className="stack end">
-        <ScaleStage level={reached} label="You reached" />
         <p className="kicker">{result.official ? `Head-to-head · #${initial.puzzleNumber}` : "Practice run"}</p>
-        <h2>You reached: {result.reached || reached.name}</h2>
-        <LevelStrip level={reached} />
+        <h2>You reached {result.reached}</h2>
         <p className="score">
           {result.score}
-          <span> in a row</span>
+          <span> / 10</span>
         </p>
-        {result.official ? <p className="players">Rarity points {result.points}{result.provisional ? " · points so far, final at reset" : ""}</p> : null}
         {result.official ? (
           <>
             <h2>You beat {result.beatPercent}% of players today</h2>
@@ -99,9 +100,8 @@ export function HeadToHeadScreen({
                 : `${result.players} scored runs today.`}
             </p>
             <p className="best-today">Best run today: {result.bestToday}</p>
-            <p className="emoji-row" aria-label="Correct picks">
-              {"🟩".repeat(result.score)}
-              {result.cleared ? "" : "❌"}
+            <p className="emoji-row" aria-label="Ten picks">
+              {result.marks}
             </p>
             <pre className="share-card">{result.shareText}</pre>
             <button
@@ -134,7 +134,6 @@ export function HeadToHeadScreen({
   const showing = reveal ?? null;
   return (
     <div className="stack">
-      <ScaleStage level={levelForCorrectCount(correct)} />
       <div className="play-head">
         <button className="text-button" type="button" onClick={onHome}>
           Home
@@ -145,8 +144,7 @@ export function HeadToHeadScreen({
       {showing ? (
         <section className={`reveal ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
           <p className="emoji">{showing.correct ? "🟩" : "❌"}</p>
-          <h2>{showing.correct ? "Correct" : "That’s the miss"}</h2>
-          {showing.correct && showing.points > 0 ? <p className="points">+{showing.points} rarity</p> : null}
+          <h2>{showing.correct ? "Correct" : "Not this one"}</h2>
           <ul className="rows">
             {showing.reveal.rows.map((row) => (
               <li key={row.label}>
@@ -159,18 +157,22 @@ export function HeadToHeadScreen({
           <a className="source" href={showing.reveal.sourceUrl} target="_blank" rel="noreferrer">
             {showing.reveal.sourceName}
           </a>
-          {showing.correct && showing.next ? (
-            <button
-              className="text-button"
-              type="button"
-              onClick={() => {
+          <button
+            className="text-button"
+            type="button"
+            onClick={() => {
+              if (showing.next) {
                 setRound(showing.next);
                 setReveal(null);
-              }}
-            >
-              Next
-            </button>
-          ) : null}
+                return;
+              }
+              setRound(null);
+              setResult(showing.result);
+              setReveal(null);
+            }}
+          >
+            {showing.next ? "Next" : "See the result"}
+          </button>
         </section>
       ) : round ? (
         <RoundForm round={round} busy={busy} onChoose={(body) => void choose(body)} />

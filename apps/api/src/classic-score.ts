@@ -1,8 +1,6 @@
 import {
   COLD_START_RESPONSES,
   blendShare,
-  estimateCrowdBonus,
-  estimatePriorFarther,
   matchAccepted,
   nameOnePoints,
   priorShare,
@@ -13,7 +11,7 @@ import {
   type Guess,
   type ServerQuestion,
 } from "@ballpark/shared";
-import { compareScore, estimateScore, logDistance, rankScore } from "@ballpark/shared/scoring";
+import { compareScore, estimateScore, rankScore } from "@ballpark/shared/scoring";
 
 export type PlayQuestion = ServerQuestion & {
   accepted: AcceptedAnswer[] | null;
@@ -37,16 +35,12 @@ export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, other
     const answer = question.items[0]?.value ?? 0;
     const full = estimateScore(guess.value, answer, guess.confidence);
     const guesses = others.filter((item): item is Extract<Guess, { type: "estimate" }> => item.type === "estimate" && item.value > 0);
-    const mine = logDistance(guess.value, answer);
-    const farther = guesses.filter((item) => logDistance(item.value, answer) > mine).length;
-    const live = guesses.length === 0 ? 0 : farther / guesses.length;
-    const bonusPoints = estimateCrowdBonus(full.band, blendShare(live, guesses.length, estimatePriorFarther(question.difficulty)));
     return {
       band: full.band,
-      points: full.points + bonusPoints,
+      points: full.points,
       basePoints: full.basePoints,
       confidenceDelta: full.confidenceDelta,
-      bonusPoints,
+      bonusPoints: 0,
       answerText: "",
       detail: "",
       named: null,

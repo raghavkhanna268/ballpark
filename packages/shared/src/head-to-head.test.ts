@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHeadToHeadSequence, scoreHeadToHead, toPublicRound, valueRatio, type H2HFact } from "./head-to-head.js";
 import { headToHeadShareText } from "./share.js";
-import { levelForCorrectCount, zoomShareLine } from "./scale.js";
+import { levelForCorrectCount } from "./scale.js";
 
 function fact(id: string, value: number, metric = "country-population"): H2HFact {
   return {
@@ -45,11 +45,11 @@ describe("head-to-head sequences", () => {
 
   it("ramps from wide ratios to close ones", () => {
     const rounds = buildHeadToHeadSequence(pool, "ramp-seed");
-    expect(rounds.length).toBeGreaterThanOrEqual(12);
-    for (const round of rounds.filter((item) => item.index < 5)) {
+    expect(rounds).toHaveLength(10);
+    for (const round of rounds.filter((item) => item.index < 3)) {
       expect(round.ratio).toBeGreaterThanOrEqual(5);
     }
-    for (const round of rounds.filter((item) => item.index >= 10 && item.kind !== "odd-one-out")) {
+    for (const round of rounds.filter((item) => item.index >= 8 && item.kind !== "odd-one-out")) {
       expect(round.ratio).toBeLessThan(1.5);
     }
   });
@@ -103,9 +103,9 @@ describe("head-to-head sequences", () => {
   });
 
   it("formats the share card", () => {
-    expect(zoomShareLine(levelForCorrectCount(7))).toBe("⚛️→🧍→🌍 reached Earth");
-    expect(headToHeadShareText(325, 7, "ballpark.local", zoomShareLine(levelForCorrectCount(7)))).toBe(
-      "Ballpark #325 · Head-to-head\n⚛️→🧍→🌍 reached Earth · 7 in a row\nballpark.local",
+    expect(levelForCorrectCount(8).name).toBe("Solar system");
+    expect(headToHeadShareText(325, "🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩", 8, 10, "ballpark.local", "Milky Way")).toBe(
+      "Ballpark #325 · Head-to-head\n🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached Milky Way\nballpark.local",
     );
   });
 

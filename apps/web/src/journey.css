@@ -1,0 +1,163 @@
+.stage {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  color: #1c1915;
+}
+.stage main {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+.sky { position: absolute; inset: -8%; }
+.layer.back { z-index: 0; }
+.layer.mid { z-index: 1; }
+.layer.front { z-index: 2; pointer-events: none; }
+.orb, .ring, .mote { position: absolute; border-radius: 50%; }
+.ring { border: 3px solid rgba(255, 255, 255, 0.45); }
+.mote { width: 6px; height: 6px; background: rgba(255, 255, 255, 0.75); animation: drift 9s linear infinite; }
+.m0 { left: 12%; top: 20%; }
+.m1 { left: 70%; top: 14%; animation-duration: 12s; }
+.m2 { left: 40%; top: 32%; animation-duration: 7s; }
+.m3 { left: 82%; top: 40%; }
+.m4 { left: 22%; top: 48%; animation-duration: 11s; }
+.m5 { left: 58%; top: 22%; }
+.m6 { left: 88%; top: 18%; animation-duration: 8s; }
+
+.world-atom .back { background: radial-gradient(circle at 50% 40%, #9fe7ff 0 6%, #14506a 28%, #071018 70%); }
+.world-atom .orb.a { width: 18px; height: 18px; left: 46%; top: 28%; background: #e8fbff; }
+.world-atom .ring { width: 120px; height: 48px; left: calc(50% - 60px); top: 24%; }
+.world-cell .back { background: radial-gradient(circle at 40% 45%, #e7ffd4, #2f8a4e 46%, #102818 80%); }
+.world-cell .orb.a { width: 140px; height: 110px; left: 28%; top: 10%; background: rgba(255, 255, 255, 0.28); }
+.world-cell .orb.b { width: 28px; height: 28px; left: 48%; top: 22%; background: #f4ffe8; }
+.world-ant .back { background: linear-gradient(#d7ecb0, #5d7a32 70%); }
+.world-ant .orb.a, .world-ant .orb.b { background: #243014; height: 22px; top: 30%; }
+.world-ant .orb.a { width: 22px; left: 34%; }
+.world-ant .orb.b { width: 34px; left: 48%; }
+.world-human .back { background: linear-gradient(#8ec8ef, #d5e7b0 64%); }
+.world-human .orb.a { width: 26px; height: 26px; left: 46%; top: 16%; background: #f3d2b8; }
+.world-human .orb.b { width: 34px; height: 54px; left: 44%; top: 28%; border-radius: 12px; background: #245c86; }
+.world-city .back { background: linear-gradient(#f0b089, #5c3a52 78%); }
+.world-city .orb.a, .world-city .orb.b { bottom: 18%; top: auto; border-radius: 4px; background: #241826; }
+.world-city .orb.a { width: 28px; height: 70px; left: 22%; }
+.world-city .orb.b { width: 40px; height: 110px; left: 48%; }
+.world-country .back { background: linear-gradient(#7ec9be, #14584c); }
+.world-country .orb.a { width: 150px; height: 80px; left: 18%; top: 18%; background: #d8f3c8; border-radius: 46% 54% 42% 58%; }
+.world-earth .back { background: radial-gradient(circle at 42% 38%, #8fd0ff, #1a6794 42%, #071624 74%); }
+.world-earth .orb.a { width: 120px; height: 120px; left: calc(50% - 60px); top: 12%; background: radial-gradient(circle at 32% 32%, #b6ee8e, #1c7a48); }
+.world-moon .back { background: radial-gradient(circle at 72% 30%, #f6f3ea, #2a3344 16%, #070b14 62%); }
+.world-moon .orb.a { width: 28px; height: 28px; right: 16%; left: auto; top: 18%; background: #ddd6c8; }
+.world-solar .back { background: radial-gradient(circle at 50% 42%, #ffe08a 0 8%, #1a2744 34%, #070b16 72%); }
+.world-solar .ring { width: 180px; height: 70px; left: calc(50% - 90px); top: 22%; }
+.world-stars .back { background: #070b16; }
+.world-stars .mote { background: #fff; box-shadow: 0 0 8px #fff; }
+.world-galaxy .back { background: radial-gradient(circle at 50% 42%, #f7f3ff 0 4%, #6d5bd0 16%, #140c28 48%, #07060f 74%); }
+.world-galaxy .ring { width: 200px; height: 54px; left: calc(50% - 100px); top: 24%; border-width: 10px; border-color: rgba(210, 200, 255, 0.45); }
+.world-universe .back { background: radial-gradient(circle at 50% 40%, #fff 0 2%, #f0c27a 8%, #7a3e8a 22%, #101428 58%, #05060c); }
+
+.stage.is-voyage .back { animation: recede 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.stage.is-voyage .mid { animation: recede-mid 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.stage.is-voyage .front { animation: recede-front 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.stage.is-voyage .mascot { animation: jet 1.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.stage.is-voyage .jet { animation: flame 1.2s ease-out; }
+.stage.is-stumble .mascot { animation: wobble 0.7s ease-in-out; }
+.stage.is-stumble .sheet { animation: shake 0.45s linear; }
+.stage.quiet.is-voyage .back,
+.stage.quiet.is-voyage .mid,
+.stage.quiet.is-voyage .front { animation: fade-scene 0.4s linear; }
+.stage.quiet .mascot,
+.stage.quiet .mote,
+.stage.quiet .ring { animation: none; }
+
+.mascot {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  top: 16%;
+  width: 92px;
+  transform: translateX(-50%);
+  pointer-events: none;
+  filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.25));
+}
+.mascot .body { transform-origin: 40px 46px; animation: bob 2.4s ease-in-out infinite; }
+.mascot .eye { transform-origin: center; animation: blink 4.5s infinite; }
+.jet { fill: #ffb15a; opacity: 0; transform-origin: 40px 88px; }
+
+.sheet {
+  position: relative;
+  z-index: 4;
+  width: min(440px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  padding: 38vh 16px 28px;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  overflow-y: auto;
+  box-sizing: border-box;
+}
+.trail { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+.trail i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255, 250, 243, 0.45);
+  box-shadow: 0 0 0 2px rgba(28, 25, 21, 0.25);
+}
+.trail i.done { background: #0e5c52; }
+.trail i.now { background: #b8431f; }
+.sheet .stack, .sheet .end {
+  background: rgba(255, 250, 243, 0.94);
+  color: #1c1915;
+  border-radius: 28px;
+  padding: 16px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
+}
+.sheet .card { background: transparent; border: none; padding: 8px 0; }
+.sheet .prompt, .sheet h1, .sheet h2, .sheet .answer, .sheet .points { color: #1c1915; }
+.sheet .reveal { width: 100%; }
+.sound-toggle {
+  position: absolute;
+  z-index: 5;
+  top: 12px;
+  right: 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 250, 243, 0.92);
+  color: #1c1915;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+@keyframes drift { from { transform: translateY(0); } to { transform: translateY(-36px); } }
+@keyframes bob { 50% { transform: translateY(-6px); } }
+@keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.1); } }
+@keyframes recede { to { transform: scale(calc(1 - 0.18 * var(--travel, 1))); } }
+@keyframes recede-mid { to { transform: scale(calc(1 - 0.28 * var(--travel, 1))) translateY(12px); } }
+@keyframes recede-front { to { transform: scale(calc(1 - 0.4 * var(--travel, 1))) translateY(20px); } }
+@keyframes jet {
+  40% { transform: translate(-50%, calc(-64px * var(--travel, 1))) scale(1.06); }
+  100% { transform: translate(-50%, calc(-18px * var(--travel, 1))); }
+}
+@keyframes flame { 20% { opacity: 0.9; } 100% { opacity: 0; } }
+@keyframes wobble {
+  20% { transform: translateX(calc(-50% - 10px)) rotate(-8deg); }
+  50% { transform: translateX(calc(-50% + 8px)) rotate(6deg); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes shake {
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes fade-scene { from { opacity: 0.4; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .mote, .mascot .body, .mascot .eye, .ring { animation: none; }
+  .stage.is-voyage .back, .stage.is-voyage .mid, .stage.is-voyage .front { animation: fade-scene 0.4s linear; }
+  .stage.is-voyage .mascot, .stage.is-stumble .mascot, .stage.is-stumble .sheet { animation: none; }
+}

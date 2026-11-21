@@ -92,14 +92,23 @@ describe("head-to-head API", () => {
     const wrongId = sequence[1].items.find((item) => item.id !== sequence[1].answer)?.id ?? "missing";
     const miss = await pick(DEVICE, sequence[1].kind === "higher-lower" ? { index: 1, direction: sequence[1].answer === "higher" ? "lower" : "higher" } : { index: 1, choiceId: wrongId });
     expect(miss.status).toBe(200);
-    const ended = (await miss.json()) as { correct: boolean; finished: boolean; result: { official: boolean; score: number; beatPercent: number; bestToday: number; shareText: string } };
-    expect(ended.correct).toBe(false);
-    expect(ended.finished).toBe(true);
+    const missed = (await miss.json()) as { correct: boolean; finished: boolean; next: { index: number } | null };
+    expect(missed.correct).toBe(false);
+    expect(missed.finished).toBe(false);
+    expect(missed.next?.index).toBe(2);
+
+    for (const round of sequence.slice(2)) {
+      const response = await answerRound(DEVICE, round, false);
+      expect(response.status).toBe(200);
+    }
+    const done = await state();
+    const ended = (await done.json()) as { status: string; result: { official: boolean; score: number; beatPercent: number; shareText: string; marks: string } };
+    expect(ended.status).toBe("finished");
     expect(ended.result.official).toBe(true);
     expect(ended.result.score).toBe(1);
-    expect(ended.result.beatPercent).toBe(100);
-    expect(ended.result.bestToday).toBe(1);
-    expect(ended.result.shareText).toContain("1 in a row");
+    expect(ended.result.marks.match(/🟩|🟥/g)).toHaveLength(10);
+    expect(ended.result.shareText).toContain("1/10");
+    expect(ended.result.shareText).toContain("🟥");
 
     const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
     expect(again.status).toBe(409);
@@ -115,8 +124,9 @@ describe("head-to-head API", () => {
 
   it("keeps practice off the board", async () => {
     const sequence = expectedSequence(DAY);
-    const wrong = sequence[0].items.find((item) => item.id !== sequence[0].answer)?.id ?? "missing";
-    await pick(DEVICE, { index: 0, choiceId: wrong });
+    for (const round of sequence) {
+      expect((await answerRound(DEVICE, round, true)).status).toBe(200);
+    }
     const before = await env.DB.prepare("SELECT COUNT(*) AS count FROM daily_results WHERE mode = 'head-to-head'").first<{ count: number }>();
     const practice = await exports.default.fetch(`http://localhost/api/head-to-head/practice?date=${DAY}`, {
       method: "POST",
@@ -131,30 +141,38 @@ describe("head-to-head API", () => {
     expect(JSON.stringify(round)).not.toContain(sequence[0].items[0].context);
   });
 
-  it("ranks equal run lengths by rarity points", async () => {
+  it("ranks by correct answers and treats equal scores as ties", async () => {
     const now = new Date().toISOString();
-    for (const [deviceId, points] of [
-      [DEVICE, 12],
-      [OTHER, 4],
-    ] as const) {
-      await env.DB.prepare(
-        `INSERT INTO h2h_runs (id, device_id, puzzle_date, kind, attempt, next_index, correct_count, finished, points, created_at)
-         VALUES (?, ?, ?, 'scored', 1, 3, 3, 1, ?, ?)`,
-      )
-        .bind(crypto.randomUUID(), deviceId, DAY, points, now)
-        .run();
-      await env.DB.prepare(
-        `INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
-         VALUES (?, ?, 'head-to-head', 3, ?, '[]', 1, ?)`,
-      )
-        .bind(deviceId, DAY, points, now)
-        .run();
-    }
-    const higher = (await (await state(DEVICE)).json()) as { result: { beatPercent: number; points: number; score: number } };
-    const lower = (await (await state(OTHER)).json()) as { result: { beatPercent: number; points: number } };
-    expect(higher.result.score).toBe(3);
-    expect(higher.result.points).toBe(12);
-    expect(higher.result.beatPercent).toBe(100);
-    expect(lower.result.beatPercent).toBe(0);
+    await insertResult(DEVICE, 8, now);
+    await insertResult(OTHER, 8, now);
+    const left = (await (await state(DEVICE)).json()) as { result: { beatPercent: number; score: number } };
+    const right = (await (await state(OTHER)).json()) as { result: { beatPercent: number; score: number } };
+    expect(left.result.score).toBe(8);
+    expect(left.result.beatPercent).toBe(0);
+    expect(right.result.beatPercent).toBe(0);
   });
 });
+
+async function insertResult(deviceId: string, score: number, now: string) {
+  await env.DB.prepare(
+    `INSERT INTO h2h_runs (id, device_id, puzzle_date, kind, attempt, next_index, correct_count, finished, points, created_at)
+     VALUES (?, ?, ?, 'scored', 1, 10, ?, 1, ?, ?)`,
+  )
+    .bind(crypto.randomUUID(), deviceId, DAY, score, score, now)
+    .run();
+  await env.DB.prepare(
+    `INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
+     VALUES (?, ?, 'head-to-head', ?, ?, '[]', 1, ?)`,
+  )
+    .bind(deviceId, DAY, score, score, now)
+    .run();
+}
+
+async function answerRound(deviceId: string, round: { index: number; kind: string; answer: string; items: { id: string }[] }, correct: boolean) {
+  if (round.kind === "higher-lower") {
+    const direction = correct ? round.answer : round.answer === "higher" ? "lower" : "higher";
+    return pick(deviceId, { index: round.index, direction });
+  }
+  const choiceId = correct ? round.answer : round.items.find((item) => item.id !== round.answer)?.id;
+  return pick(deviceId, { index: round.index, choiceId });
+}

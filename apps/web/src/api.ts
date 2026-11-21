@@ -17,7 +17,7 @@ export type HeadToHeadState = {
     bestToday: number | null;
     shareText: string;
     cleared: boolean;
-    points: number;
+    marks: string;
     reached: string;
     provisional: boolean;
   } | null;

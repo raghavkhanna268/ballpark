@@ -80,7 +80,8 @@ export type PublicH2HRound = {
   lowerLabel: string;
 };
 
-const SEQUENCE_LENGTH = 24;
+export const H2H_LENGTH = 10;
+const SEQUENCE_LENGTH = H2H_LENGTH;
 
 export function valueRatio(a: number, b: number): number | null {
   const left = Math.abs(a);
@@ -131,7 +132,7 @@ export function buildHeadToHeadSequence(facts: H2HFact[], seedKey: string, exclu
         continue;
       }
     }
-    const prefer = index < 5 ? "wide" : index < 10 ? "mid" : "close";
+    const prefer = index < 3 ? "wide" : index < 7 ? "mid" : "close";
     const pair = takePair(buckets, prefer, used);
     if (!pair) break;
     const copy = METRIC_COPY[pair.metric];
