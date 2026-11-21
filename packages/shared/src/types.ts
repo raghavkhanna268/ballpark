@@ -115,11 +115,18 @@ export type CrowdStat =
   | { kind: "percentCorrect"; percent: number; submissions: number }
   | {
       kind: "named";
+      /** Live share of players who gave `answer`. Same integer as that name's row in `top`. */
       answer: string | null;
       percent: number;
       submissions: number;
       top: { label: string; percent: number }[];
       rare: string[];
+      /**
+       * Share used for rarity points. Equals `percent` once 20 answers exist.
+       * Below that it blends the seed prior, and the reveal says so.
+       */
+      blendedPercent: number | null;
+      fromPrior: boolean;
     };
 
 export type Reveal = {
