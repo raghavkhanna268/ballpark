@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import type { PublicH2HRound } from "@ballpark/shared";
+import { levelForCorrectCount, type PublicH2HRound } from "@ballpark/shared";
 import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
 import { haptic, shareText } from "./haptic";
+import { LevelStrip, ScaleStage } from "./scale-view";
 
 type RevealState = HeadPickResponse & { practice: boolean };
 
@@ -27,7 +28,7 @@ export function HeadToHeadScreen({
 
   useEffect(() => {
     if (!reveal?.correct || !reveal.next) return;
-    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 400 : 1200;
+    const delay = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 400 : 1400;
     const id = window.setTimeout(() => {
       setRound(reveal.next);
       setReveal(null);
@@ -77,13 +78,18 @@ export function HeadToHeadScreen({
   }
 
   if (result && !round && !reveal) {
+    const reached = levelForCorrectCount(result.score);
     return (
       <div className="stack end">
+        <ScaleStage level={reached} label="You reached" />
         <p className="kicker">{result.official ? `Head-to-head · #${initial.puzzleNumber}` : "Practice run"}</p>
+        <h2>You reached: {result.reached || reached.name}</h2>
+        <LevelStrip level={reached} />
         <p className="score">
           {result.score}
           <span> in a row</span>
         </p>
+        {result.official ? <p className="players">Rarity points {result.points}{result.provisional ? " · points so far, final at reset" : ""}</p> : null}
         {result.official ? (
           <>
             <h2>You beat {result.beatPercent}% of players today</h2>
@@ -128,6 +134,7 @@ export function HeadToHeadScreen({
   const showing = reveal ?? null;
   return (
     <div className="stack">
+      <ScaleStage level={levelForCorrectCount(correct)} />
       <div className="play-head">
         <button className="text-button" type="button" onClick={onHome}>
           Home
@@ -139,6 +146,7 @@ export function HeadToHeadScreen({
         <section className={`reveal ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
           <p className="emoji">{showing.correct ? "🟩" : "❌"}</p>
           <h2>{showing.correct ? "Correct" : "That’s the miss"}</h2>
+          {showing.correct && showing.points > 0 ? <p className="points">+{showing.points} rarity</p> : null}
           <ul className="rows">
             {showing.reveal.rows.map((row) => (
               <li key={row.label}>

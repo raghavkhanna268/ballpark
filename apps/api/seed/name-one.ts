@@ -1,0 +1,396 @@
+/**
+ * SAMPLE name-one questions. verified stays false on the question row.
+ * Accepted lists are server-only. Autocomplete uses the broad entity list.
+ */
+export type AcceptedSeed = { canonical: string; aliases: string[]; prior: number };
+
+export type NameOneSeed = {
+  id: string;
+  prompt: string;
+  entitySet: "countries" | "elements";
+  accepted: AcceptedSeed[];
+  context: string;
+  sourceName: string;
+  sourceUrl: string;
+  license: string;
+  topic: string;
+  difficulty: 1 | 2 | 3;
+};
+
+function answer(canonical: string, prior: number, aliases: string[] = []): AcceptedSeed {
+  return { canonical, prior, aliases };
+}
+
+const populous = [
+  answer("India", 30, ["Bharat", "Republic of India"]),
+  answer("China", 26, ["PRC", "People's Republic of China"]),
+  answer("United States", 18, ["USA", "US", "U.S.", "U.S.A.", "America", "United States of America"]),
+  answer("Indonesia", 3),
+  answer("Pakistan", 2),
+  answer("Nigeria", 2),
+  answer("Brazil", 6),
+  answer("Bangladesh", 2),
+  answer("Russia", 5, ["Russian Federation"]),
+  answer("Ethiopia", 1),
+  answer("Mexico", 3),
+  answer("Japan", 4),
+  answer("Philippines", 1),
+  answer("Egypt", 1),
+  answer("Democratic Republic of the Congo", 1, ["DR Congo", "DRC", "Congo-Kinshasa", "Democratic Republic of Congo"]),
+  answer("Vietnam", 1, ["Viet Nam"]),
+];
+
+const africa = [
+  answer("Nigeria", 24),
+  answer("Ethiopia", 8),
+  answer("Egypt", 10),
+  answer("Democratic Republic of the Congo", 4, ["DR Congo", "DRC", "Congo-Kinshasa", "Democratic Republic of Congo"]),
+  answer("Tanzania", 3),
+  answer("South Africa", 6),
+  answer("Kenya", 3),
+  answer("Sudan", 1),
+  answer("Uganda", 1),
+];
+
+const small = [
+  answer("Iceland", 12),
+  answer("Luxembourg", 8),
+  answer("Malta", 4),
+  answer("Brunei", 2, ["Brunei Darussalam"]),
+  answer("Bahamas", 2, ["The Bahamas"]),
+  answer("Maldives", 3),
+  answer("Belize", 1),
+  answer("Barbados", 2),
+  answer("Fiji", 2),
+  answer("Guyana", 1),
+  answer("Suriname", 1),
+  answer("Bhutan", 2),
+  answer("Comoros", 1),
+  answer("Solomon Islands", 1),
+  answer("Cabo Verde", 1, ["Cape Verde"]),
+  answer("Vanuatu", 1),
+  answer("Samoa", 1),
+  answer("Andorra", 2),
+  answer("Monaco", 3),
+  answer("Liechtenstein", 2),
+  answer("San Marino", 1),
+  answer("Vatican City", 4, ["Holy See"]),
+  answer("Palau", 1),
+  answer("Nauru", 1),
+  answer("Tuvalu", 1),
+  answer("Kiribati", 1),
+  answer("Tonga", 1),
+  answer("Seychelles", 1),
+  answer("Grenada", 1),
+  answer("Dominica", 1),
+  answer("Saint Lucia", 1),
+  answer("Antigua and Barbuda", 1),
+  answer("Saint Kitts and Nevis", 1),
+  answer("Saint Vincent and the Grenadines", 1, ["Saint Vincent and the Grenadines"]),
+  answer("Marshall Islands", 1),
+  answer("Micronesia", 1, ["Federated States of Micronesia"]),
+  answer("Sao Tome and Principe", 1, ["São Tomé and Príncipe"]),
+  answer("Montenegro", 2),
+];
+
+const large = [
+  answer("Russia", 16, ["Russian Federation"]),
+  answer("Canada", 14),
+  answer("China", 12, ["PRC", "People's Republic of China"]),
+  answer("United States", 12, ["USA", "US", "America", "United States of America"]),
+  answer("Brazil", 8),
+  answer("Australia", 8),
+  answer("India", 6, ["Bharat"]),
+  answer("Argentina", 3),
+  answer("Kazakhstan", 2),
+  answer("Algeria", 2),
+  answer("Democratic Republic of the Congo", 2, ["DR Congo", "DRC", "Democratic Republic of Congo"]),
+  answer("Saudi Arabia", 2),
+  answer("Mexico", 2),
+  answer("Indonesia", 2),
+  answer("Sudan", 1),
+  answer("Libya", 2),
+  answer("Iran", 2),
+  answer("Mongolia", 2),
+  answer("Peru", 1),
+  answer("Chad", 1),
+  answer("Niger", 1),
+  answer("Angola", 1),
+  answer("Mali", 1),
+  answer("South Africa", 1),
+  answer("Colombia", 1),
+  answer("Ethiopia", 1),
+  answer("Bolivia", 1),
+  answer("Mauritania", 1),
+  answer("Egypt", 1),
+];
+
+const southAmerica = ["Argentina", "Bolivia", "Brazil", "Chile", "Colombia", "Ecuador", "Guyana", "Paraguay", "Peru", "Suriname", "Uruguay", "Venezuela"].map(
+  (name) => answer(name, name === "Brazil" ? 16 : name === "Argentina" ? 6 : 2),
+);
+
+const asia = [
+  answer("India", 24, ["Bharat"]),
+  answer("China", 22, ["PRC", "People's Republic of China"]),
+  answer("Indonesia", 6),
+  answer("Pakistan", 4),
+  answer("Bangladesh", 3),
+  answer("Japan", 8),
+  answer("Philippines", 2),
+  answer("Vietnam", 2, ["Viet Nam"]),
+  answer("Iran", 2),
+  answer("Turkey", 3, ["Turkiye", "Türkiye"]),
+  answer("Thailand", 2),
+  answer("Myanmar", 1, ["Burma"]),
+  answer("South Korea", 3, ["Republic of Korea"]),
+];
+
+const after1900 = [
+  "Europium",
+  "Lutetium",
+  "Protactinium",
+  "Hafnium",
+  "Rhenium",
+  "Technetium",
+  "Francium",
+  "Astatine",
+  "Promethium",
+  "Neptunium",
+  "Plutonium",
+  "Americium",
+  "Curium",
+  "Berkelium",
+  "Californium",
+  "Einsteinium",
+  "Fermium",
+  "Mendelevium",
+  "Nobelium",
+  "Lawrencium",
+  "Rutherfordium",
+  "Dubnium",
+  "Seaborgium",
+  "Bohrium",
+  "Hassium",
+  "Meitnerium",
+  "Darmstadtium",
+  "Roentgenium",
+  "Copernicium",
+  "Nihonium",
+  "Flerovium",
+  "Moscovium",
+  "Livermorium",
+  "Tennessine",
+  "Oganesson",
+].map((name) => answer(name, name === "Plutonium" ? 16 : name === "Einsteinium" ? 4 : 1));
+
+const beyondUranium = [
+  "Neptunium",
+  "Plutonium",
+  "Americium",
+  "Curium",
+  "Berkelium",
+  "Californium",
+  "Einsteinium",
+  "Fermium",
+  "Mendelevium",
+  "Nobelium",
+  "Lawrencium",
+  "Rutherfordium",
+  "Dubnium",
+  "Seaborgium",
+  "Bohrium",
+  "Hassium",
+  "Meitnerium",
+  "Darmstadtium",
+  "Roentgenium",
+  "Copernicium",
+  "Nihonium",
+  "Flerovium",
+  "Moscovium",
+  "Livermorium",
+  "Tennessine",
+  "Oganesson",
+].map((name) => answer(name, name === "Plutonium" ? 18 : 1));
+
+const oneLetter = [
+  answer("Hydrogen", 10),
+  answer("Boron", 3),
+  answer("Carbon", 12),
+  answer("Nitrogen", 6),
+  answer("Oxygen", 12),
+  answer("Fluorine", 3),
+  answer("Phosphorus", 2),
+  answer("Sulfur", 3, ["Sulphur"]),
+  answer("Potassium", 3),
+  answer("Vanadium", 1),
+  answer("Yttrium", 1),
+  answer("Iodine", 4),
+  answer("Tungsten", 2, ["Wolfram"]),
+  answer("Uranium", 8),
+];
+
+const CC = "CC BY-SA 4.0";
+const UN = "United Nations public information";
+
+export const nameOneQuestions: NameOneSeed[] = [
+  {
+    id: "q-space-year",
+    prompt: "Name a country with more than 100 million people.",
+    entitySet: "countries",
+    accepted: populous,
+    context:
+      "The UN World Population Prospects 2024 median estimate puts 16 countries over 100 million, from India and China down to Vietnam. Iran sits just under the line. This sample list is not editorially verified.",
+    sourceName: "UN World Population Prospects 2024",
+    sourceUrl: "https://population.un.org/wpp/",
+    license: UN,
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-earth-peaks",
+    prompt: "Name a chemical element discovered after 1900.",
+    entitySet: "elements",
+    accepted: after1900,
+    context:
+      "Discovery years are conventional and a few were disputed for decades. This list starts with europium (1901) and runs through oganesson, and it leaves out radon, which was identified in 1900. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 2,
+  },
+  {
+    id: "q-body-gut",
+    prompt: "Name an African country with more than 50 million people.",
+    entitySet: "countries",
+    accepted: africa,
+    context:
+      "Using the UN 2024 estimates, nine African countries are at or above 50 million: Nigeria, Ethiopia, Egypt, DR Congo, Tanzania, South Africa, Kenya, Sudan, and Uganda. Algeria sits just below. Pending verification.",
+    sourceName: "UN World Population Prospects 2024",
+    sourceUrl: "https://population.un.org/wpp/",
+    license: UN,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-inv-first",
+    prompt: "Name a country with fewer than 1 million people.",
+    entitySet: "countries",
+    accepted: small,
+    context:
+      "A 2023 UN grouping of member states under 1 million runs from Fiji and Iceland through Tuvalu. This sample also accepts Vatican City, an observer state, and Vanuatu. Pending verification.",
+    sourceName: "United Nations population estimates, via UN member groupings",
+    sourceUrl: "https://population.un.org/wpp/",
+    license: UN,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-land-statues",
+    prompt: "Name a country with an area greater than 1 million square kilometres.",
+    entitySet: "countries",
+    accepted: large,
+    context:
+      "Total area, land plus inland water, from the standard country-area tables. Twenty-nine countries clear 1 million km². Tanzania and Nigeria fall short. Greenland is not counted here because it is not a country. Pending verification.",
+    sourceName: "Wikipedia: List of countries and dependencies by area",
+    sourceUrl: "https://en.wikipedia.org/wiki/List_of_countries_and_dependencies_by_area",
+    license: CC,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-nat-gestation",
+    prompt: "Name a member of the European Union.",
+    entitySet: "countries",
+    accepted: [
+      answer("Austria", 2),
+      answer("Belgium", 3),
+      answer("Bulgaria", 1),
+      answer("Croatia", 1),
+      answer("Cyprus", 1),
+      answer("Czechia", 2, ["Czech Republic"]),
+      answer("Denmark", 3),
+      answer("Estonia", 1),
+      answer("Finland", 2),
+      answer("France", 14),
+      answer("Germany", 14),
+      answer("Greece", 4),
+      answer("Hungary", 2),
+      answer("Ireland", 3),
+      answer("Italy", 8),
+      answer("Latvia", 1),
+      answer("Lithuania", 1),
+      answer("Luxembourg", 2),
+      answer("Malta", 1),
+      answer("Netherlands", 4),
+      answer("Poland", 4),
+      answer("Portugal", 3),
+      answer("Romania", 2),
+      answer("Slovakia", 1),
+      answer("Slovenia", 1),
+      answer("Spain", 8),
+      answer("Sweden", 3),
+    ],
+    context:
+      "The European Union has 27 member states. The United Kingdom left in 2020, so it does not count. The list is the public membership roll and is still marked unverified in this sample.",
+    sourceName: "European Union",
+    sourceUrl: "https://european-union.europa.eu/principles-countries-history/country-profiles_en",
+    license: "European Union public information",
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-geo-brazil",
+    prompt: "Name a country in South America.",
+    entitySet: "countries",
+    accepted: southAmerica,
+    context:
+      "Twelve sovereign countries sit on the South American continent. French Guiana is not a country, so it is not accepted. Pending verification.",
+    sourceName: "Wikipedia: South America",
+    sourceUrl: "https://en.wikipedia.org/wiki/South_America",
+    license: CC,
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-sci-atomic",
+    prompt: "Name a chemical element whose symbol is a single letter.",
+    entitySet: "elements",
+    accepted: oneLetter,
+    context:
+      "Fourteen elements use a one-letter symbol: H, B, C, N, O, F, P, S, K, V, Y, I, W, and U. Gold is Au and lead is Pb, so neither counts. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 2,
+  },
+  {
+    id: "q-cul-paintings",
+    prompt: "Name an Asian country with more than 50 million people.",
+    entitySet: "countries",
+    accepted: asia,
+    context:
+      "UN 2024 estimates. Russia is left off this sample list so the question stays about Asia. Egypt is counted with Africa. Pending verification.",
+    sourceName: "UN World Population Prospects 2024",
+    sourceUrl: "https://population.un.org/wpp/",
+    license: UN,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-long-trenches",
+    prompt: "Name a chemical element with an atomic number greater than 92.",
+    entitySet: "elements",
+    accepted: beyondUranium,
+    context:
+      "Uranium is 92. Everything past it, from neptunium to oganesson, was made in a lab or a reactor. The names follow the IUPAC table. Pending verification.",
+    sourceName: "IUPAC",
+    sourceUrl: "https://iupac.org/what-we-do/periodic-table-of-elements/",
+    license: "IUPAC",
+    topic: "science",
+    difficulty: 2,
+  },
+];
+
+export const nameOneById = new Map(nameOneQuestions.map((item) => [item.id, item]));

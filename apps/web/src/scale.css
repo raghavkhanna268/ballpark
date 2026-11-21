@@ -1,0 +1,105 @@
+.scale-stage { display: flex; flex-direction: column; gap: 8px; }
+.scale-frame {
+  position: relative;
+  height: 148px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #102028;
+}
+.scale-scene { position: absolute; inset: 0; }
+.scale-scene.depart { animation: shrink 750ms cubic-bezier(0.22, 0.8, 0.24, 1.12) forwards; will-change: transform, opacity; }
+.scale-scene.arrive { animation: arrive 750ms cubic-bezier(0.22, 0.8, 0.24, 1.12); will-change: transform, opacity; }
+.scale-stage.quiet .scale-scene.depart { animation: fade-out 400ms linear forwards; }
+.scale-stage.quiet .scale-scene.arrive { animation: fade-in 400ms linear; }
+.world { position: absolute; inset: 0; }
+.blob, .ring { position: absolute; border-radius: 50%; }
+.scale-here {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  margin: 0;
+  background: #fffaf3;
+  color: #1c1915;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+.scale-meter {
+  display: flex;
+  gap: 0;
+  justify-content: space-between;
+  overflow-x: auto;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.62rem;
+  color: var(--muted);
+  padding-right: 2px;
+}
+.scale-meter span { flex: 0 0 auto; padding-right: 6px; }
+.scale-meter .on { color: var(--ink); font-weight: 700; }
+
+.world-atom { background: radial-gradient(circle at 50% 55%, #d9fbff 0 8%, #1c6e86 28%, #07141c 70%); }
+.world-atom .ring { width: 78px; height: 34px; left: calc(50% - 39px); top: 46%; border: 2px solid rgba(210, 250, 255, 0.7); }
+.world-cell { background: radial-gradient(circle at 40% 45%, #d7f5c8, #2f7d46 42%, #12301c 80%); }
+.world-cell .blob.a { width: 86px; height: 70px; left: 28%; top: 22%; background: rgba(255, 255, 255, 0.28); }
+.world-cell .blob.b { width: 22px; height: 22px; left: 42%; top: 38%; background: #f4ffe8; }
+.world-ant { background: linear-gradient(#d7ecb8, #6d8a3e 70%); }
+.world-ant .blob.a, .world-ant .blob.b, .world-ant .blob.c { background: #243014; height: 18px; }
+.world-ant .blob.a { width: 18px; left: 38%; top: 48%; }
+.world-ant .blob.b { width: 26px; left: 48%; top: 46%; }
+.world-ant .blob.c { width: 16px; left: 66%; top: 50%; }
+.world-human { background: linear-gradient(#9fd0ef, #d8ecb4 62%); }
+.world-human .blob.a { width: 22px; height: 22px; left: 46%; top: 28%; background: #f3d2b8; }
+.world-human .blob.b { width: 28px; height: 48px; left: 44%; top: 48%; border-radius: 12px; background: #245c86; }
+.world-building { background: linear-gradient(#f2c9a0, #8d5a3c); }
+.world-building .blob.a { width: 54px; height: 78px; left: 22%; bottom: 0; top: auto; border-radius: 4px; background: #f7efe4; }
+.world-building .blob.b { width: 36px; height: 56px; left: 58%; bottom: 0; top: auto; border-radius: 4px; background: #efe2d2; }
+.world-city { background: linear-gradient(#f0b089, #6d4a62 80%); }
+.world-city .blob.a, .world-city .blob.b, .world-city .blob.c { bottom: 0; top: auto; border-radius: 3px; background: #2c2230; }
+.world-city .blob.a { width: 18px; height: 46px; left: 18%; }
+.world-city .blob.b { width: 28px; height: 78px; left: 40%; }
+.world-city .blob.c { width: 16px; height: 58px; left: 70%; }
+.world-country { background: linear-gradient(#8fd0c6, #1d6a5c); }
+.world-country .blob.a { width: 90px; height: 48px; left: 18%; top: 34%; background: #d8f3c8; border-radius: 40% 50% 45% 55%; }
+.world-earth { background: radial-gradient(circle at 40% 40%, #7ec8ff, #1c6b9a 45%, #082033 72%); }
+.world-earth .blob.a { width: 70px; height: 70px; left: calc(50% - 35px); top: 28%; background: radial-gradient(circle at 30% 30%, #9be07a, #1f7a4a); }
+.world-moon { background: radial-gradient(circle at 70% 40%, #f4f1ea, #2a3344 18%, #070b14 60%); }
+.world-moon .blob.a { width: 18px; height: 18px; right: 18%; left: auto; top: 30%; background: #d9d3c7; }
+.world-solar { background: radial-gradient(circle at 50% 50%, #ffe08a 0 10%, #1a2744 36%, #070b16 70%); }
+.world-solar .ring { width: 120px; height: 46px; left: calc(50% - 60px); top: 42%; border: 2px solid rgba(255, 224, 150, 0.7); }
+.world-stars { background: radial-gradient(circle at 20% 30%, #fff 0 1px, transparent 2px), radial-gradient(circle at 70% 40%, #fff 0 1px, transparent 2px), linear-gradient(#10182c, #070b16); background-size: 100% 100%; }
+.world-stars .blob.a { width: 8px; height: 8px; left: 30%; top: 46%; background: #fff4c8; box-shadow: 40px -16px #fff, 70px 10px #cfe4ff; }
+.world-galaxy { background: radial-gradient(circle at 50% 50%, #f7f3ff 0 4%, #6d5bd0 18%, #1a1030 46%, #07060f 72%); }
+.world-galaxy .ring { width: 130px; height: 36px; left: calc(50% - 65px); top: 44%; border: 8px solid rgba(196, 186, 255, 0.45); }
+.world-universe { background: radial-gradient(circle at 50% 50%, #fff 0 2%, #f0c27a 8%, #7a3e8a 24%, #101428 55%, #05060c 78%); }
+.world-beyond { background: repeating-linear-gradient(135deg, #120c22 0 12px, #1b2838 12px 24px); }
+.world-beyond .ring { width: 64px; height: 64px; left: calc(50% - 32px); top: 28%; border: 2px dashed rgba(255, 255, 255, 0.7); }
+
+@keyframes shrink { to { transform: scale(0.12); opacity: 0; } }
+@keyframes arrive { from { transform: scale(1.4); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes fade-out { to { opacity: 0; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .scale-scene.depart { animation: fade-out 400ms linear forwards; }
+  .scale-scene.arrive { animation: fade-in 400ms linear; }
+}
+
+.level-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.level-strip li {
+  background: #fffaf3;
+  color: #1c1915;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 6px 10px;
+  white-space: nowrap;
+  font-size: 0.78rem;
+  font-weight: 600;
+}

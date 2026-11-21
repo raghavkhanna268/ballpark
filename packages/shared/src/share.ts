@@ -1,15 +1,9 @@
-/** Spoiler-free Classic card. Emoji only, plus the day's score. No prompts or factors. */
-/** Spoiler-free Head-to-head card. Greens are correct picks; the cross is the miss that ended the run. */
-export function headToHeadShareText(puzzleNumber: number, correct: number, host: string, clearedDeck = false): string {
-  const marks = `${"🟩".repeat(correct)}${clearedDeck ? "" : "❌"}`;
-  return `Ballpark #${puzzleNumber} · Head-to-head\n${marks} ${correct} in a row\n${host}`;
+/** Spoiler-free Classic card. Bands, points, and the zoom rung. No prompts or factors. */
+export function classicShareText(puzzleNumber: number, emojis: string[], score: number, host: string, reached: string): string {
+  return `Ballpark #${puzzleNumber} · Classic\n${emojis.join("")} ${score} pts\n${reached}\n${host}`;
 }
 
-export function classicShareText(
-  puzzleNumber: number,
-  emojis: string[],
-  score: number,
-  host: string,
-): string {
-  return `Ballpark #${puzzleNumber} · Classic\n${emojis.join("")} ${score}/100\n${host}`;
+/** Spoiler-free Head-to-head card. The zoom path and the run length. No fact labels. */
+export function headToHeadShareText(puzzleNumber: number, correct: number, host: string, reached: string): string {
+  return `Ballpark #${puzzleNumber} · Head-to-head\n${reached} · ${correct} in a row\n${host}`;
 }

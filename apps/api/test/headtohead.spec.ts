@@ -130,4 +130,31 @@ describe("head-to-head API", () => {
     expect(round.index).toBe(0);
     expect(JSON.stringify(round)).not.toContain(sequence[0].items[0].context);
   });
+
+  it("ranks equal run lengths by rarity points", async () => {
+    const now = new Date().toISOString();
+    for (const [deviceId, points] of [
+      [DEVICE, 12],
+      [OTHER, 4],
+    ] as const) {
+      await env.DB.prepare(
+        `INSERT INTO h2h_runs (id, device_id, puzzle_date, kind, attempt, next_index, correct_count, finished, points, created_at)
+         VALUES (?, ?, ?, 'scored', 1, 3, 3, 1, ?, ?)`,
+      )
+        .bind(crypto.randomUUID(), deviceId, DAY, points, now)
+        .run();
+      await env.DB.prepare(
+        `INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
+         VALUES (?, ?, 'head-to-head', 3, ?, '[]', 1, ?)`,
+      )
+        .bind(deviceId, DAY, points, now)
+        .run();
+    }
+    const higher = (await (await state(DEVICE)).json()) as { result: { beatPercent: number; points: number; score: number } };
+    const lower = (await (await state(OTHER)).json()) as { result: { beatPercent: number; points: number } };
+    expect(higher.result.score).toBe(3);
+    expect(higher.result.points).toBe(12);
+    expect(higher.result.beatPercent).toBe(100);
+    expect(lower.result.beatPercent).toBe(0);
+  });
 });

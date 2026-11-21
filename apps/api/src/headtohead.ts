@@ -1,17 +1,25 @@
 import {
-  beatPercent,
+  beatPercentRuns,
+  blendShare,
   buildHeadToHeadSequence,
   formatFactValue,
+  h2hPickPoints,
+  h2hPriorWrongShare,
   headToHeadShareText,
+  levelForCorrectCount,
   puzzleNumber,
   puzzleSlot,
   scoreHeadToHead,
   toPublicRound,
+  utcToday,
+  zoomShareLine,
   type H2HFact,
   type H2HRound,
   type PublicH2HRound,
 } from "@ballpark/shared";
+import { finalizeDay } from "./finalize.js";
 import { HttpError } from "./http.js";
+import { questionsForDate } from "./puzzle.js";
 
 const MODE = "head-to-head";
 
@@ -22,6 +30,7 @@ type RunRow = {
   next_index: number;
   correct_count: number;
   finished: number;
+  points: number;
 };
 
 export type HeadToHeadState = {
@@ -41,6 +50,9 @@ export type HeadToHeadState = {
     bestToday: number | null;
     shareText: string;
     cleared: boolean;
+    points: number;
+    reached: string;
+    provisional: boolean;
   } | null;
 };
 
@@ -71,7 +83,7 @@ export async function loadHeadToHead(
       runKind: "scored",
       correct: scored.correct_count,
       round: null,
-      result: await officialResult(db, date, scored.correct_count, number, shareHost, await clearedDeck(db, date, scored, epoch)),
+      result: await officialResult(db, date, deviceId, number, shareHost, epoch, await clearedDeck(db, date, scored, epoch)),
     });
   }
   const round = (await sequenceFor(db, date, `head-to-head:${date}`, epoch))[0] ?? null;
@@ -95,6 +107,7 @@ export async function pickHeadToHead(
 ): Promise<{
   correct: boolean;
   correctCount: number;
+  points: number;
   reveal: { prompt: string; rows: { label: string; valueText: string }[]; context: string; sourceName: string; sourceUrl: string };
   next: PublicH2HRound | null;
   finished: boolean;
@@ -128,15 +141,24 @@ export async function pickHeadToHead(
   const correct = scoreHeadToHead(round, choice);
   const correctCount = run.correct_count + (correct ? 1 : 0);
   const finished = !correct || index === sequence.length - 1;
+  const pickPoints = await rarityPoints(db, date, index, correct);
+  const totalPoints = run.points + pickPoints;
   const updated = await db
     .prepare(
       `UPDATE h2h_runs
-       SET next_index = ?, correct_count = ?, finished = ?
+       SET next_index = ?, correct_count = ?, finished = ?, points = ?
        WHERE id = ? AND next_index = ? AND finished = 0`,
     )
-    .bind(index + 1, correctCount, finished ? 1 : 0, run.id, index)
+    .bind(index + 1, correctCount, finished ? 1 : 0, totalPoints, run.id, index)
     .run();
   if ((updated.meta.changes ?? 0) !== 1) throw new HttpError(409, "out_of_order");
+  await db
+    .prepare(
+      `INSERT INTO h2h_picks (device_id, puzzle_date, kind, attempt, step_index, correct)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .bind(deviceId, date, run.kind, run.attempt, index, correct ? 1 : 0)
+    .run();
 
   console.log(JSON.stringify({ level: "info", event: "h2h_pick", date, index, kind: round.kind, correct, official: run.kind === "scored" }));
 
@@ -145,13 +167,22 @@ export async function pickHeadToHead(
   if (finished && run.kind === "scored") {
     await db
       .prepare(
-        `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, bands, created_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
       )
-      .bind(deviceId, date, MODE, correctCount, JSON.stringify(Array.from({ length: correctCount }, () => "green")), new Date().toISOString())
+      .bind(
+        deviceId,
+        date,
+        MODE,
+        correctCount,
+        totalPoints,
+        JSON.stringify(Array.from({ length: correctCount }, () => "green")),
+        new Date().toISOString(),
+      )
       .run();
-    result = await officialResult(db, date, correctCount, puzzleNumber(date, epoch), shareHost, finished && correct);
+    result = await officialResult(db, date, deviceId, puzzleNumber(date, epoch), shareHost, epoch, finished && correct);
   } else if (finished) {
+    const reached = levelForCorrectCount(correctCount);
     result = {
       official: false,
       score: correctCount,
@@ -160,6 +191,9 @@ export async function pickHeadToHead(
       bestToday: null,
       shareText: "",
       cleared: finished && correct,
+      points: totalPoints,
+      reached: reached.name,
+      provisional: false,
     };
   }
 
@@ -167,6 +201,7 @@ export async function pickHeadToHead(
   return {
     correct,
     correctCount,
+    points: pickPoints,
     reveal: {
       prompt: round.prompt,
       rows: round.items.map((item) => ({ label: item.label, valueText: formatFactValue(item.value, item.unit) })),
@@ -190,7 +225,7 @@ export async function startPractice(
   if (!scored || scored.finished !== 1) throw new HttpError(409, "practice_locked");
   const open = await db
     .prepare(
-      `SELECT id, kind, attempt, next_index, correct_count, finished FROM h2h_runs
+      `SELECT id, kind, attempt, next_index, correct_count, finished, points FROM h2h_runs
        WHERE device_id = ? AND puzzle_date = ? AND kind = 'practice' AND finished = 0
        ORDER BY attempt DESC LIMIT 1`,
     )
@@ -206,12 +241,12 @@ async function insertRun(db: D1Database, date: string, deviceId: string, kind: "
   const id = crypto.randomUUID();
   await db
     .prepare(
-      `INSERT INTO h2h_runs (id, device_id, puzzle_date, kind, attempt, next_index, correct_count, finished, created_at)
-       VALUES (?, ?, ?, ?, ?, 0, 0, 0, ?)`,
+      `INSERT INTO h2h_runs (id, device_id, puzzle_date, kind, attempt, next_index, correct_count, finished, points, created_at)
+       VALUES (?, ?, ?, ?, ?, 0, 0, 0, 0, ?)`,
     )
     .bind(id, deviceId, date, kind, attempt, new Date().toISOString())
     .run();
-  return { id, kind, attempt, next_index: 0, correct_count: 0, finished: 0 };
+  return { id, kind, attempt, next_index: 0, correct_count: 0, finished: 0, points: 0 };
 }
 
 async function nextAttempt(db: D1Database, date: string, deviceId: string): Promise<number> {
@@ -225,7 +260,7 @@ async function nextAttempt(db: D1Database, date: string, deviceId: string): Prom
 async function activeRun(db: D1Database, date: string, deviceId: string): Promise<RunRow | null> {
   return db
     .prepare(
-      `SELECT id, kind, attempt, next_index, correct_count, finished FROM h2h_runs
+      `SELECT id, kind, attempt, next_index, correct_count, finished, points FROM h2h_runs
        WHERE device_id = ? AND puzzle_date = ? AND finished = 0
        ORDER BY created_at DESC LIMIT 1`,
     )
@@ -236,7 +271,7 @@ async function activeRun(db: D1Database, date: string, deviceId: string): Promis
 async function scoredRun(db: D1Database, date: string, deviceId: string): Promise<RunRow | null> {
   return db
     .prepare(
-      `SELECT id, kind, attempt, next_index, correct_count, finished FROM h2h_runs
+      `SELECT id, kind, attempt, next_index, correct_count, finished, points FROM h2h_runs
        WHERE device_id = ? AND puzzle_date = ? AND kind = 'scored'
        LIMIT 1`,
     )
@@ -310,28 +345,51 @@ async function clearedDeck(db: D1Database, date: string, run: RunRow, epoch: str
   return run.finished === 1 && sequence.length > 0 && run.correct_count >= sequence.length;
 }
 
+async function rarityPoints(db: D1Database, date: string, index: number, correct: boolean): Promise<number> {
+  if (!correct) return 0;
+  const stats = await db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END), 0) AS wrongs
+       FROM h2h_picks
+       WHERE puzzle_date = ? AND kind = 'scored' AND step_index = ?`,
+    )
+    .bind(date, index)
+    .first<{ n: number; wrongs: number }>();
+  const sample = Number(stats?.n ?? 0) + 1;
+  const wrongs = Number(stats?.wrongs ?? 0);
+  const share = blendShare(wrongs / sample, sample, h2hPriorWrongShare(index));
+  return h2hPickPoints(share);
+}
+
 async function officialResult(
   db: D1Database,
   date: string,
-  score: number,
+  deviceId: string,
   number: number,
   shareHost: string,
-  clearedDeck: boolean,
+  epoch: string,
+  cleared: boolean,
 ): Promise<NonNullable<HeadToHeadState["result"]>> {
+  await finalizeDay(db, date, (day) => questionsForDate(db, day, epoch));
   const board = await db
-    .prepare("SELECT score FROM daily_results WHERE puzzle_date = ? AND mode = ?")
+    .prepare("SELECT device_id, score, points FROM daily_results WHERE puzzle_date = ? AND mode = ?")
     .bind(date, MODE)
-    .all<{ score: number }>();
-  const scores = board.results.map((row) => row.score);
-  const best = scores.length === 0 ? score : Math.max(...scores);
+    .all<{ device_id: string; score: number; points: number }>();
+  const runs = board.results.map((row) => ({ length: row.score, points: row.points }));
+  const mine = runs.find((row, index) => board.results[index]?.device_id === deviceId) ?? runs[0] ?? { length: 0, points: 0 };
+  const best = runs.length === 0 ? mine.length : Math.max(...runs.map((row) => row.length));
+  const level = levelForCorrectCount(mine.length);
   return {
     official: true,
-    score,
-    beatPercent: beatPercent(score, scores.length === 0 ? [score] : scores),
-    players: Math.max(scores.length, 1),
+    score: mine.length,
+    beatPercent: beatPercentRuns(mine, runs.length === 0 ? [mine] : runs),
+    players: Math.max(runs.length, 1),
     bestToday: best,
-    shareText: headToHeadShareText(number, score, shareHost, clearedDeck),
-    cleared: clearedDeck,
+    shareText: headToHeadShareText(number, mine.length, shareHost, zoomShareLine(level)),
+    cleared,
+    points: mine.points,
+    reached: level.name,
+    provisional: date >= utcToday(),
   };
 }
 

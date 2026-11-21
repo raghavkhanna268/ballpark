@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { haptic, shareText } from "./haptic";
+import { LevelStrip, ScaleStage } from "./scale-view";
 import {
   formatFactValue,
   formatNumber,
+  levelForClassicScore,
   parseShorthand,
   roundSig,
-  sliderToValue,
-  valueToSlider,
   type Confidence,
   type CrowdStat,
   type DayResult,
@@ -17,7 +17,7 @@ import {
   type Stats,
 } from "@ballpark/shared";
 
-const BUCKETS = ["0–20", "21–40", "41–60", "61–80", "81–100"];
+const BUCKETS = ["0–20", "21–40", "41–60", "61–80", "81+"];
 
 export function HomeScreen({
   puzzle,
@@ -46,8 +46,9 @@ export function HomeScreen({
         <h1 className="wordmark">
           Ballpark<span>.</span>
         </h1>
-        <p className="lede">Five questions. One UTC day. No account.</p>
+        <p className="lede">How big is the world? Five questions, or a run until you miss.</p>
       </header>
+      <ScaleStage level={levelForClassicScore(puzzle.result?.score ?? 0)} label={done ? "You reached" : "You are here"} />
 
       <section className="card day-card">
         <div className="day-row">
@@ -65,10 +66,10 @@ export function HomeScreen({
           <h2>Classic</h2>
           <p className="streak">Streak {stats.currentStreak}</p>
         </div>
-        <p>Estimate a number, pick the larger one, or put a short list in order.</p>
+        <p>Estimate a number, name one, pick the larger one, or put a short list in order.</p>
         {done ? (
           <button className="primary" type="button" onClick={onResult}>
-            See today’s result · {puzzle.result?.score}/100
+            See today’s result · {puzzle.result?.score} pts
           </button>
         ) : (
           <button className="primary" type="button" onClick={onPlay}>
@@ -129,8 +130,9 @@ export function QuestionScreen({
 }) {
   return (
     <div className="stack">
+      <ScaleStage level={levelForClassicScore(runningScore(puzzle))} />
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
-      <p className="type-kicker">{question.type}</p>
+      <p className="type-kicker">{typeLabel(question.type)}</p>
       <h2 className="prompt">{question.prompt}</h2>
       {question.type === "estimate" && question.slider && question.unit ? (
         <EstimateForm unit={question.unit} slider={question.slider} busy={busy} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
@@ -140,6 +142,9 @@ export function QuestionScreen({
       ) : null}
       {question.type === "rank" ? (
         <RankForm items={question.items} busy={busy} onSubmit={(order) => onSubmit({ type: "rank", order })} />
+      ) : null}
+      {question.type === "name_one" ? (
+        <NameForm suggestions={question.suggestions} busy={busy} onSubmit={(text) => onSubmit({ type: "name_one", text })} />
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
     </div>
@@ -165,6 +170,7 @@ export function RevealScreen({
 }) {
   return (
     <div className="stack">
+      <ScaleStage level={levelForClassicScore(puzzle.result?.score ?? runningScore(puzzle))} />
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <section className={`reveal band-${reveal.band}`} aria-live="polite">
         <p className="emoji" aria-hidden="true">
@@ -173,17 +179,19 @@ export function RevealScreen({
         <h2>{reveal.label}</h2>
         <p className="points">
           {reveal.points}
-          <span> / 20</span>
+          <span> pts</span>
         </p>
+        {reveal.bonusPoints > 0 ? <p className="delta">Crowd bonus +{reveal.bonusPoints}</p> : null}
+        {reveal.provisional ? <p className="delta">Points so far, final at reset.</p> : null}
         {reveal.confidenceDelta !== 0 ? (
           <p className="delta">
             {reveal.confidence} confidence {reveal.confidenceDelta > 0 ? "added" : "cost"} {Math.abs(reveal.confidenceDelta)}
           </p>
         ) : null}
         <p className="answer">{reveal.answerText}</p>
-        <p className="detail">{reveal.detail}</p>
+        {question.type !== "name_one" && reveal.detail ? <p className="detail">{reveal.detail}</p> : null}
         {reveal.track ? <Track track={reveal.track} /> : null}
-        {question.type !== "estimate" ? (
+        {question.type !== "estimate" && question.type !== "name_one" ? (
           <ol className="rows">
             {reveal.rows.map((row, rowIndex) => (
               <li key={row.id} className={row.chosen ? "chosen" : undefined}>
@@ -221,13 +229,17 @@ export function EndScreen({
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
   return (
     <div className="stack end">
+      <ScaleStage level={levelForClassicScore(result.score)} label="You reached" />
       <p className="kicker">
         Classic · #{puzzle.puzzleNumber}
       </p>
+      <h2>You reached: {result.reached}</h2>
+      <LevelStrip level={levelForClassicScore(result.score)} />
       <p className="score">
         {result.score}
-        <span>/100</span>
+        <span> pts</span>
       </p>
+      {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
       <h2>You beat {result.beatPercent}% of players today</h2>
       <p className="players">
         {result.players === 1 ? "You’re the only finisher so far, so that’s the whole field." : `${result.players} players finished today.`}
@@ -313,11 +325,10 @@ function EstimateForm({
   busy: boolean;
   onSubmit: (value: number, confidence: Confidence) => void;
 }) {
-  const [text, setText] = useState("");
+  const [text, setText] = useState(() => formatNumber(roundSig(geometricMid(slider.min, slider.max))));
   const [confidence, setConfidence] = useState<Confidence>("medium");
   const [localError, setLocalError] = useState<string | null>(null);
   const parsed = parseShorthand(text);
-  const sliderValue = parsed && parsed >= slider.min && parsed <= slider.max ? valueToSlider(parsed, slider.min, slider.max) : 0;
 
   return (
     <form
@@ -344,24 +355,12 @@ function EstimateForm({
         />
         <em>{unit}</em>
       </label>
-      <label className="slider-field">
-        <span className="sr">Log scale</span>
-        <input
-          type="range"
-          min={0}
-          max={1000}
-          step={1}
-          value={Math.round(sliderValue * 1000)}
-          onChange={(event) => {
-            const next = sliderToValue(Number(event.target.value) / 1000, slider.min, slider.max);
-            setText(formatNumber(roundSig(next)));
-          }}
-        />
-        <span className="slider-ends">
-          <span>{formatNumber(slider.min)}</span>
-          <span>{formatNumber(slider.max)}</span>
-        </span>
-      </label>
+      <LogNumberLine
+        min={slider.min}
+        max={slider.max}
+        value={parsed && parsed > 0 ? parsed : geometricMid(slider.min, slider.max)}
+        onChange={(next) => setText(formatNumber(roundSig(next)))}
+      />
       <fieldset className="confidence">
         <legend>Confidence, optional. Narrow pays more within 2× and less if you miss that.</legend>
         {(["narrow", "medium", "wide"] as const).map((option) => (
@@ -473,15 +472,22 @@ function RankForm({
 }
 
 function Track({ track }: { track: NonNullable<Reveal["track"]> }) {
-  const guessAt = valueToSlider(track.guess, track.min, track.max);
-  const answerAt = valueToSlider(track.answer, track.min, track.max);
+  const window = zoomWindow(track.guess, track.answer, track.min, track.max);
+  const guessAt = placeLog(track.guess, window);
+  const answerAt = placeLog(track.answer, window);
   const [shown, setShown] = useState(guessAt);
   useEffect(() => {
     const id = requestAnimationFrame(() => setShown(answerAt));
     return () => cancelAnimationFrame(id);
   }, [answerAt]);
+  const gapLeft = Math.min(guessAt, shown) * 100;
+  const gapWidth = Math.abs(shown - guessAt) * 100;
   return (
     <div className="track" aria-hidden="true">
+      <span className="gap" style={{ left: `${gapLeft}%`, width: `${gapWidth}%` }} />
+      {track.crowd.map((dot, index) => (
+        <span key={`${dot}-${index}`} className="crowd-dot" style={{ left: `${placeLog(dot, window) * 100}%` }} />
+      ))}
       <span className="pin you" style={{ left: `${guessAt * 100}%` }}>
         You
       </span>
@@ -492,7 +498,50 @@ function Track({ track }: { track: NonNullable<Reveal["track"]> }) {
   );
 }
 
+function zoomWindow(guess: number, answer: number, min: number, max: number): { start: number; end: number } {
+  const low = Math.min(Math.log10(guess), Math.log10(answer));
+  const high = Math.max(Math.log10(guess), Math.log10(answer));
+  const span = Math.max(0.8, high - low + 0.7);
+  const mid = (low + high) / 2;
+  const floor = Math.log10(min);
+  const ceil = Math.log10(max);
+  let start = mid - span / 2;
+  let end = mid + span / 2;
+  if (start < floor) {
+    end += floor - start;
+    start = floor;
+  }
+  if (end > ceil) {
+    start -= end - ceil;
+    end = ceil;
+  }
+  return { start: Math.max(floor, start), end: Math.min(ceil, end) };
+}
+
+function placeLog(value: number, window: { start: number; end: number }): number {
+  if (!(value > 0)) return 0;
+  const t = (Math.log10(value) - window.start) / Math.max(0.0001, window.end - window.start);
+  return Math.min(1, Math.max(0, t));
+}
+
 function Crowd({ crowd, type }: { crowd: CrowdStat; type: PublicQuestion["type"] }) {
+  if (crowd.kind === "named") {
+    return (
+      <div className="crowd">
+        <p>{crowd.answer ? `Only ${crowd.percent}% of players said ${crowd.answer}.` : "That answer was not accepted."}</p>
+        {crowd.top.length > 0 ? (
+          <ul className="name-list">
+            {crowd.top.map((item) => (
+              <li key={item.label}>
+                {item.label} · {item.percent}%
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        {crowd.rare.length > 0 ? <p>Rare valid answers: {crowd.rare.join(", ")}</p> : null}
+      </div>
+    );
+  }
   if (crowd.kind === "median") {
     const noun = crowd.submissions === 1 ? "guess" : "guesses";
     return (
@@ -527,6 +576,138 @@ function countdownLabel(now: Date): string {
   const seconds = Math.floor((ms % 60_000) / 1000);
   const local = new Date(next).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
   return `Resets ${local} · ${hours}h ${minutes}m ${seconds}s`;
+}
+
+function NameForm({
+  suggestions,
+  busy,
+  onSubmit,
+}: {
+  suggestions: string[];
+  busy: boolean;
+  onSubmit: (text: string) => void;
+}) {
+  const [text, setText] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  return (
+    <form
+      className="guess-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (text.trim().length < 1) {
+          setLocalError("Type an answer. The list is everyone in that group, not a hint.");
+          return;
+        }
+        onSubmit(text.trim());
+      }}
+    >
+      <label className="number-field">
+        <span className="sr">Your answer</span>
+        <input list="name-suggestions" value={text} onChange={(event) => setText(event.target.value)} autoComplete="off" placeholder="Type a name" />
+      </label>
+      <datalist id="name-suggestions">
+        {suggestions.map((name) => (
+          <option key={name} value={name} />
+        ))}
+      </datalist>
+      <p className="hint">Suggestions are the whole list. They do not tell you which names score.</p>
+      {localError ? <p className="form-error">{localError}</p> : null}
+      <button className="primary" type="submit" disabled={busy}>
+        {busy ? "Checking…" : "Lock in answer"}
+      </button>
+    </form>
+  );
+}
+
+function LogNumberLine({
+  min,
+  max,
+  value,
+  onChange,
+}: {
+  min: number;
+  max: number;
+  value: number;
+  onChange: (next: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [zoom, setZoom] = useState(1);
+  const logMin = Math.log10(min);
+  const logMax = Math.log10(max);
+  const span = Math.max(1e-6, logMax - logMin) / zoom;
+  const logValue = Math.log10(Math.min(max, Math.max(min, value)));
+  const start = Math.min(logMax - span, Math.max(logMin, logValue - span / 2));
+  const ticks: number[] = [];
+  for (let exponent = Math.ceil(start); exponent <= Math.floor(start + span); exponent += 1) ticks.push(exponent);
+
+  function setFromX(clientX: number) {
+    const rect = ref.current?.getBoundingClientRect();
+    if (!rect || rect.width === 0) return;
+    const t = Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+    onChange(Math.min(max, Math.max(min, 10 ** (start + t * span))));
+  }
+
+  return (
+    <div className="log-line">
+      <div className="log-zoom">
+        <button type="button" onClick={() => setZoom((current) => Math.min(32, current * 2))}>
+          Zoom in
+        </button>
+        <button type="button" onClick={() => setZoom((current) => Math.max(1, current / 2))} disabled={zoom <= 1}>
+          Zoom out
+        </button>
+      </div>
+      <div
+        ref={ref}
+        className="log-rail"
+        role="slider"
+        tabIndex={0}
+        aria-valuemin={min}
+        aria-valuemax={max}
+        aria-valuenow={Math.round(value)}
+        aria-valuetext={formatNumber(roundSig(value))}
+        aria-label="Guess on a logarithmic number line"
+        onPointerDown={(event) => {
+          event.currentTarget.setPointerCapture(event.pointerId);
+          setFromX(event.clientX);
+        }}
+        onPointerMove={(event) => {
+          if (event.currentTarget.hasPointerCapture(event.pointerId)) setFromX(event.clientX);
+        }}
+        onKeyDown={(event) => {
+          const step = span / 24;
+          if (event.key === "ArrowRight" || event.key === "ArrowUp") {
+            event.preventDefault();
+            onChange(Math.min(max, 10 ** Math.min(logMax, logValue + step)));
+          }
+          if (event.key === "ArrowLeft" || event.key === "ArrowDown") {
+            event.preventDefault();
+            onChange(Math.max(min, 10 ** Math.max(logMin, logValue - step)));
+          }
+        }}
+      >
+        {ticks.map((exponent) => (
+          <span key={exponent} className="log-tick" style={{ left: `${((exponent - start) / span) * 100}%` }}>
+            10<sup>{exponent}</sup>
+          </span>
+        ))}
+        <span className="log-marker" style={{ left: `${((logValue - start) / span) * 100}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function runningScore(puzzle: PuzzleResponse): number {
+  return puzzle.questions.reduce((sum, question) => sum + (question.reveal?.points ?? 0), 0);
+}
+
+function geometricMid(min: number, max: number): number {
+  return 10 ** ((Math.log10(min) + Math.log10(max)) / 2);
+}
+
+function typeLabel(type: PublicQuestion["type"]): string {
+  if (type === "name_one") return "Name one";
+  return type;
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

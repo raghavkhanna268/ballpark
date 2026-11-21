@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildHeadToHeadSequence, scoreHeadToHead, toPublicRound, valueRatio, type H2HFact } from "./head-to-head.js";
 import { headToHeadShareText } from "./share.js";
+import { levelForCorrectCount, zoomShareLine } from "./scale.js";
 
 function fact(id: string, value: number, metric = "country-population"): H2HFact {
   return {
@@ -102,8 +103,9 @@ describe("head-to-head sequences", () => {
   });
 
   it("formats the share card", () => {
-    expect(headToHeadShareText(325, 7, "ballpark.local")).toBe(
-      "Ballpark #325 · Head-to-head\n🟩🟩🟩🟩🟩🟩🟩❌ 7 in a row\nballpark.local",
+    expect(zoomShareLine(levelForCorrectCount(7))).toBe("⚛️→🧍→🌍 reached Earth");
+    expect(headToHeadShareText(325, 7, "ballpark.local", zoomShareLine(levelForCorrectCount(7)))).toBe(
+      "Ballpark #325 · Head-to-head\n⚛️→🧍→🌍 reached Earth · 7 in a row\nballpark.local",
     );
   });
 

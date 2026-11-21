@@ -9,7 +9,7 @@
  * fact model: a run is a sequence of compare picks over this same table.
  */
 
-export type QuestionType = "estimate" | "compare" | "rank";
+export type QuestionType = "estimate" | "compare" | "rank" | "name_one";
 
 export type Confidence = "narrow" | "medium" | "wide";
 
@@ -82,6 +82,8 @@ export type PublicQuestion = {
   topic: string;
   difficulty: number;
   slider: { min: number; max: number } | null;
+  /** Empty unless the question is name-one. A broad list, not the scoring key. */
+  suggestions: string[];
   reveal: Reveal | null;
 };
 
@@ -101,11 +103,24 @@ export type RankGuess = {
   order: string[];
 };
 
-export type Guess = EstimateGuess | CompareGuess | RankGuess;
+export type NameGuess = {
+  type: "name_one";
+  text: string;
+};
+
+export type Guess = EstimateGuess | CompareGuess | RankGuess | NameGuess;
 
 export type CrowdStat =
   | { kind: "median"; value: number; unit: string; submissions: number }
-  | { kind: "percentCorrect"; percent: number; submissions: number };
+  | { kind: "percentCorrect"; percent: number; submissions: number }
+  | {
+      kind: "named";
+      answer: string | null;
+      percent: number;
+      submissions: number;
+      top: { label: string; percent: number }[];
+      rare: string[];
+    };
 
 export type Reveal = {
   band: Band;
@@ -118,6 +133,10 @@ export type Reveal = {
   confidence: Confidence | null;
   basePoints: number;
   confidenceDelta: number;
+  /** Extra points from the crowd. Zero when the guess was not close, or the question is not an estimate. */
+  bonusPoints: number;
+  /** True until the UTC reset freezes the day's points. */
+  provisional: boolean;
   context: string;
   sourceUrl: string;
   sourceName: string;
@@ -126,7 +145,7 @@ export type Reveal = {
   /** Ordered reveal rows. Values are included only after scoring. */
   rows: { id: string; label: string; valueText: string; chosen?: boolean }[];
   /** Estimate track, so the client can animate the pin. Null otherwise. */
-  track: { min: number; max: number; guess: number; answer: number; unit: string } | null;
+  track: { min: number; max: number; guess: number; answer: number; unit: string; crowd: number[] } | null;
 };
 
 export type DayResult = {
@@ -136,6 +155,8 @@ export type DayResult = {
   beatPercent: number;
   players: number;
   shareText: string;
+  reached: string;
+  provisional: boolean;
 };
 
 export type PuzzleResponse = {
