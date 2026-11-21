@@ -19,6 +19,10 @@ const lines: string[] = [
   "-- Generated from seed/content.ts. Do not edit by hand.",
   "-- Pending human verification. Not an official puzzle set.",
   "BEGIN TRANSACTION;",
+  "DELETE FROM h2h_picks;",
+  "DELETE FROM h2h_runs;",
+  "DELETE FROM daily_results;",
+  "DELETE FROM submissions;",
   "DELETE FROM puzzles;",
   "DELETE FROM questions;",
   "DELETE FROM facts;",
@@ -47,7 +51,7 @@ for (const item of facts) {
 
 for (const item of questions) {
   lines.push(
-    `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified) VALUES (${[
+    `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set) VALUES (${[
       sqlString(item.id),
       sqlString(item.prompt),
       sqlString(item.type),
@@ -64,6 +68,8 @@ for (const item of questions) {
       sqlString(item.topic),
       String(item.difficulty),
       "0",
+      item.accepted ? sqlString(JSON.stringify(item.accepted)) : "NULL",
+      item.entitySet ? sqlString(item.entitySet) : "NULL",
     ].join(", ")});`,
   );
 }

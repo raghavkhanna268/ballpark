@@ -17,12 +17,16 @@ export type HeadToHeadState = {
     bestToday: number | null;
     shareText: string;
     cleared: boolean;
+    points: number;
+    reached: string;
+    provisional: boolean;
   } | null;
 };
 
 export type HeadPickResponse = {
   correct: boolean;
   correctCount: number;
+  points: number;
   reveal: {
     prompt: string;
     rows: { label: string; valueText: string }[];

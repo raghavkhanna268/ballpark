@@ -8,6 +8,7 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM rate_limits"),
     db.prepare("DELETE FROM puzzles"),
     db.prepare("DELETE FROM questions"),
+    db.prepare("DELETE FROM h2h_picks"),
     db.prepare("DELETE FROM h2h_runs"),
     db.prepare("DELETE FROM facts"),
   ]);
@@ -41,8 +42,8 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     inserts.push(
       db
         .prepare(
-          `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+          `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
         )
         .bind(
           item.id,
@@ -60,6 +61,8 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
           item.license,
           item.topic,
           item.difficulty,
+          item.accepted ? JSON.stringify(item.accepted) : null,
+          item.entitySet,
         ),
     );
   }
@@ -78,6 +81,11 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
 const factById = new Map(facts.map((item) => [item.id, item]));
 
 export function correctGuess(question: SeedQuestion, confidence: Confidence = "narrow"): Guess {
+  if (question.type === "name_one") {
+    const accepted = question.accepted?.[0];
+    if (!accepted) throw new Error(`${question.id} has no accepted answer`);
+    return { type: "name_one", text: accepted.canonical };
+  }
   if (question.type === "estimate") {
     return { type: "estimate", value: factById.get(question.factIds[0])!.value, confidence };
   }

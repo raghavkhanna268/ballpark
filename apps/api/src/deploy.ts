@@ -14,6 +14,10 @@ export default {
     }
     return serveAsset(url.pathname);
   },
+
+  async scheduled(controller, env, ctx) {
+    if (api.scheduled) await api.scheduled(controller, env, ctx);
+  },
 } satisfies ExportedHandler<Env>;
 
 function serveAsset(pathname: string): Response {

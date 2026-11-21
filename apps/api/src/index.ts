@@ -1,8 +1,9 @@
 import type { Guess } from "@ballpark/shared";
+import { finalizeYesterday } from "./finalize.js";
 import { clientIp, HttpError, json, requireDevice, withCors } from "./http.js";
 import { resolvePlayDate } from "./play-date.js";
 import { loadHeadToHead, pickHeadToHead, startPractice } from "./headtohead.js";
-import { loadPuzzleResponse, submitGuess } from "./puzzle.js";
+import { loadPuzzleResponse, questionsForDate, submitGuess } from "./puzzle.js";
 import { enforceRateLimit } from "./rate-limit.js";
 
 const DEVICE_LIMIT = 40;
@@ -46,6 +47,11 @@ export default {
       );
       return withCors(json({ error: "server_error" }, 500));
     }
+  },
+
+  async scheduled(controller, env, ctx) {
+    const when = new Date(controller.scheduledTime);
+    ctx.waitUntil(finalizeYesterday(env.DB, when, (date) => questionsForDate(env.DB, date, env.EPOCH)));
   },
 } satisfies ExportedHandler<Env>;
 
@@ -117,7 +123,7 @@ async function readGuess(request: Request): Promise<{ questionId: string; guess:
   if (typeof record.questionId !== "string" || !record.questionId) throw new HttpError(400, "invalid_guess");
   if (!record.guess || typeof record.guess !== "object") throw new HttpError(400, "invalid_guess");
   const guess = record.guess as { type?: unknown };
-  if (guess.type !== "estimate" && guess.type !== "compare" && guess.type !== "rank") {
+  if (guess.type !== "estimate" && guess.type !== "compare" && guess.type !== "rank" && guess.type !== "name_one") {
     throw new HttpError(400, "invalid_guess");
   }
   return { questionId: record.questionId, guess: record.guess as Guess };

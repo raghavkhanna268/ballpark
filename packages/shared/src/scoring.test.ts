@@ -120,8 +120,8 @@ describe("shorthand, share text, and the daily number", () => {
   });
 
   it("builds the spoiler-free share card", () => {
-    expect(classicShareText(12, ["🟩", "🟨", "🟦", "🟩", "⬛"], 78, "ballpark.local")).toBe(
-      "Ballpark #12 · Classic\n🟩🟨🟦🟩⬛ 78/100\nballpark.local",
+    expect(classicShareText(12, ["🟩", "🟨", "🟦", "🟩", "⬛"], 78, "ballpark.local", "⚛️→🧍→🌍 reached Earth")).toBe(
+      "Ballpark #12 · Classic\n🟩🟨🟦🟩⬛ 78 pts\n⚛️→🧍→🌍 reached Earth\nballpark.local",
     );
   });
 

@@ -3,9 +3,13 @@ import {
   classicShareText,
   formatFactValue,
   formatFactor,
+  levelForClassicScore,
   puzzleNumber,
   puzzleSlot,
   sliderRange,
+  utcToday,
+  zoomShareLine,
+  type AcceptedAnswer,
   type Band,
   type Confidence,
   type CrowdStat,
@@ -20,14 +24,9 @@ import {
   type ServerQuestion,
   type SliderScale,
 } from "@ballpark/shared";
-import {
-  BAND_EMOJI,
-  BAND_LABEL,
-  compareScore,
-  correctOrder,
-  estimateScore,
-  rankScore,
-} from "@ballpark/shared/scoring";
+import { scoreClassicQuestion, suggestionsForQuestion, type PlayQuestion } from "./classic-score.js";
+import { finalizeDay } from "./finalize.js";
+import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/shared/scoring";
 import { HttpError } from "./http.js";
 
 const MODE = "classic";
@@ -76,6 +75,8 @@ type QuestionRow = {
   topic: string;
   difficulty: number;
   verified: number;
+  accepted_json: string | null;
+  entity_set: string | null;
 };
 
 type SubmissionRow = {
@@ -112,8 +113,12 @@ export async function loadPuzzleResponse(
     shareHost,
     devDate,
     questions: publicQuestions,
-    result: await dayResult(db, date, deviceId, number, shareHost),
+    result: await dayResult(db, date, deviceId, number, shareHost, epoch),
   };
+}
+
+export async function questionsForDate(db: D1Database, date: string, epoch: string): Promise<PlayQuestion[]> {
+  return (await loadPuzzle(db, date, epoch)).questions;
 }
 
 export async function submitGuess(
@@ -139,7 +144,7 @@ export async function submitGuess(
     .first<{ id: string }>();
   if (existing) throw new HttpError(409, "already_submitted");
 
-  const scored = scoreGuess(question, guess);
+  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, date, question.id, null));
   try {
     await db
       .prepare(
@@ -181,11 +186,11 @@ export async function submitGuess(
   await maybeFinish(db, date, deviceId, questions);
   const reveal = await revealFor(db, date, question, guess);
   const number = puzzleNumber(date, epoch);
-  return { reveal, result: await dayResult(db, date, deviceId, number, shareHost) };
+  return { reveal, result: await dayResult(db, date, deviceId, number, shareHost, epoch) };
 }
 
 async function loadPuzzle(db: D1Database, date: string, epoch: string): Promise<{
-  questions: ServerQuestion[];
+  questions: PlayQuestion[];
   theme: string;
   blurb: string;
   nextTheme: string;
@@ -207,7 +212,7 @@ async function loadPuzzle(db: D1Database, date: string, epoch: string): Promise<
   return { questions, theme: puzzle.theme, blurb: puzzle.blurb, nextTheme: next?.theme ?? puzzle.theme };
 }
 
-async function loadQuestions(db: D1Database, ids: string[]): Promise<ServerQuestion[]> {
+async function loadQuestions(db: D1Database, ids: string[]): Promise<PlayQuestion[]> {
   if (ids.length === 0) throw new HttpError(500, "puzzle_missing");
   const questionRows = await db
     .prepare(`SELECT * FROM questions WHERE id IN (${placeholders(ids.length)})`)
@@ -215,11 +220,14 @@ async function loadQuestions(db: D1Database, ids: string[]): Promise<ServerQuest
     .all<QuestionRow>();
   const byId = new Map(questionRows.results.map((row) => [row.id, row]));
   const factIds = [...new Set(questionRows.results.flatMap((row) => parseStringArray(row.fact_ids)))];
-  const factRows = await db
-    .prepare(`SELECT * FROM facts WHERE id IN (${placeholders(factIds.length)})`)
-    .bind(...factIds)
-    .all<FactRow>();
-  const facts = new Map(factRows.results.map((row) => [row.id, row]));
+  const facts = new Map<string, FactRow>();
+  if (factIds.length > 0) {
+    const factRows = await db
+      .prepare(`SELECT * FROM facts WHERE id IN (${placeholders(factIds.length)})`)
+      .bind(...factIds)
+      .all<FactRow>();
+    for (const row of factRows.results) facts.set(row.id, row);
+  }
 
   return ids.map((id) => {
     const row = byId.get(id);
@@ -250,11 +258,13 @@ async function loadQuestions(db: D1Database, ids: string[]): Promise<ServerQuest
       difficulty: row.difficulty,
       verified: row.verified === 1,
       slider: scale,
-    } satisfies ServerQuestion;
+      accepted: parseAccepted(row.accepted_json),
+      entitySet: row.entity_set,
+    } satisfies PlayQuestion;
   });
 }
 
-function toPublic(question: ServerQuestion, reveal: Reveal | null): PublicQuestion {
+function toPublic(question: PlayQuestion, reveal: Reveal | null): PublicQuestion {
   const items =
     question.type === "estimate"
       ? []
@@ -272,15 +282,21 @@ function toPublic(question: ServerQuestion, reveal: Reveal | null): PublicQuesti
     topic: question.topic,
     difficulty: question.difficulty,
     slider: question.slider ? sliderRange(question.slider) : null,
+    suggestions: question.type === "name_one" ? suggestionsForQuestion(question) : [],
     reveal,
   };
 }
 
-function validateGuess(question: ServerQuestion, guess: Guess): void {
+function validateGuess(question: PlayQuestion, guess: Guess): void {
   if (guess.type !== question.type) throw new HttpError(400, "wrong_guess_type");
   if (guess.type === "estimate") {
     if (!(guess.value > 0) || !Number.isFinite(guess.value)) throw new HttpError(400, "invalid_guess");
     if (!isConfidence(guess.confidence)) throw new HttpError(400, "invalid_guess");
+    return;
+  }
+  if (guess.type === "name_one") {
+    const text = guess.text.trim();
+    if (text.length < 1 || text.length > 80) throw new HttpError(400, "invalid_guess");
     return;
   }
   const ids = new Set(question.items.map((item) => item.id));
@@ -293,23 +309,9 @@ function validateGuess(question: ServerQuestion, guess: Guess): void {
   }
 }
 
-function scoreGuess(question: ServerQuestion, guess: Guess): { band: Band; points: number } {
-  if (question.type === "estimate" && guess.type === "estimate") {
-    const scored = estimateScore(guess.value, question.items[0].value, guess.confidence);
-    return { band: scored.band, points: scored.points };
-  }
-  if (question.type === "compare" && guess.type === "compare") {
-    return compareScore(guess.choiceId, question.correctOrder[0]);
-  }
-  if (question.type === "rank" && guess.type === "rank") {
-    return rankScore(guess.order, question.correctOrder);
-  }
-  throw new HttpError(400, "wrong_guess_type");
-}
-
-async function revealFor(db: D1Database, date: string, question: ServerQuestion, guess: Guess): Promise<Reveal> {
-  const crowd = await crowdFor(db, date, question);
-  const scored = scoreGuess(question, guess);
+async function revealFor(db: D1Database, date: string, question: PlayQuestion, guess: Guess): Promise<Reveal> {
+  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, date, question.id, guess));
+  const crowd = scored.named ?? (await crowdFor(db, date, question));
   const rows = question.correctOrder.map((id) => {
     const item = question.items.find((candidate) => candidate.id === id);
     if (!item) throw new HttpError(500, "puzzle_missing");
@@ -343,8 +345,13 @@ async function revealFor(db: D1Database, date: string, question: ServerQuestion,
         guess: guess.value,
         answer: question.items[0].value,
         unit: question.items[0].unit,
+        crowd: scored.crowdGuesses,
       };
     }
+  } else if (question.type === "name_one") {
+    answerText = scored.answerText;
+    detail = scored.detail;
+    basePoints = scored.points;
   } else if (question.type === "compare") {
     detail = scored.band === "green" ? "That's the one." : "The other one.";
     answerText = `${rows[0].label} (${rows[0].valueText})`;
@@ -366,6 +373,8 @@ async function revealFor(db: D1Database, date: string, question: ServerQuestion,
     confidence,
     basePoints,
     confidenceDelta,
+    bonusPoints: scored.bonusPoints,
+    provisional: date >= utcToday(),
     context: question.context,
     sourceUrl: question.sourceUrl,
     sourceName: question.sourceName,
@@ -421,10 +430,10 @@ async function maybeFinish(db: D1Database, date: string, deviceId: string, quest
   const bands = ordered.map((row) => row.band);
   await db
     .prepare(
-      `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, bands, created_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
     )
-    .bind(deviceId, date, MODE, score, JSON.stringify(bands), new Date().toISOString())
+    .bind(deviceId, date, MODE, score, score, JSON.stringify(bands), new Date().toISOString())
     .run();
 }
 
@@ -434,7 +443,9 @@ async function dayResult(
   deviceId: string,
   number: number,
   shareHost: string,
+  epoch: string,
 ): Promise<DayResult | null> {
+  await finalizeDay(db, date, (day) => questionsForDate(db, day, epoch));
   const mine = await db
     .prepare("SELECT score, bands FROM daily_results WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
     .bind(deviceId, date, MODE)
@@ -453,8 +464,30 @@ async function dayResult(
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost),
+    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(levelForClassicScore(mine.score))),
+    reached: levelForClassicScore(mine.score).name,
+    provisional: date >= utcToday(),
   };
+}
+
+async function otherGuesses(db: D1Database, date: string, questionId: string, exclude: Guess | null): Promise<Guess[]> {
+  const rows = await db
+    .prepare("SELECT guess_json FROM submissions WHERE puzzle_date = ? AND mode = ? AND question_id = ?")
+    .bind(date, MODE, questionId)
+    .all<{ guess_json: string }>();
+  const guesses = rows.results.map((row) => parseGuess(row.guess_json));
+  if (!exclude) return guesses;
+  const key = JSON.stringify(exclude);
+  const index = guesses.findIndex((item) => JSON.stringify(item) === key);
+  if (index < 0) return guesses;
+  return guesses.filter((_, item) => item !== index);
+}
+
+function parseAccepted(raw: string | null): AcceptedAnswer[] | null {
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as unknown;
+  if (!Array.isArray(parsed)) return null;
+  return parsed as AcceptedAnswer[];
 }
 
 async function submissionsFor(db: D1Database, date: string, deviceId: string): Promise<Map<string, SubmissionRow>> {

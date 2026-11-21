@@ -6,9 +6,10 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { METRIC_COPY, type SliderScale } from "@ballpark/shared";
+import { COUNTRIES, ELEMENTS, METRIC_COPY, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
+import { nameOneById, type AcceptedSeed } from "./name-one.ts";
 
 export type SeedFact = {
   id: string;
@@ -30,7 +31,7 @@ export type SeedFact = {
 export type SeedQuestion = {
   id: string;
   prompt: string;
-  type: "estimate" | "compare" | "rank";
+  type: "estimate" | "compare" | "rank" | "name_one";
   unit: string | null;
   polarity: "higher" | "lower";
   scale: SliderScale | null;
@@ -44,6 +45,8 @@ export type SeedQuestion = {
   topic: string;
   difficulty: 1 | 2 | 3;
   verified: false;
+  accepted: AcceptedSeed[] | null;
+  entitySet: "countries" | "elements" | null;
 };
 
 export type SeedPuzzle = {
@@ -221,10 +224,12 @@ function question(
     scale,
     retrievedAt: ON,
     verified: false,
+    accepted: null,
+    entitySet: null,
   };
 }
 
-export const questions: SeedQuestion[] = [
+const baseQuestions: SeedQuestion[] = [
   question("q-space-moon", "How far is the Moon from Earth, on average?", "estimate", "higher", ["f-moon-distance"], ["f-moon-distance"], "NASA gives the Moon's average distance as 384,400 km. The orbit is slightly oval, so the real distance swings by tens of thousands of kilometres.", "NASA Science", "https://science.nasa.gov/moon/facts/", PD, "space", 2, "km", "distance-km"),
   question("q-space-giants", "Which planet has the larger equatorial diameter?", "compare", "higher", ["f-earth-diameter", "f-jupiter-diameter"], ["f-earth-diameter", "f-jupiter-diameter"], "Jupiter's equatorial diameter is about 142,984 km, more than eleven times Earth's 12,756 km.", "NASA Planetary Fact Sheet", "https://nssdc.gsfc.nasa.gov/planetary/factsheet/jupiterfact.html", PD, "space", 1),
   question("q-space-orbits", "Order these planets from closest to the Sun to farthest.", "rank", "lower", ["f-mercury-distance", "f-venus-distance", "f-earth-distance", "f-mars-distance"], ["f-earth-distance", "f-mercury-distance", "f-mars-distance", "f-venus-distance"], "Average distances from the Sun run Mercury, Venus, Earth, then Mars: about 58 million km out to about 228 million km.", "NASA Planetary Fact Sheet", "https://nssdc.gsfc.nasa.gov/planetary/factsheet/", PD, "space", 1),
@@ -285,6 +290,28 @@ export const questions: SeedQuestion[] = [
   question("q-long-elements", "How many chemical elements are on the periodic table?", "estimate", "higher", ["f-elements"], ["f-elements"], "IUPAC's periodic table currently lists 118 confirmed elements. The last of the newest names were adopted in 2016.", "IUPAC", "https://iupac.org/what-we-do/periodic-table-of-elements/", "IUPAC", "science", 1, "elements", "count"),
   question("q-long-trenches", "Which ocean trench is deeper?", "compare", "higher", ["f-challenger", "f-puerto-rico"], ["f-puerto-rico", "f-challenger"], "Challenger Deep reaches about 10,935 m. The Puerto Rico Trench, the deepest part of the Atlantic, is about 8,400 m.", "NOAA Ocean Exploration", "https://oceanexplorer.noaa.gov/ocean-fact/ocean-depth/", PD, "geography", 2),
 ];
+
+export const questions: SeedQuestion[] = baseQuestions.map((item) => {
+  const named = nameOneById.get(item.id);
+  if (!named) return item;
+  return {
+    ...item,
+    prompt: named.prompt,
+    type: "name_one",
+    factIds: [],
+    displayIds: [],
+    unit: null,
+    scale: null,
+    context: named.context,
+    sourceUrl: named.sourceUrl,
+    sourceName: named.sourceName,
+    license: named.license,
+    topic: named.topic,
+    difficulty: named.difficulty,
+    accepted: named.accepted,
+    entitySet: named.entitySet,
+  };
+});
 
 const basePuzzles: SeedPuzzle[] = [
   { slot: 0, theme: "Space", blurb: "Distances, sizes, and how long a year really is.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
@@ -359,15 +386,31 @@ export function assertSeed(): void {
         if (item.factIds.length !== 2) throw new Error(`${item.id} needs two facts`);
         const [left, right] = item.factIds.map((id) => factById.get(id)!);
         if (left.value === right.value) throw new Error(`${item.id} is a tie`);
+        const units = new Set(item.factIds.map((id) => factById.get(id)!.unit));
+        if (units.size !== 1) throw new Error(`${item.id} mixes units`);
+      } else if (item.type === "name_one") {
+        if (item.factIds.length !== 0 || !item.entitySet || !item.accepted || item.accepted.length < 5) {
+          throw new Error(`${item.id} is a bad name-one question`);
+        }
+        const names = new Set(item.accepted.map((answer) => answer.canonical));
+        if (names.size !== item.accepted.length) throw new Error(`${item.id} repeats a canonical answer`);
+        const suggestions = new Set(suggestionsFor(item.entitySet));
+        const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
+        if (suggestions.size !== pool.length) throw new Error(`${item.id} suggestions drifted`);
+        for (const answer of item.accepted) {
+          if (!(answer.prior > 0)) throw new Error(`${item.id} needs a positive prior`);
+          if (!suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
+          if (item.prompt.toLowerCase().includes(answer.canonical.toLowerCase())) {
+            throw new Error(`${item.id} prompt contains ${answer.canonical}`);
+          }
+        }
       } else if (item.factIds.length < 3 || item.factIds.length > 4) {
         throw new Error(`${item.id} rank needs 3 or 4 facts`);
       }
-      if (item.type === "compare") {
-        const units = new Set(item.factIds.map((id) => factById.get(id)!.unit));
-        if (units.size !== 1) throw new Error(`${item.id} mixes units`);
-      }
     }
-    if (types.size !== 3) throw new Error(`${puzzle.theme} does not mix estimate, compare, and rank`);
+    for (const required of ["estimate", "compare", "rank", "name_one"]) {
+      if (!types.has(required)) throw new Error(`${puzzle.theme} is missing ${required}`);
+    }
   }
   if (seenSlots.size !== 10) throw new Error("Slots must be 0 through 9");
 }

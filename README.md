@@ -28,13 +28,16 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). In dev, add `?date=YYYY-MM-
 
 Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute). That is basic protection, not a cheat-proof board.
 
-Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–20 through 81–100. A missed UTC day breaks the streak. There is no account.
+Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–20 through 81+. A missed UTC day breaks the streak. There is no account.
 
-Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card is emoji and score only:
+Each correct step zooms the scene out, from an atom toward the observable universe. A Classic day lands on the rung that matches the score. Head-to-head zooms once per correct pick, and a run that outlasts the ladder keeps counting on a "beyond the universe" tier. A miss stops the camera on "You reached". `prefers-reduced-motion` crossfades the scenes instead of scaling them. The scenes are CSS shapes, not image downloads.
+
+Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the rung and stays free of answers:
 
 ```text
 Ballpark #12 · Classic
-🟩🟨🟦🟩⬛ 78/100
+🟩🟨🟦🟩⬛ 78 pts
+⚛️→🧍→🌍 reached Earth
 ballpark.local
 ```
 
@@ -46,11 +49,11 @@ Head-to-head is a second daily on the home screen, with its own streak. The Work
 
 `GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. The first miss ends the run. A second scored run the same day is rejected. After that, a practice run uses a different sequence and is not written to the board.
 
-A correct pick reveals both values, one line of context, and a source, then advances after about 1.2 seconds. The end screen shows the run length, the percent of players beaten, and the best scored run that day (a number, no names). The share card is:
+A correct pick reveals both values, one line of context, and a source, then advances after about 1.4 seconds. The end screen shows the rung you reached, the run length, rarity points, the percent of players beaten, and the best scored run that day (a number, no names). Ranking is by run length. Equal lengths break on rarity points. The share card is:
 
 ```text
 Ballpark #325 · Head-to-head
-🟩🟩🟩🟩🟩🟩🟩❌ 7 in a row
+⚛️→🧍→🌍 reached Earth · 7 in a row
 ballpark.local
 ```
 
@@ -74,11 +77,15 @@ Confidence changes those points. "Right" means within 2× (green or yellow).
 | Medium | +2 | −2 |
 | Narrow | +4 | −4 |
 
-Points are clamped to 0–20, so a perfect narrow estimate is 20 and a narrow miss cannot go negative. Five questions make 100.
+The base estimate score is clamped to 0–20, so a perfect narrow estimate is 20 and a narrow miss cannot go negative. A close estimate (green or yellow) can then add up to 6 crowd points when most other guesses were farther off.
 
 Compare is 20 or 0 (🟩 or ⬛). Rank is 20 for the exact order (🟩), 12 for a single adjacent swap (🟨), and 0 otherwise (⬛).
 
-The estimate field accepts `k`, `M`, and `B` for thousand, million, and billion. `m` means million, not milli. The slider is a log scale. Its endpoints are fixed for the unit class (every distance-in-kilometres question shares one span) and are not centered on the answer.
+Name-one is an open answer ("Name a country with more than 100 million people"). The Worker matches case, accents, aliases, and small typos against a server-side list. The autocomplete list is the whole group (every country, or every element) and is not the answer key. A correct name scores `20 × (0.5 + 1.5 × uniqueness)`, capped at 36. An invalid name scores 0. Rarer accepted answers are worth more.
+
+Until 20 responses exist for an item, that score blends a fixed prior from the seed into the live share. At 20 it is fully live. Points during the UTC day are provisional ("points so far, final at reset"). At 00:00 UTC a Worker cron recomputes yesterday, and any read of a past day does the same. Percentiles use those final points. Head-to-head rarity is the share of players who missed that pair, with the same cold start.
+
+The estimate field accepts `k`, `M`, and `B` for thousand, million, and billion. `m` means million, not milli. The control is a zoomable log number line. Its endpoints are fixed for the unit class (every distance-in-kilometres question shares one span) and are not centered on the answer. After you submit, the marker moves to the true value, the gap is marked, and faint dots show other players' guesses. Those dots are not in the question payload.
 
 ## Layout
 
@@ -93,9 +100,10 @@ The web package imports the public helpers from `@ballpark/shared`. Scoring live
 Schema, in short:
 
 - `facts` — id, label, value, unit, metric, context, source, retrieved date, license, topic, difficulty, `verified`. Head-to-head pairs facts that share a metric.
-- `questions` — prompt, type (`estimate` | `compare` | `rank`), unit, polarity, the fact ids, the display order
-- `puzzles` — a theme and five question ids
-- `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column so head-to-head can sit beside Classic
+- `questions` — prompt, type (`estimate` | `compare` | `rank` | `name_one`), unit, polarity, the fact ids, the display order, and for name-one an accepted-answer list that never leaves the server
+- `puzzles` — a theme and five question ids, one of them a name-one
+- `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. `daily_results.points` is the rarity total. `finalized` flips when the UTC day is recomputed
+- `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
 
 ## Sample content, and what has to change before a public game
 
@@ -105,7 +113,7 @@ This repository is public. Anyone can read the seed. That is acceptable for a lo
 
 To add or edit a sample puzzle:
 
-1. Edit `apps/api/seed/content.ts`. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. Do not reuse a fact twice in the same day.
+1. Edit `apps/api/seed/content.ts` or `apps/api/seed/name-one.ts`. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
 2. Run `npm run seed:emit -w @ballpark/api` and commit the TypeScript and the generated SQL together.
 3. Run `npm run dev` again. The setup step reloads the local database.
 
@@ -131,7 +139,7 @@ Local development still uses `wrangler dev` for the API and Vite for the web app
 npm run build:deploy
 ```
 
-That builds `apps/web`, writes `apps/api/src/assets.generated.ts` (gitignored), and runs `wrangler deploy --dry-run --outdir dist/worker` with `apps/api/wrangler.deploy.jsonc`. The dry run does not upload anything. The bundle's `src/deploy.ts` serves those files, falls back to `index.html` for client routes, and forwards `/api/*` to the game handler. The everyday `wrangler.jsonc` is unchanged. Do not add deploy secrets, and do not put a deploy step in CI.
+That builds `apps/web`, writes `apps/api/src/assets.generated.ts` (gitignored), and runs `wrangler deploy --dry-run --outdir dist/worker` with `apps/api/wrangler.deploy.jsonc`. The dry run does not upload anything. The bundle's `src/deploy.ts` serves those files, falls back to `index.html` for client routes, and forwards `/api/*` to the game handler. Both configs schedule `0 0 * * *` so a closed day is finalized at midnight UTC. Do not add deploy secrets, and do not put a deploy step in CI.
 
 ## Ethics
 
