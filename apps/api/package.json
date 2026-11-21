@@ -1,0 +1,26 @@
+{
+  "name": "@ballpark/api",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787 --ip 127.0.0.1 --local",
+    "db:setup": "tsx scripts/emit-seed.ts && wrangler d1 migrations apply ballpark --local && wrangler d1 execute ballpark --local --file=./seed/seed.sql",
+    "seed:emit": "tsx scripts/emit-seed.ts",
+    "seed:check": "tsx scripts/emit-seed.ts --check",
+    "types": "wrangler types",
+    "test": "vitest run",
+    "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json && tsc --noEmit -p test/tsconfig.json"
+  },
+  "dependencies": {
+    "@ballpark/shared": "*"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.0.0",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.50.0"
+  }
+}

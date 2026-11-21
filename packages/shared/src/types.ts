@@ -1,0 +1,167 @@
+/**
+ * Shared fact and question shapes.
+ *
+ * `ServerQuestion` is the full record, including numeric values. It stays on
+ * the API. `PublicQuestion` is the only shape the browser is allowed to see
+ * before a guess is submitted.
+ *
+ * Head-to-head (mode 2) can pair any two `items` by `value` without a new
+ * fact model: a run is a sequence of compare picks over this same table.
+ */
+
+export type QuestionType = "estimate" | "compare" | "rank";
+
+export type Confidence = "narrow" | "medium" | "wide";
+
+export type Band = "green" | "yellow" | "blue" | "brown" | "black";
+
+export type Polarity = "higher" | "lower";
+
+export type Mode = "classic" | "head-to-head";
+
+/** Coarse slider span shared by every estimate that uses that scale. Not centered on the answer. */
+export type SliderScale =
+  | "distance-km"
+  | "length-m"
+  | "speed-ms"
+  | "mass-kg"
+  | "years"
+  | "days"
+  | "area-km2"
+  | "count"
+  | "celsius"
+  | "area-m2";
+
+export type FactItem = {
+  id: string;
+  label: string;
+  /** Server-only until reveal. */
+  value: number;
+  unit: string;
+};
+
+/**
+ * Canonical question record. Mode 1 renders `prompt`. Mode 2 can ignore the
+ * prompt and compare `items` directly.
+ */
+export type ServerQuestion = {
+  id: string;
+  prompt: string;
+  type: QuestionType;
+  unit: string | null;
+  polarity: Polarity;
+  /** Estimate: one value. Compare and rank: one value per item, same order as `items`. */
+  values: number[];
+  items: FactItem[];
+  /** Ids in the order that scores as correct. Never sent to the client before submit. */
+  correctOrder: string[];
+  /** Ids in the order the client should display. */
+  displayOrder: string[];
+  context: string;
+  sourceUrl: string;
+  sourceName: string;
+  retrievedAt: string;
+  license: string;
+  topic: string;
+  difficulty: number;
+  verified: boolean;
+  slider: SliderScale | null;
+};
+
+export type PublicItem = {
+  id: string;
+  label: string;
+};
+
+export type PublicQuestion = {
+  id: string;
+  prompt: string;
+  type: QuestionType;
+  unit: string | null;
+  items: PublicItem[];
+  topic: string;
+  difficulty: number;
+  slider: { min: number; max: number } | null;
+  reveal: Reveal | null;
+};
+
+export type EstimateGuess = {
+  type: "estimate";
+  value: number;
+  confidence: Confidence;
+};
+
+export type CompareGuess = {
+  type: "compare";
+  choiceId: string;
+};
+
+export type RankGuess = {
+  type: "rank";
+  order: string[];
+};
+
+export type Guess = EstimateGuess | CompareGuess | RankGuess;
+
+export type CrowdStat =
+  | { kind: "median"; value: number; unit: string; submissions: number }
+  | { kind: "percentCorrect"; percent: number; submissions: number };
+
+export type Reveal = {
+  band: Band;
+  emoji: string;
+  label: string;
+  points: number;
+  answerText: string;
+  detail: string;
+  /** Present for estimates. */
+  confidence: Confidence | null;
+  basePoints: number;
+  confidenceDelta: number;
+  context: string;
+  sourceUrl: string;
+  sourceName: string;
+  sources: { sourceName: string; sourceUrl: string }[];
+  crowd: CrowdStat;
+  /** Ordered reveal rows. Values are included only after scoring. */
+  rows: { id: string; label: string; valueText: string; chosen?: boolean }[];
+  /** Estimate track, so the client can animate the pin. Null otherwise. */
+  track: { min: number; max: number; guess: number; answer: number; unit: string } | null;
+};
+
+export type DayResult = {
+  score: number;
+  bands: Band[];
+  emojis: string[];
+  beatPercent: number;
+  players: number;
+  shareText: string;
+};
+
+export type PuzzleResponse = {
+  date: string;
+  puzzleNumber: number;
+  theme: string;
+  blurb: string;
+  nextTheme: string;
+  mode: "classic";
+  shareHost: string;
+  devDate: boolean;
+  questions: PublicQuestion[];
+  result: DayResult | null;
+};
+
+export type GuessResponse = {
+  reveal: Reveal;
+  result: DayResult | null;
+};
+
+export type Stats = {
+  deviceId: string;
+  played: number;
+  currentStreak: number;
+  maxStreak: number;
+  lastPlayedDate: string | null;
+  /** Buckets: 0–20, 21–40, 41–60, 61–80, 81–100. */
+  distribution: [number, number, number, number, number];
+};
