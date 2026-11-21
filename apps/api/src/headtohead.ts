@@ -4,7 +4,7 @@ import {
   buildHeadToHeadSequence,
   formatFactValue,
   headToHeadShareText,
-  levelForCorrectCount,
+  levelForJourney,
   reachedPhrase,
   puzzleNumber,
   puzzleSlot,
@@ -171,7 +171,7 @@ export async function pickHeadToHead(
       .run();
     result = await officialResult(db, date, deviceId, puzzleNumber(date, epoch), shareHost, epoch, correctCount >= sequence.length);
   } else if (finished) {
-    const reached = levelForCorrectCount(correctCount);
+    const reached = levelForJourney(correctCount, sequence.length);
     result = {
       official: false,
       score: correctCount,
@@ -373,7 +373,7 @@ async function officialResult(
   const stored = mine ? (JSON.parse(mine.bands) as string[]) : [];
   const marks = stored.map((band) => (band === "green" || band === "🟩" ? "🟩" : "🟥")).join("");
   const best = scores.length === 0 ? score : Math.max(...scores);
-  const level = levelForCorrectCount(score);
+  const level = levelForJourney(score, H2H_LENGTH);
   return {
     official: true,
     score,

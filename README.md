@@ -30,7 +30,7 @@ Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute
 
 Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–20 through 81+. A missed UTC day breaks the streak. There is no account.
 
-Each correct step zooms the scene out, from an atom toward the observable universe. A Classic day lands on the rung that matches the score. Head-to-head zooms once per correct pick, and a run that outlasts the ladder keeps counting on a "beyond the universe" tier. A miss stops the camera on "You reached". `prefers-reduced-motion` crossfades the scenes instead of scaling them. The scenes are CSS shapes, not image downloads.
+The scene is one continuous illustrated world, from an atom out through a cell, a leaf, a street, a city, a country, Earth, the Moon, the solar system, the nearby stars, the Milky Way, and a galaxy web. Each answer flies the camera along it. A correct answer travels a full world. A miss sputters about a third as far, so a perfect 10 and a 5 out of 10 land in different places. The end screen zooms out over the whole path and names where you landed. `prefers-reduced-motion` jumps to the new place instead of flying. The art is inline vector shapes, not image downloads.
 
 Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the rung and stays free of answers:
 
@@ -49,11 +49,11 @@ Head-to-head is a second daily on the home screen, with its own streak. The Work
 
 `GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. A wrong pick reveals the values and the game continues. The scored game ends after all ten picks. A second scored game the same day is rejected. After that, a practice game uses a different sequence and is not written to the board.
 
-Each pick moves a mascot through a full-screen world. A correct pick travels outward into the next scale. A miss is a shorter stumble, so the world you reach depends on how many you got right, not on how many you answered. The end screen shows that world, the score out of 10, the percent of players beaten, and the best score that day (a number, no names). Ranking is by correct answers. Equal scores are ties: a faster finish does not rank higher, because timing a knowledge question rewards skimming. The share card is:
+Each pick flies the explorer along that world. A correct pick travels a full step, with a flip and a jet trail. A miss coughs smoke, wobbles, and hops about a third as far. The end screen shows the whole path, the explorer where it landed, the score out of 10, the percent of players beaten, and the best score that day (a number, no names). Ranking is by correct answers. Equal scores are ties: a faster finish does not rank higher, because timing a knowledge question rewards skimming. The share card names the world you reached:
 
 ```text
 Ballpark #325 · Head-to-head
-🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached Milky Way
+🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩 10/10 · reached Milky Way
 ballpark.local
 ```
 

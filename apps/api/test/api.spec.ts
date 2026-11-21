@@ -90,7 +90,7 @@ describe("submissions", () => {
     const question = spaceDay()[0];
     const first = await guess(DEVICE, question.id, correctGuess(question));
     expect(first.status).toBe(200);
-    const revealed = (await first.json()) as { reveal: { answerText: string; points: number; context: string } };
+    const revealed = (await first.json()) as { reveal: { answerText: string; points: number; context: string; bonusPoints: number } };
     expect(revealed.reveal.answerText).toContain("384,400");
     expect(revealed.reveal.context.length).toBeGreaterThan(20);
     expect(revealed.reveal.points).toBe(20);

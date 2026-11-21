@@ -42,8 +42,10 @@ export type { ScaleLevel } from "./scale.js";
 export {
   CLASSIC_SCORE_SPAN,
   SCALE_LEVELS,
+  journeyProgress,
   levelForClassicScore,
   levelForCorrectCount,
+  levelForJourney,
   levelIndexForClassicScore,
   reachedPhrase,
   zoomShareLine,

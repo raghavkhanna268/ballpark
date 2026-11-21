@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "./entities.js";
 import { matchAccepted, normalizeAnswer, priorShare, type AcceptedAnswer } from "./match.js";
 import { blendShare, nameOnePoints } from "./rarity.js";
-import { levelForClassicScore, levelForCorrectCount, zoomShareLine } from "./scale.js";
+import { journeyProgress, levelForClassicScore, levelForCorrectCount, levelForJourney, zoomShareLine } from "./scale.js";
 
 const accepted: AcceptedAnswer[] = [
   { canonical: "India", aliases: ["Bharat"], prior: 30 },
@@ -60,6 +60,14 @@ describe("zoom path", () => {
     expect(levelForCorrectCount(1).name).toBe("Cell");
     expect(levelForCorrectCount(10).name).toBe("Milky Way");
     expect(levelForCorrectCount(12).name).toBe("Milky Way");
+  });
+
+  it("lands a perfect run and a 5/10 on different worlds once misses hop a third", () => {
+    expect(journeyProgress(10, 10)).toBe(10);
+    expect(levelForJourney(10, 10).name).toBe("Milky Way");
+    expect(levelForJourney(5, 10).name).toBe("Moon orbit");
+    expect(levelForJourney(0, 10).id).toBe("human");
+    expect(levelForJourney(8, 10).name).toBe("Nearby stars");
   });
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {

@@ -55,6 +55,26 @@ export function levelForCorrectCount(correct: number): ScaleLevel {
   return SCALE_LEVELS[JOURNEY_INDEX[clamped]]!;
 }
 
+/**
+ * Visual stops, in order. A correct answer advances one stop. A miss advances a third,
+ * so a finished 5/10 and a finished 10/10 do not land on the same world.
+ */
+const JOURNEY_STOP_IDS = ["atom", "cell", "ant", "human", "city", "country", "earth", "moon", "solar", "stars", "galaxy", "universe"] as const;
+
+/** Distance along the illustrated path. Correct answers count as 1, misses as 1/3. */
+export function journeyProgress(correct: number, answered: number): number {
+  const safeCorrect = Math.max(0, correct);
+  const misses = Math.max(0, answered - safeCorrect);
+  return safeCorrect + misses / 3;
+}
+
+/** The world a finished run is standing in, including the short hops from misses. */
+export function levelForJourney(correct: number, answered: number): ScaleLevel {
+  const index = Math.max(0, Math.min(JOURNEY_STOP_IDS.length - 1, Math.round(journeyProgress(correct, answered))));
+  const id = JOURNEY_STOP_IDS[index]!;
+  return SCALE_LEVELS.find((item) => item.id === id) ?? SCALE_LEVELS[0]!;
+}
+
 export function levelIndexForClassicScore(score: number, span = CLASSIC_SCORE_SPAN): number {
   if (score <= 0 || span <= 0) return 0;
   return Math.min(10, Math.round((score / span) * 10));

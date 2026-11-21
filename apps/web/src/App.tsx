@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { levelForCorrectCount, levelIndexForClassicScore, type DayResult, type Guess, type PuzzleResponse, type Reveal } from "@ballpark/shared";
+import type { DayResult, Guess, PuzzleResponse, Reveal } from "@ballpark/shared";
 import { ApiError, errorCopy, getHeadToHead, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
@@ -23,8 +23,8 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [h2hCorrect, setH2hCorrect] = useState(0);
-  const [h2hStep, setH2hStep] = useState(0);
+  const [h2hFlight, setH2hFlight] = useState(0);
+  const [h2hOverview, setH2hOverview] = useState(false);
   const [hop, setHop] = useState<Hop>({ id: 0, kind: "idle", travel: 1 });
 
   const refresh = useCallback(async () => {
@@ -76,12 +76,16 @@ export function App() {
     }
   }
 
-  const classicScore = puzzle?.questions.reduce((sum, question) => sum + (question.reveal?.points ?? 0), 0) ?? 0;
-  const worldId = levelForCorrectCount(phase.name === "h2h" ? h2hCorrect : levelIndexForClassicScore(classicScore)).id;
-  const classicIndex = phase.name === "ask" || phase.name === "reveal" ? phase.index : (puzzle?.questions.filter((question) => question.reveal).length ?? 0);
+  const classicFlight =
+    puzzle?.questions.reduce((sum, question) => {
+      if (!question.reveal) return sum;
+      const max = question.type === "name_one" ? 36 : 20;
+      return sum + (question.reveal.points <= 0 ? 0.28 : (question.reveal.points / max) * 2);
+    }, 0) ?? 0;
+  const flight = phase.name === "h2h" ? h2hFlight : classicFlight;
 
   return (
-    <Journey worldId={worldId} hop={hop} dots={phase.name === "h2h" ? { total: 10, current: h2hStep } : { total: 5, current: classicIndex }}>
+    <Journey progress={flight} hop={hop} overview={phase.name === "end" || h2hOverview}>
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
@@ -92,8 +96,10 @@ export function App() {
           h2hStreak={h2hStats.currentStreak}
           h2hLabel={h2h?.status === "finished" ? `See today’s run · ${h2h.result?.score ?? 0}` : h2h?.status === "in-progress" ? "Continue Head-to-head" : "Play Head-to-head"}
           onHeadToHead={() => {
-            setH2hCorrect(h2h?.correct ?? 0);
-            setH2hStep(h2h?.round?.index ?? 0);
+            const correct = h2h?.correct ?? 0;
+            const answered = h2h?.status === "finished" ? 10 : (h2h?.round?.index ?? 0);
+            setH2hFlight(correct + Math.max(0, answered - correct) / 3);
+            setH2hOverview(h2h?.status === "finished");
             setPhase({ name: "h2h" });
           }}
           onPlay={() => {
@@ -139,15 +145,16 @@ export function App() {
           deviceId={stats.deviceId}
           initial={h2h}
           onHome={() => {
+            setH2hOverview(false);
             setPhase({ name: "home" });
             void refresh();
           }}
           onOfficialFinish={(date, score) => setH2hStats(recordHeadToHead(date, score))}
-          onHop={(correct, correctCount, index) => {
-            setH2hCorrect(correctCount);
-            setH2hStep(index + 1);
-            setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.28 }));
+          onHop={(correct) => {
+            setH2hFlight((current) => current + (correct ? 1 : 1 / 3));
+            setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.33 }));
           }}
+          onSettled={() => setH2hOverview(true)}
         />
       ) : null}
       <footer>

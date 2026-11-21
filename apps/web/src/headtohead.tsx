@@ -11,12 +11,14 @@ export function HeadToHeadScreen({
   onHome,
   onOfficialFinish,
   onHop,
+  onSettled,
 }: {
   deviceId: string;
   initial: HeadToHeadState;
   onHome: () => void;
   onOfficialFinish: (date: string, score: number) => void;
   onHop: (correct: boolean, correctCount: number, index: number) => void;
+  onSettled: () => void;
 }) {
   const [practice, setPractice] = useState(initial.runKind === "practice" && initial.status === "in-progress");
   const [round, setRound] = useState<PublicH2HRound | null>(initial.round);
@@ -26,11 +28,16 @@ export function HeadToHeadScreen({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [shareState, setShareState] = useState<"idle" | "copied" | "shared" | "failed">("idle");
+  const [slim, setSlim] = useState(false);
 
   useEffect(() => {
-    if (!reveal) return;
+    if (!reveal) {
+      setSlim(false);
+      return;
+    }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const delay = reduced ? 400 : reveal.correct ? 1300 : 800;
+    const delay = reduced ? 500 : reveal.correct ? 1900 : 1400;
+    const collapse = window.setTimeout(() => setSlim(true), reduced ? 180 : 480);
     const id = window.setTimeout(() => {
       if (reveal.next) {
         setRound(reveal.next);
@@ -41,9 +48,13 @@ export function HeadToHeadScreen({
         setRound(null);
         setResult(reveal.result);
         setReveal(null);
+        onSettled();
       }
     }, delay);
-    return () => window.clearTimeout(id);
+    return () => {
+      window.clearTimeout(id);
+      window.clearTimeout(collapse);
+    };
   }, [reveal]);
 
   async function choose(body: { choiceId?: string; direction?: "higher" | "lower" }) {
@@ -141,7 +152,11 @@ export function HeadToHeadScreen({
         <p className={correct > 0 && !showing ? "h2h-count bump" : "h2h-count"}>{correct}</p>
       </div>
       {practice ? <p className="practice-flag">Practice · not on the board</p> : <p className="type-kicker">Head-to-head</p>}
-      {showing ? (
+      {showing && slim ? (
+        <section className={`reveal slim ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
+          <h2>{showing.correct ? "Correct" : "Not this one"}</h2>
+        </section>
+      ) : showing ? (
         <section className={`reveal ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
           <p className="emoji">{showing.correct ? "🟩" : "❌"}</p>
           <h2>{showing.correct ? "Correct" : "Not this one"}</h2>
@@ -169,6 +184,7 @@ export function HeadToHeadScreen({
               setRound(null);
               setResult(showing.result);
               setReveal(null);
+              onSettled();
             }}
           >
             {showing.next ? "Next" : "See the result"}
