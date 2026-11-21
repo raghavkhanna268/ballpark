@@ -1,0 +1,31 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ballpark-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-21",
+  "compatibility_flags": ["nodejs_compat"],
+  // Local placeholder only. Do not run `wrangler d1 create` or `wrangler deploy`.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ballpark",
+      "database_id": "00000000-0000-0000-0000-000000000001",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ALLOW_DATE_OVERRIDE": "true",
+    "SHARE_HOST": "ballpark.local",
+    "EPOCH": "2026-01-01"
+  },
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  },
+  "alias": {
+    "@ballpark/shared/scoring": "../../packages/shared/src/scoring.ts",
+    "@ballpark/shared": "../../packages/shared/src/index.ts"
+  }
+}

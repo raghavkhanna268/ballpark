@@ -1,0 +1,12 @@
+node_modules/
+apps/api/worker-configuration.d.ts
+dist/
+.wrangler/
+.dev.vars
+*.local
+coverage/
+.DS_Store
+*.tsbuildinfo
+.vite/
+playwright-report/
+test-results/

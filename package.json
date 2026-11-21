@@ -1,0 +1,28 @@
+{
+  "name": "ballpark",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ballpark, a daily general-knowledge game. This milestone is Classic mode, local only.",
+  "type": "module",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run db:setup -w @ballpark/api && concurrently -n api,web -c cyan,green \"npm run dev -w @ballpark/api\" \"npm run dev -w @ballpark/web\"",
+    "lint": "eslint .",
+    "typecheck": "npm run typecheck -w @ballpark/shared && npm run typecheck -w @ballpark/api && npm run typecheck -w @ballpark/web",
+    "test": "npm run seed:check -w @ballpark/api && npm run test -w @ballpark/shared && npm run test -w @ballpark/api && npm run check:bundle",
+    "check:bundle": "npm run build -w @ballpark/web && node scripts/check-client-bundle.mjs",
+    "db:setup": "npm run db:setup -w @ballpark/api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
