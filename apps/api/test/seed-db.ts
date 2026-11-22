@@ -1,5 +1,5 @@
 import type { Confidence, Guess } from "@ballpark/shared";
-import { facts, puzzles, questions, type SeedQuestion } from "../seed/content.ts";
+import { facts, packs, puzzles, questions, type SeedQuestion } from "../seed/content.ts";
 
 export async function resetAndSeed(db: D1Database): Promise<void> {
   await db.batch([
@@ -8,6 +8,9 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM submissions"),
     db.prepare("DELETE FROM rate_limits"),
     db.prepare("DELETE FROM puzzles"),
+    db.prepare("DELETE FROM packs"),
+    db.prepare("DELETE FROM entitlements"),
+    db.prepare("DELETE FROM plus_orders"),
     db.prepare("DELETE FROM questions"),
     db.prepare("DELETE FROM h2h_picks"),
     db.prepare("DELETE FROM h2h_runs"),
@@ -74,6 +77,13 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
         .bind(item.slot, item.theme, item.blurb, JSON.stringify(item.questionIds)),
     );
   }
+  for (const item of packs) {
+    inserts.push(
+      db
+        .prepare("INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES (?, ?, ?, ?, ?, ?)")
+        .bind(item.id, item.title, item.emoji, item.blurb, JSON.stringify(item.questionIds), item.sort),
+    );
+  }
   for (let index = 0; index < inserts.length; index += 40) {
     await db.batch(inserts.slice(index, index + 40));
   }
@@ -104,6 +114,6 @@ export function correctGuess(question: SeedQuestion, confidence: Confidence = "n
 }
 
 export function spaceDay() {
-  const puzzle = puzzles.find((item) => item.slot === 0)!;
+  const puzzle = puzzles.find((item) => item.theme === "Space")!;
   return puzzle.questionIds.map((id) => questions.find((item) => item.id === id)!);
 }

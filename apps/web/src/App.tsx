@@ -7,15 +7,18 @@ import {
   type FieldStats,
   type Guess,
   type LeagueResponse,
+  type PackSummary,
+  type PlusStatus,
   type PuzzleResponse,
   type Race,
   type Reveal,
 } from "@ballpark/shared";
-import { ApiError, errorCopy, getHeadToHead, getLeague, getPuzzle, postGuess, type HeadToHeadState } from "./api";
+import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
 import { Journey, type Ghost, type Hop } from "./journey";
-import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook, type Mode } from "./logbook";
+import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
+import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
@@ -25,7 +28,9 @@ type Phase =
   | { name: "ask"; index: number }
   | { name: "reveal"; index: number; reveal: Reveal; result: DayResult | null }
   | { name: "end" }
-  | { name: "h2h" };
+  | { name: "h2h" }
+  | { name: "plus" }
+  | { name: "pack"; id: string; done: boolean };
 
 export function App() {
   const [stats, setStats] = useState<StoredStats>(() => loadStats());
@@ -45,6 +50,20 @@ export function App() {
   /** A friend's climb from a shared `?race=` link. */
   const [race] = useState<Race | null>(() => captureRace());
   const [league, setLeague] = useState<LeagueResponse | null>(null);
+  const [plus, setPlus] = useState<PlusStatus | null>(null);
+  const [packs, setPacks] = useState<PackSummary[]>([]);
+  const [packFlight, setPackFlight] = useState(0);
+
+  const refreshPlus = useCallback(async () => {
+    try {
+      const deviceId = loadStats().deviceId;
+      const [status, list] = await Promise.all([getPlus(deviceId), getPacks(deviceId)]);
+      setPlus(status);
+      setPacks(list.packs);
+    } catch {
+      // Packs and the Ballpark+ card wait for the next refresh. The free game still works.
+    }
+  }, []);
 
   const refreshLeague = useCallback(async () => {
     try {
@@ -65,12 +84,13 @@ export function App() {
       if (next.result) setStats(recordScore(next.date, next.result.score));
       if (head.result?.official) setH2hStats(recordHeadToHead(head.date, head.result.score));
       void refreshLeague();
+      void refreshPlus();
     } catch (caught) {
       setError(errorCopy(caught));
     } finally {
       setLoading(false);
     }
-  }, [refreshLeague]);
+  }, [refreshLeague, refreshPlus]);
 
   useEffect(() => {
     void refresh();
@@ -113,12 +133,16 @@ export function App() {
   }
 
   const classicFlight = puzzle ? flightFor(puzzle) : 0;
-  const mode: Mode = phase.name === "h2h" ? "h2h" : "classic";
-  const flight = mode === "h2h" ? h2hFlight : classicFlight;
+  const mode = phase.name === "h2h" ? "h2h" : phase.name === "pack" ? "pack" : "classic";
+  const flight = mode === "h2h" ? h2hFlight : mode === "pack" ? packFlight : classicFlight;
   const today = puzzle?.date ?? h2h?.date ?? "";
   const classicRace = raceFor(race, "classic", puzzle?.puzzleNumber);
   const h2hRace = raceFor(race, "h2h", h2h?.puzzleNumber);
-  const ghosts = phase.name === "home" ? [] : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
+  const ghosts =
+    phase.name === "home" || phase.name === "plus" || mode === "pack"
+      ? []
+      : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
+  const showAds = plus !== null && !plus.plus;
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
   const challenge = classicRace && !puzzle?.result ? classicRace : h2hRace && h2h?.status !== "finished" ? h2hRace : null;
@@ -137,8 +161,23 @@ export function App() {
     setPhase({ name: "ask", index: index === -1 ? 0 : index });
   }
 
+  function openPack(id: string) {
+    setPackFlight(0);
+    setPhase({ name: "pack", id, done: false });
+  }
+
+  function goHome() {
+    setPhase({ name: "home" });
+  }
+
   return (
-    <Journey progress={flight} hop={hop} ghosts={ghosts} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
+    <Journey
+      progress={flight}
+      hop={hop}
+      ghosts={ghosts}
+      overview={phase.name === "end" || h2hOverview || (phase.name === "pack" && phase.done)}
+      page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "pack" ? `pack-${phase.id}` : phase.name}
+    >
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
@@ -155,6 +194,8 @@ export function App() {
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
           league={league ? <LeagueCard league={league} today={today} /> : null}
           logbook={<LogbookCard logbook={logbook} />}
+          packs={<PacksCard packs={packs} status={plus} onPack={openPack} onPlus={() => setPhase({ name: "plus" })} />}
+          ad={showAds ? <AdSlot onPlus={() => setPhase({ name: "plus" })} /> : null}
         />
       ) : null}
       {puzzle && phase.name === "ask" ? (
@@ -198,6 +239,7 @@ export function App() {
               <LeagueLine league={league} />
             </>
           }
+          ad={showAds ? <AdSlot onPlus={() => setPhase({ name: "plus" })} /> : null}
           onHome={() => setPhase({ name: "home" })}
         />
       ) : null}
@@ -229,8 +271,38 @@ export function App() {
           onSettled={() => setH2hOverview(true)}
         />
       ) : null}
+      {plus && phase.name === "plus" ? (
+        <PlusScreen
+          deviceId={stats.deviceId}
+          status={plus}
+          onStatus={(next) => {
+            setPlus(next);
+            void refreshPlus();
+          }}
+          onHome={goHome}
+          onPacks={goHome}
+        />
+      ) : null}
+      {phase.name === "pack" ? (
+        <PackRun
+          key={phase.id}
+          deviceId={stats.deviceId}
+          packId={phase.id}
+          onHome={() => {
+            goHome();
+            void refreshPlus();
+          }}
+          onFlight={setPackFlight}
+          onHop={(points, tier) => {
+            const travel = classicStep(points, NAME_CAP);
+            setPackFlight((current) => current + travel);
+            setHop((current) => ({ id: current.id + 1, kind: points > 0 ? "voyage" : "stumble", travel, tier: tier ? { name: tier, points } : undefined }));
+          }}
+          onEnd={() => setPhase((current) => (current.name === "pack" ? { ...current, done: true } : current))}
+        />
+      ) : null}
       <footer>
-        <p>Sample puzzles, pending editorial verification. No ads, no account, no paywall.</p>
+        <p>Sample puzzles, pending editorial verification. No account needed. The daily game is free.</p>
         <DevDate />
       </footer>
     </main>

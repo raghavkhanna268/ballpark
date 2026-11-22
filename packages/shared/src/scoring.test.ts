@@ -131,7 +131,8 @@ describe("shorthand, share text, and the daily number", () => {
     expect(puzzleNumber("2026-11-21")).toBe(325);
     expect(puzzleSlot("2026-01-01")).toBe(0);
     expect(puzzleSlot("2026-01-10")).toBe(9);
-    expect(puzzleSlot("2026-01-11")).toBe(0);
+    expect(puzzleSlot("2026-01-17")).toBe(16);
+    expect(puzzleSlot("2026-01-18")).toBe(0);
   });
 
   it("reports a percentile for a single player and ignores ties", () => {

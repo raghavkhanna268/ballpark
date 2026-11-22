@@ -19,7 +19,7 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). In dev, add `?date=YYYY-MM-
 
 ## How a round works
 
-1. The Worker picks the puzzle for the UTC date. Puzzle #1 is 2026-01-01. The sample seed has 10 days, and later dates rotate through those days: slot `(puzzleNumber - 1) mod 10`.
+1. The Worker picks the puzzle for the UTC date. Puzzle #1 is 2026-01-01. The sample seed has 17 days, and later dates rotate through those days: slot `(puzzleNumber - 1) mod 17` (`SEED_SLOTS`). Slots 0 to 6 are the fun week (Snack Attack, Creature Feature, Game On, Word Nerd, Wonders & Legends, Lab Rats, Desi Masala). Slots 7 to 16 are the older themes, starting with Space.
 2. `GET /api/puzzle` returns five open "name one" prompts. A question about countries or elements also gets the whole group as autocomplete (every country, or every element), which is not the answer key. Free-text questions (whales, Shakespeare plays) get no list, because a list of only the right answers would give them away. Accepted answers, context, and sources never leave the server before a guess.
 3. The browser sends one guess per question, with an anonymous device id kept in `localStorage`.
 4. The Worker scores it, stores the submission, and returns the answer, one or two lines of context, a source link, and the crowd stat (median guess, or the share who got it fully right).
@@ -111,6 +111,40 @@ At 00:00 UTC a Worker cron recomputes yesterday, and any read of a past day does
 
 The estimate field accepts `k`, `M`, and `B` for thousand, million, and billion. `m` means million, not milli. The control is a zoomable log number line. Its endpoints are fixed for the unit class (every distance-in-kilometres question shares one span) and are not centered on the answer. After you submit, the marker moves to the true value, the gap is marked, and faint dots show other players' guesses. Those dots are not in the question payload.
 
+## Ballpark+
+
+The daily Classic, Head-to-head, the league, ranks, race links and streaks are free for everyone. Ballpark+ adds:
+
+- **Themed packs.** A pack is five name-one questions on one theme, played any day, once per device: Cricket Crazy 🏏, Screen Time 🎬 and Space Nerd 🚀 in the sample. Rarity is counted among everyone who has played that pack, and the end screen ranks you among them ("You're #2 of 40 who played this pack"). Pack answers are `submissions` rows with `mode = 'pack'` and `puzzle_date = 'pack:<id>'`. They never reach `daily_results`, so a pass never adds league points.
+- **No ads.** Free players see a labelled ad space on the home screen and the end screen. There is no ad network yet: it is a placeholder (`AdSlot` in `apps/web/src/plus.tsx`) that also links to Ballpark+. Members never see it.
+
+Without a pass, `GET /api/packs` lists the packs as locked and the questions stay on the server. `GET /api/packs/:id` and `POST /api/packs/:id/guess` answer `402 plus_required`.
+
+A pass is a one-time purchase for this device, 30 or 365 days, and it does not renew by itself. Prices in `packages/shared/src/plus.ts` are **placeholders** (₹99 a month, ₹799 a year). Buying early adds the new days to the days left. A pass is tied to the anonymous device id, like the rest of the game, so clearing site data loses it. "Restore purchase" by phone or email is a follow-up.
+
+### Razorpay
+
+Payment uses Razorpay's standard web checkout:
+
+1. `POST /api/plus/order` `{ plan }` creates an order through `https://api.razorpay.com/v1/orders` with the key id and secret, and stores it in `plus_orders` against the device.
+2. The browser loads `https://checkout.razorpay.com/v1/checkout.js` and opens Checkout with the public key id and that order id (UPI, cards, netbanking).
+3. `POST /api/plus/verify` `{ orderId, paymentId, signature }` recomputes `HMAC-SHA256(order_id + "|" + payment_id)` with the secret and compares it with Razorpay's signature. Only a match, on an order this device created, starts the pass. Confirming the same payment twice grants nothing new, and a paid order cannot be reused.
+
+`GET /api/plus` tells the app whether the device has a pass, the prices, and Razorpay's public key id when checkout is configured. The secret never leaves the Worker.
+
+Keys are never committed. For local play, put test-mode keys in `apps/api/.dev.vars` (gitignored):
+
+```text
+RAZORPAY_KEY_ID="rzp_test_..."
+RAZORPAY_KEY_SECRET="..."
+```
+
+A deployed Worker would take them as Worker secrets (`wrangler secret put RAZORPAY_KEY_ID` and `RAZORPAY_KEY_SECRET`). That command talks to a Cloudflare account, so it is not run from this repository. With no keys, checkout is off: the page says payments are not switched on, and `POST /api/plus/order` answers `503 payments_not_configured`.
+
+For trying packs locally, `PLUS_TEST_UNLOCK` is `"true"` in `wrangler.jsonc`, and the Ballpark+ page shows "Unlock for testing (no payment)". `POST /api/plus/test-unlock` works only with that flag and only on a local address. `wrangler.deploy.jsonc` sets it to `"false"`.
+
+Before taking real money: set the real prices, turn on automatic capture in the Razorpay dashboard (or capture in the Worker), and add a Razorpay webhook (`payment.captured`) so a pass still starts if the browser closes before `verify` runs.
+
 ## Layout
 
 ```text
@@ -129,16 +163,21 @@ Schema, in short:
 - `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. Head-to-head `score` is correct picks out of 10. `finalized` flips when the UTC day is recomputed
 - `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
 - `league_members` — one row per device per league week: its rank (`tier`), its group, and whether last week moved it up or down
+- `packs` — a Ballpark+ pack: title, emoji, blurb, and five question ids
+- `entitlements` — one row per device with a pass: plan, source (`razorpay` or `test`), payment id, and when it ends
+- `plus_orders` — Razorpay orders this Worker created, with the device and plan, so a payment only counts for its own order
 
 ## Sample content, and what has to change before a public game
 
-`apps/api/seed/content.ts` and `apps/api/seed/more-facts.ts` are the sample set: 10 Classic days, 50 questions, and at least 150 facts for Head-to-head pairs (populations, areas, GDP, peaks, rivers, planets, animals, landmarks, inventions). Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from those files. Give a new fact a `metric` that matches one in `METRIC_COPY`, or `unpaired` if nothing should be compared with it.
+`apps/api/seed/content.ts`, `apps/api/seed/fun.ts` and `apps/api/seed/more-facts.ts` are the sample set: 17 Classic days, 3 Ballpark+ packs, 100 questions, and at least 150 facts for Head-to-head pairs (populations, areas, GDP, peaks, rivers, planets, animals, landmarks, inventions). Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from those files. Give a new fact a `metric` that matches one in `METRIC_COPY`, or `unpaired` if nothing should be compared with it.
 
 This repository is public. Anyone can read the seed. That is acceptable for a local sample and a bad idea for official answers. Before a real launch, stop committing puzzle values. Load them with an admin script from a file that is not in git, or from a private content repository, and keep D1 as the only copy the Worker reads. The client should keep receiving prompts only, the way it does now.
 
+The fun week and the packs in `apps/api/seed/fun.ts` set the voice for new questions: a cheeky prompt that still asks for real knowledge ("Name a fruit that botanists call a berry. Warning: the strawberry is a fraud."), a long list of right answers so nobody is stuck, and a reveal with one fact worth repeating. Facts that could change soon, such as a current champion or this year's winner, are left out.
+
 To add or edit a sample puzzle:
 
-1. Edit `apps/api/seed/content.ts`, `apps/api/seed/name-one.ts`, or `apps/api/seed/name-one-more.ts`. Every Classic question is a name-one question that overrides a base question id. Set `entitySet` to `countries` or `elements` when the answers are all in that list (every accepted name must then be in it), or `null` for free text with no autocomplete. Give each accepted answer a prior (how often you expect players to say it) and the aliases people type, and never give one spelling to two answers. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
+1. Edit `apps/api/seed/fun.ts`, `apps/api/seed/content.ts`, `apps/api/seed/name-one.ts`, or `apps/api/seed/name-one-more.ts`. Every Classic question is a name-one question. The older days override a base question id. The fun week and the packs are new ids in `fun.ts`, and a pack is an entry in its `packs` list. Every question belongs to exactly one day or one pack. Set `entitySet` to `countries` or `elements` when the answers are all in that list (every accepted name must then be in it), or `null` for free text with no autocomplete. Give each accepted answer a prior (how often you expect players to say it) and the aliases people type, and never give one spelling to two answers. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
 2. Run `npm run seed:emit -w @ballpark/api` and commit the TypeScript and the generated SQL together.
 3. Run `npm run dev` again. The setup step reloads the local database.
 
@@ -168,4 +207,4 @@ That builds `apps/web`, writes `apps/api/src/assets.generated.ts` (gitignored), 
 
 ## Ethics
 
-Both daily modes are free. There is no account wall, no ad, no paywall, no loot box, and no streak-shame copy. A missed day simply ends that mode's streak. Archive play and any paid plan are out of scope.
+Both daily modes, the league and streaks are free, with no account wall. Ballpark+ sells extra packs and the removal of ads, not an edge: a pass never adds league points, and every free player gets the same daily questions. There is no loot box and no streak-shame copy. The ad space is a placeholder with no ad network or tracking behind it. Archive play is out of scope.

@@ -1,4 +1,18 @@
-import type { FieldStats, Guess, GuessResponse, LeagueResponse, Placement, PublicH2HRound, PuzzleResponse } from "@ballpark/shared";
+import type {
+  FieldStats,
+  Guess,
+  GuessResponse,
+  LeagueResponse,
+  PackGuessResponse,
+  PackResponse,
+  PackSummary,
+  Placement,
+  PlusOrder,
+  PlusPlan,
+  PlusStatus,
+  PublicH2HRound,
+  PuzzleResponse,
+} from "@ballpark/shared";
 
 export type HeadToHeadState = {
   field: FieldStats;
@@ -112,6 +126,43 @@ export async function postGuess(deviceId: string, questionId: string, guess: Gue
   return read<GuessResponse>(response);
 }
 
+async function post<T>(path: string, deviceId: string, body: unknown): Promise<T> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-device-id": deviceId },
+    body: JSON.stringify(body),
+  });
+  return read<T>(response);
+}
+
+export async function getPlus(deviceId: string): Promise<PlusStatus> {
+  return read<PlusStatus>(await fetch("/api/plus", { headers: { "x-device-id": deviceId } }));
+}
+
+export function postPlusOrder(deviceId: string, plan: PlusPlan): Promise<PlusOrder> {
+  return post<PlusOrder>("/api/plus/order", deviceId, { plan });
+}
+
+export function postPlusVerify(deviceId: string, body: { orderId: string; paymentId: string; signature: string }): Promise<PlusStatus> {
+  return post<PlusStatus>("/api/plus/verify", deviceId, body);
+}
+
+export function postTestUnlock(deviceId: string, plan: PlusPlan): Promise<PlusStatus> {
+  return post<PlusStatus>("/api/plus/test-unlock", deviceId, { plan });
+}
+
+export async function getPacks(deviceId: string): Promise<{ plus: boolean; packs: PackSummary[] }> {
+  return read<{ plus: boolean; packs: PackSummary[] }>(await fetch("/api/packs", { headers: { "x-device-id": deviceId } }));
+}
+
+export async function getPack(deviceId: string, id: string): Promise<PackResponse> {
+  return read<PackResponse>(await fetch(`/api/packs/${encodeURIComponent(id)}`, { headers: { "x-device-id": deviceId } }));
+}
+
+export function postPackGuess(deviceId: string, id: string, questionId: string, guess: Guess): Promise<PackGuessResponse> {
+  return post<PackGuessResponse>(`/api/packs/${encodeURIComponent(id)}/guess`, deviceId, { questionId, guess });
+}
+
 export function errorCopy(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "rate_limited") return "Too many guesses in a short time. Wait a minute, then try again.";
@@ -120,6 +171,10 @@ export function errorCopy(error: unknown): string {
     if (error.code === "run_finished") return "Today's scored run is already finished.";
     if (error.code === "practice_locked") return "Finish today's scored run before practicing.";
     if (error.code === "invalid_guess") return "That guess doesn't fit this question.";
+    if (error.code === "plus_required") return "Packs come with Ballpark+.";
+    if (error.code === "payments_not_configured") return "Payments aren’t set up on this build yet.";
+    if (error.code === "invalid_signature" || error.code === "unknown_order") return "We couldn’t confirm that payment. If you were charged, keep your Razorpay receipt.";
+    if (error.code === "payment_provider_error") return "Razorpay didn’t answer. Try again in a minute.";
     if (error.code === "puzzle_missing") return "Today's puzzle isn't in the local database. Run npm run db:setup from the repo root.";
     return "The game couldn't score that guess.";
   }

@@ -90,3 +90,5 @@ export type { H2HFact, H2HKind, H2HRound, MetricCopy, PublicH2HRound } from "./h
 export { parseShorthand } from "./parse.js";
 export { formatFactor, formatFactValue, formatNumber, roundSig } from "./format.js";
 export { sliderRange, sliderToValue, valueToSlider } from "./slider.js";
+export type { PackGuessResponse, PackResponse, PackResult, PackSummary, PlusOrder, PlusPlan, PlusPrice, PlusStatus } from "./plus.js";
+export { PLUS_PRICES, plusPrice } from "./plus.js";

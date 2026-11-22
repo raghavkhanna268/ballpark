@@ -2,7 +2,7 @@
 export const DEFAULT_EPOCH = "2026-01-01";
 
 /** Sample seed length. Every UTC date maps onto one of these slots until a real calendar replaces it. */
-export const SEED_SLOTS = 10;
+export const SEED_SLOTS = 17;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

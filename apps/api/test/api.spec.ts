@@ -8,7 +8,8 @@ import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
 const DEVICE = "11111111-1111-4111-8111-111111111111";
 const OTHER = "22222222-2222-4222-8222-222222222222";
-const DAY = "2026-01-01";
+// Day 8 is the first Space day: the fun week fills slots 0 to 6.
+const DAY = "2026-01-08";
 
 assertSeed();
 
@@ -130,9 +131,9 @@ describe("submissions", () => {
     expect(result!.emojis).toHaveLength(5);
     expect(result!.emojis).not.toContain("⬛");
     expect(result!.score).toBeGreaterThanOrEqual(50);
-    expect(result?.shareText).toContain("Ballpark #1 · Classic");
+    expect(result?.shareText).toContain("Ballpark #8 · Classic");
     expect(result?.shareText).toContain("reached");
-    expect(result?.shareText).toContain("ballpark.local/?race=c1-");
+    expect(result?.shareText).toContain("ballpark.local/?race=c8-");
     expect(result?.shareText).not.toContain("Mercury");
 
     const again = await puzzle();

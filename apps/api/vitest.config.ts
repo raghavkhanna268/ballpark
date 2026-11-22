@@ -12,7 +12,8 @@ export default defineConfig({
       return {
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
-          bindings: { TEST_MIGRATIONS: migrations },
+          // Fake Razorpay keys so signature checks can be tested. No test calls Razorpay.
+          bindings: { TEST_MIGRATIONS: migrations, RAZORPAY_KEY_ID: "rzp_test_local", RAZORPAY_KEY_SECRET: "local-test-secret" },
         },
       };
     }),

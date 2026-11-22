@@ -367,3 +367,43 @@
 .league-table li.you .mono { color: var(--amber); }
 .streak .shield { color: var(--muted); font-weight: 400; }
 .streak .shield.ready, .streak .shield.saved { color: var(--amber); }
+
+/* ---------- Ballpark+: packs, the pass page, ad spaces ---------- */
+.plus-tag { margin: 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
+.packs-card { display: flex; flex-direction: column; gap: 10px; }
+.pack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pack-row { width: 100%; display: grid; grid-template-columns: 2.2em 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; text-align: left; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font: inherit; cursor: pointer; }
+.pack-row:hover { border-color: var(--amber); }
+.pack-row.locked { opacity: 0.82; }
+.pack-emoji { font-size: 1.5rem; line-height: 1; text-align: center; }
+.pack-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pack-text strong { font-size: 0.98rem; }
+.pack-text small { color: var(--muted); font-size: 0.78rem; line-height: 1.3; }
+.pack-state { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.78rem; color: var(--amber); white-space: nowrap; }
+
+.plus-page { gap: 12px; }
+.plus-head { display: flex; flex-direction: column; gap: 4px; }
+.plus-head .kicker { margin: 0; }
+.plus-head h1 { margin: 0; font-size: 1.7rem; line-height: 1.15; }
+.plus-head h1 span { color: var(--amber); }
+.perks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.perks li { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 2px solid var(--amber); }
+.perks strong { font-size: 0.95rem; }
+.perks span { color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.plan { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.plan.on { border-color: var(--amber); background: rgba(255, 179, 71, 0.1); }
+.plan span { font-size: 0.8rem; color: var(--muted); }
+.plan strong { font-size: 1.5rem; font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; }
+.plan small { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+.plan em { position: absolute; top: -9px; right: 10px; padding: 1px 7px; border-radius: 999px; background: var(--amber); color: var(--tide-ink); font-style: normal; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ghost-button { min-height: 42px; padding: 8px 14px; border-radius: 999px; background: transparent; border: 1px dashed var(--line-art); color: var(--line-art); font: inherit; font-size: 0.9rem; cursor: pointer; }
+.fine { margin: 0; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+.plus-active { display: flex; flex-direction: column; gap: 6px; }
+.plus-active h2 { margin: 0; color: var(--amber); }
+.plus-active p { margin: 0; color: var(--muted); }
+
+.ad-slot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed rgba(143, 211, 255, 0.35); border-radius: 10px; background: rgba(143, 211, 255, 0.04); }
+.ad-slot p { margin: 0; flex: 1; color: var(--muted); font-size: 0.85rem; }
+.ad-label { padding: 1px 6px; border: 1px solid var(--muted); border-radius: 4px; color: var(--muted); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.ad-slot .text-button { font-size: 0.8rem; }

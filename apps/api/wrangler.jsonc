@@ -16,7 +16,9 @@
   "vars": {
     "ALLOW_DATE_OVERRIDE": "true",
     "SHARE_HOST": "ballpark.local",
-    "EPOCH": "2026-01-01"
+    "EPOCH": "2026-01-01",
+    // "true" lets a local request unlock Ballpark+ without paying. Razorpay keys are secrets, never vars.
+    "PLUS_TEST_UNLOCK": "true"
   },
   "triggers": {
     "crons": ["0 0 * * *"]

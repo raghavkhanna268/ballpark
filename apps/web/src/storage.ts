@@ -5,9 +5,13 @@ const KEY = "ballpark.stats.v1";
 /** `shieldWeek` is the league week whose streak shield is spent; `shieldedOn` is the last day a shield saved the streak. */
 export type StoredStats = Stats & { completedDates: string[]; shieldWeek: string | null; shieldedOn: string | null };
 
-function empty(): StoredStats {
+/** One id per page load even when storage is blocked, so every request from this visit agrees. */
+let visitId: string | null = null;
+
+function empty(deviceId?: string): StoredStats {
+  visitId ??= crypto.randomUUID();
   return {
-    deviceId: crypto.randomUUID(),
+    deviceId: deviceId ?? visitId,
     played: 0,
     currentStreak: 0,
     maxStreak: 0,
@@ -19,13 +23,27 @@ function empty(): StoredStats {
   };
 }
 
+/**
+ * A new player's device id is saved straight away. Answers, the league and a Ballpark+ pass all hang off it,
+ * so it must not change between the first request and the next.
+ */
+function saveFresh(deviceId?: string): StoredStats {
+  const fresh = empty(deviceId);
+  try {
+    localStorage.setItem(KEY, JSON.stringify(fresh));
+  } catch {
+    // Storage is blocked. The id still holds for this visit.
+  }
+  return fresh;
+}
+
 export function loadStats(): StoredStats {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return empty();
+    if (!raw) return saveFresh();
     const parsed = JSON.parse(raw) as Partial<StoredStats>;
     if (!parsed.deviceId || !Array.isArray(parsed.distribution) || parsed.distribution.length !== 5) {
-      return empty();
+      return saveFresh(parsed.deviceId);
     }
     return {
       deviceId: parsed.deviceId,

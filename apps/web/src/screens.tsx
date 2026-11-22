@@ -33,6 +33,8 @@ export function HomeScreen({
   challenge,
   league,
   logbook,
+  packs,
+  ad,
 }: {
   puzzle: PuzzleResponse;
   stats: Stats;
@@ -48,6 +50,10 @@ export function HomeScreen({
   league?: ReactNode;
   /** The player's logbook card. */
   logbook?: ReactNode;
+  /** Ballpark+ themed packs. */
+  packs?: ReactNode;
+  /** An ad space, for free players only. */
+  ad?: ReactNode;
 }) {
   const done = puzzle.result !== null;
   const started = puzzle.questions.some((question) => question.reveal);
@@ -102,6 +108,10 @@ export function HomeScreen({
           {h2hLabel}
         </button>
       </section>
+
+      {packs}
+
+      {ad}
 
       {league}
 
@@ -180,6 +190,7 @@ export function RevealScreen({
   reveal,
   index,
   last,
+  lastLabel = "See the day",
   onNext,
   onHome,
 }: {
@@ -188,6 +199,7 @@ export function RevealScreen({
   reveal: Reveal;
   index: number;
   last: boolean;
+  lastLabel?: string;
   onNext: () => void;
   onHome: () => void;
 }) {
@@ -231,7 +243,7 @@ export function RevealScreen({
         <Crowd crowd={reveal.crowd} type={question.type} />
       </section>
       <button className="primary" type="button" onClick={onNext}>
-        {last ? "See the day" : "Next question"}
+        {last ? lastLabel : "Next question"}
       </button>
     </div>
   );
@@ -243,6 +255,7 @@ export function EndScreen({
   stats,
   streak,
   rivals,
+  ad,
   onHome,
 }: {
   puzzle: PuzzleResponse;
@@ -251,6 +264,8 @@ export function EndScreen({
   streak: StreakView & { savedToday: boolean };
   /** Your rank, the friend you raced, and the weekly league. */
   rivals?: ReactNode;
+  /** An ad space, for free players only. */
+  ad?: ReactNode;
   onHome: () => void;
 }) {
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
@@ -286,6 +301,7 @@ export function EndScreen({
       <p className="streak-line">
         Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
       </p>
+      {ad}
       <button className="text-button" type="button" onClick={onHome}>
         Back home
       </button>

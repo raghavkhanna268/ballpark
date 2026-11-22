@@ -6,10 +6,13 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { COUNTRIES, ELEMENTS, METRIC_COPY, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { COUNTRIES, ELEMENTS, METRIC_COPY, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
-import { nameOneById, type AcceptedSeed } from "./name-one.ts";
+import { funDays, funNameOne, packNameOne, packs, type SeedPack } from "./fun.ts";
+import { nameOneById, type AcceptedSeed, type NameOneSeed } from "./name-one.ts";
+
+export { packs, type SeedPack };
 
 export type SeedFact = {
   id: string;
@@ -291,7 +294,7 @@ const baseQuestions: SeedQuestion[] = [
   question("q-long-trenches", "Which ocean trench is deeper?", "compare", "higher", ["f-challenger", "f-puerto-rico"], ["f-puerto-rico", "f-challenger"], "Challenger Deep reaches about 10,935 m. The Puerto Rico Trench, the deepest part of the Atlantic, is about 8,400 m.", "NOAA Ocean Exploration", "https://oceanexplorer.noaa.gov/ocean-fact/ocean-depth/", PD, "geography", 2),
 ];
 
-export const questions: SeedQuestion[] = baseQuestions.map((item) => {
+const baseNamed: SeedQuestion[] = baseQuestions.map((item) => {
   const named = nameOneById.get(item.id);
   if (!named) return item;
   return {
@@ -326,7 +329,37 @@ const basePuzzles: SeedPuzzle[] = [
   { slot: 9, theme: "Measured Earth", blurb: "The equator, deserts, the Caribbean, and the heavy end of the periodic table.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
 ];
 
-export const puzzles = basePuzzles;
+/** A name-one question that has no older numeric version to replace. */
+function fromNameOne(named: NameOneSeed): SeedQuestion {
+  return {
+    id: named.id,
+    prompt: named.prompt,
+    type: "name_one",
+    unit: null,
+    polarity: "higher",
+    scale: null,
+    factIds: [],
+    displayIds: [],
+    context: named.context,
+    sourceUrl: named.sourceUrl,
+    sourceName: named.sourceName,
+    retrievedAt: ON,
+    license: named.license,
+    topic: named.topic,
+    difficulty: named.difficulty,
+    verified: false,
+    accepted: named.accepted,
+    entitySet: named.entitySet,
+  };
+}
+
+export const questions: SeedQuestion[] = [...baseNamed, ...funNameOne.map(fromNameOne), ...packNameOne.map(fromNameOne)];
+
+/** The fun week opens the rotation. The older themes follow it. */
+export const puzzles: SeedPuzzle[] = [
+  ...funDays.map((day, slot) => ({ slot, ...day })),
+  ...basePuzzles.map((item) => ({ ...item, slot: item.slot + funDays.length })),
+];
 
 export const facts: SeedFact[] = [
   ...baseFacts.map((item) => {
@@ -342,8 +375,9 @@ export function assertSeed(): void {
   if (factById.size !== facts.length) throw new Error("Duplicate fact id");
   const questionById = new Map(questions.map((item) => [item.id, item]));
   if (questionById.size !== questions.length) throw new Error("Duplicate question id");
-  if (questions.length !== 50) throw new Error(`Expected 50 questions, found ${questions.length}`);
-  if (puzzles.length !== 10) throw new Error("Expected 10 puzzles");
+  if (questions.length !== 100) throw new Error(`Expected 100 questions, found ${questions.length}`);
+  if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
+  if (packs.length !== 3) throw new Error("Expected 3 packs");
 
   for (const item of facts) {
     if (item.verified !== false) throw new Error(`${item.id} must stay unverified in the sample`);
@@ -358,7 +392,25 @@ export function assertSeed(): void {
   for (const puzzle of puzzles) {
     if (seenSlots.has(puzzle.slot)) throw new Error(`Duplicate slot ${puzzle.slot}`);
     seenSlots.add(puzzle.slot);
+  }
+  const seenPacks = new Set<string>();
+  for (const pack of packs) {
+    if (!/^[a-z0-9-]{2,24}$/.test(pack.id)) throw new Error(`Pack id ${pack.id} must be short lowercase words`);
+    if (seenPacks.has(pack.id)) throw new Error(`Duplicate pack ${pack.id}`);
+    seenPacks.add(pack.id);
+  }
+  // Every question plays in exactly one daily puzzle or one pack, so a pack never repeats a daily question.
+  const rounds = [
+    ...puzzles.map((item) => ({ theme: item.theme, questionIds: item.questionIds })),
+    ...packs.map((item) => ({ theme: item.title, questionIds: item.questionIds })),
+  ];
+  const placed = new Set<string>();
+  for (const puzzle of rounds) {
     if (puzzle.questionIds.length !== 5) throw new Error(`${puzzle.theme} does not have 5 questions`);
+    for (const questionId of puzzle.questionIds) {
+      if (placed.has(questionId)) throw new Error(`${questionId} is used twice`);
+      placed.add(questionId);
+    }
     const usedFacts = new Set<string>();
     const types = new Set<string>();
     for (const questionId of puzzle.questionIds) {
@@ -424,5 +476,8 @@ export function assertSeed(): void {
     // Classic is open answers only: every question is "name one", scored by how rare the answer is.
     if (types.size !== 1 || !types.has("name_one")) throw new Error(`${puzzle.theme} must be all name-one questions`);
   }
-  if (seenSlots.size !== 10) throw new Error("Slots must be 0 through 9");
+  if (placed.size !== questions.length) throw new Error("Every question needs a puzzle or a pack");
+  for (let slot = 0; slot < SEED_SLOTS; slot += 1) {
+    if (!seenSlots.has(slot)) throw new Error(`Slots must be 0 through ${SEED_SLOTS - 1}`);
+  }
 }

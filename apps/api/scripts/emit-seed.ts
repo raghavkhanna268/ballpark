@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSeed, facts, puzzles, questions } from "../seed/content.ts";
+import { assertSeed, facts, packs, puzzles, questions } from "../seed/content.ts";
 
 assertSeed();
 
@@ -24,6 +24,7 @@ const lines: string[] = [
   "DELETE FROM daily_results;",
   "DELETE FROM submissions;",
   "DELETE FROM puzzles;",
+  "DELETE FROM packs;",
   "DELETE FROM questions;",
   "DELETE FROM facts;",
 ];
@@ -81,6 +82,19 @@ for (const item of puzzles) {
       sqlString(item.theme),
       sqlString(item.blurb),
       sqlString(JSON.stringify(item.questionIds)),
+    ].join(", ")});`,
+  );
+}
+
+for (const item of packs) {
+  lines.push(
+    `INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES (${[
+      sqlString(item.id),
+      sqlString(item.title),
+      sqlString(item.emoji),
+      sqlString(item.blurb),
+      sqlString(JSON.stringify(item.questionIds)),
+      String(item.sort),
     ].join(", ")});`,
   );
 }
