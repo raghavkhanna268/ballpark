@@ -4,6 +4,7 @@ import { facts, puzzles, questions, type SeedQuestion } from "../seed/content.ts
 export async function resetAndSeed(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM daily_results"),
+    db.prepare("DELETE FROM league_members"),
     db.prepare("DELETE FROM submissions"),
     db.prepare("DELETE FROM rate_limits"),
     db.prepare("DELETE FROM puzzles"),

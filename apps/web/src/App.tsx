@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useState } from "react";
-import { NAME_CAP, classicStep, journeyProgress, type DayResult, type FieldStats, type Guess, type PuzzleResponse, type Reveal } from "@ballpark/shared";
-import { ApiError, errorCopy, getHeadToHead, getPuzzle, postGuess, type HeadToHeadState } from "./api";
+import {
+  NAME_CAP,
+  classicStep,
+  journeyProgress,
+  type DayResult,
+  type FieldStats,
+  type Guess,
+  type LeagueResponse,
+  type PuzzleResponse,
+  type Race,
+  type Reveal,
+} from "@ballpark/shared";
+import { ApiError, errorCopy, getHeadToHead, getLeague, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
 import { Journey, type Ghost, type Hop } from "./journey";
-import { LogbookCard, loadLogbook, missionFor, recordFind, recordRun, type Logbook, type Mode } from "./logbook";
+import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook, type Mode } from "./logbook";
+import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
-import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, type HeadToHeadStats, type StoredStats } from "./storage";
+import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
 
 type Phase =
   | { name: "home" }
@@ -30,6 +42,17 @@ export function App() {
   const [logbook, setLogbook] = useState<Logbook>(() => loadLogbook());
   /** "Your best" ghost is your best before this visit, so finishing a run does not overtake itself. */
   const [bestBefore] = useState(() => loadLogbook().best);
+  /** A friend's climb from a shared `?race=` link. */
+  const [race] = useState<Race | null>(() => captureRace());
+  const [league, setLeague] = useState<LeagueResponse | null>(null);
+
+  const refreshLeague = useCallback(async () => {
+    try {
+      setLeague(await getLeague(loadStats().deviceId));
+    } catch {
+      // The league card waits for the next refresh.
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -41,12 +64,13 @@ export function App() {
       setH2h(head);
       if (next.result) setStats(recordScore(next.date, next.result.score));
       if (head.result?.official) setH2hStats(recordHeadToHead(head.date, head.result.score));
+      void refreshLeague();
     } catch (caught) {
       setError(errorCopy(caught));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [refreshLeague]);
 
   useEffect(() => {
     void refresh();
@@ -67,11 +91,15 @@ export function App() {
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
       const max = question.type === "name_one" ? NAME_CAP : 20;
       const travel = classicStep(response.reveal.points, max);
-      setHop((current) => ({ id: current.id + 1, kind: response.reveal.points > 0 ? "voyage" : "stumble", travel }));
+      const tier = question.type === "name_one" && response.reveal.points > 0 ? { name: response.reveal.label, points: response.reveal.points } : undefined;
+      setHop((current) => ({ id: current.id + 1, kind: response.reveal.points > 0 ? "voyage" : "stumble", travel, tier }));
       if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
         setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
       }
-      if (response.result) setLogbook(recordRun("classic", nextPuzzle.date, flightFor(nextPuzzle)));
+      if (response.result) {
+        setLogbook(recordRun("classic", flightFor(nextPuzzle)));
+        void refreshLeague();
+      }
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
@@ -87,12 +115,30 @@ export function App() {
   const classicFlight = puzzle ? flightFor(puzzle) : 0;
   const mode: Mode = phase.name === "h2h" ? "h2h" : "classic";
   const flight = mode === "h2h" ? h2hFlight : classicFlight;
-  const day = puzzle?.date ?? h2h?.date ?? null;
-  const mission = day && phase.name !== "home" ? { target: missionFor(day, mode) } : null;
-  const ghosts = phase.name === "home" ? [] : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field);
+  const today = puzzle?.date ?? h2h?.date ?? "";
+  const classicRace = raceFor(race, "classic", puzzle?.puzzleNumber);
+  const h2hRace = raceFor(race, "h2h", h2h?.puzzleNumber);
+  const ghosts = phase.name === "home" ? [] : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
+  const classicStreak = streakStatus(stats, today || undefined);
+  const h2hStreak = streakStatus(h2hStats, today || undefined);
+  const challenge = classicRace && !puzzle?.result ? classicRace : h2hRace && h2h?.status !== "finished" ? h2hRace : null;
+
+  function startHeadToHead() {
+    const correct = h2h?.correct ?? 0;
+    const answered = h2h?.status === "finished" ? 10 : (h2h?.round?.index ?? 0);
+    setH2hFlight(correct + Math.max(0, answered - correct) / 3);
+    setH2hOverview(h2h?.status === "finished");
+    setPhase({ name: "h2h" });
+  }
+
+  function startClassic() {
+    if (!puzzle) return;
+    const index = puzzle.questions.findIndex((question) => question.reveal === null);
+    setPhase({ name: "ask", index: index === -1 ? 0 : index });
+  }
 
   return (
-    <Journey progress={flight} hop={hop} mission={mission} ghosts={ghosts} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
+    <Journey progress={flight} hop={hop} ghosts={ghosts} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
@@ -100,20 +146,14 @@ export function App() {
         <HomeScreen
           puzzle={puzzle}
           stats={stats}
-          h2hStreak={h2hStats.currentStreak}
+          classicStreak={classicStreak}
+          h2hStreak={h2hStreak}
           h2hLabel={h2h?.status === "finished" ? `See today’s run · ${h2h.result?.score ?? 0}` : h2h?.status === "in-progress" ? "Continue Head-to-head" : "Play Head-to-head"}
-          onHeadToHead={() => {
-            const correct = h2h?.correct ?? 0;
-            const answered = h2h?.status === "finished" ? 10 : (h2h?.round?.index ?? 0);
-            setH2hFlight(correct + Math.max(0, answered - correct) / 3);
-            setH2hOverview(h2h?.status === "finished");
-            setPhase({ name: "h2h" });
-          }}
-          onPlay={() => {
-            const index = puzzle.questions.findIndex((question) => question.reveal === null);
-            setPhase({ name: "ask", index: index === -1 ? 0 : index });
-          }}
+          onHeadToHead={startHeadToHead}
+          onPlay={startClassic}
           onResult={() => setPhase({ name: "end" })}
+          challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
+          league={league ? <LeagueCard league={league} today={today} /> : null}
           logbook={<LogbookCard logbook={logbook} />}
         />
       ) : null}
@@ -146,7 +186,20 @@ export function App() {
         />
       ) : null}
       {puzzle && phase.name === "end" && puzzle.result ? (
-        <EndScreen puzzle={puzzle} result={puzzle.result} stats={stats} onHome={() => setPhase({ name: "home" })} />
+        <EndScreen
+          puzzle={puzzle}
+          result={puzzle.result}
+          stats={stats}
+          streak={classicStreak}
+          rivals={
+            <>
+              {puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
+              {classicRace ? <FriendResult race={classicRace} mine={classicFlight} /> : null}
+              <LeagueLine league={league} />
+            </>
+          }
+          onHome={() => setPhase({ name: "home" })}
+        />
       ) : null}
       {h2h && phase.name === "h2h" ? (
         <HeadToHeadScreen
@@ -159,8 +212,16 @@ export function App() {
           }}
           onOfficialFinish={(date, score) => {
             setH2hStats(recordHeadToHead(date, score));
-            setLogbook(recordRun("h2h", date, journeyProgress(score, 10)));
+            setLogbook(recordRun("h2h", journeyProgress(score, 10)));
+            void refreshLeague();
           }}
+          rivals={(result) => (
+            <>
+              {h2hRace ? <FriendResult race={h2hRace} mine={journeyProgress(result.score, 10)} /> : null}
+              <LeagueLine league={league} />
+              {h2hStreak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
+            </>
+          )}
           onHop={(correct) => {
             setH2hFlight((current) => current + (correct ? 1 : 1 / 3));
             setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.33 }));
@@ -184,8 +245,9 @@ function flightFor(puzzle: PuzzleResponse): number {
   }, 0);
 }
 
-function ghostsFor(best: number, field: FieldStats | undefined): Ghost[] {
+function ghostsFor(best: number, field: FieldStats | undefined, race: Race | null): Ghost[] {
   const ghosts: Ghost[] = [];
+  if (race) ghosts.push({ id: "friend", label: "Your friend", progress: race.progress });
   if (best > 0) ghosts.push({ id: "best", label: "Your best", progress: best });
   if (field && field.players > 0 && field.averageProgress !== null) ghosts.push({ id: "average", label: "Today’s average", progress: field.averageProgress });
   if (field && field.players > 1 && field.bestProgress !== null) ghosts.push({ id: "top", label: "Today’s best", progress: field.bestProgress });

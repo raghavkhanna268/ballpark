@@ -109,6 +109,14 @@ describe("head-to-head API", () => {
     expect(ended.result.marks.match(/🟩|🟥/g)).toHaveLength(10);
     expect(ended.result.shareText).toContain("1/10");
     expect(ended.result.shareText).toContain("🟥");
+    expect(ended.result.shareText).toContain("?race=h1-");
+
+    const league = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
+    const table = (await league.json()) as { joined: boolean; name: string; you: { rank: number; points: number } | null; standings: unknown[] };
+    expect(table.joined).toBe(true);
+    expect(table.name).toBe("Cadet league");
+    expect(table.you).toMatchObject({ rank: 1, points: 50 });
+    expect(table.standings).toHaveLength(1);
 
     const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
     expect(again.status).toBe(409);
@@ -176,3 +184,23 @@ async function answerRound(deviceId: string, round: { index: number; kind: strin
   const choiceId = correct ? round.answer : round.items.find((item) => item.id !== round.answer)?.id;
   return pick(deviceId, { index: round.index, choiceId });
 }
+
+describe("weekly league", () => {
+  it("moves last week's top five up a league", async () => {
+    const at = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 300, 300, '[]', 1, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 120, 120, '[]', 0, ?)").bind(DEVICE, DAY, at),
+    ]);
+    const before = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(OTHER) });
+    expect(((await before.json()) as { joined: boolean }).joined).toBe(false);
+    const response = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
+    const table = (await response.json()) as { week: string; tier: number; name: string; moved: string; you: { points: number } };
+    expect(table.week).toBe("2025-12-29");
+    expect(table.tier).toBe(1);
+    expect(table.name).toBe("Pilot league");
+    expect(table.moved).toBe("up");
+    expect(table.you.points).toBe(120);
+  });
+});

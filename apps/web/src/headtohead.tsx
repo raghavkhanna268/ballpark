@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { PublicH2HRound } from "@ballpark/shared";
 import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
 import { haptic, shareText } from "./haptic";
+import { RankBlock } from "./rivals";
 import { QuestionTimer } from "./timer";
 
 type RevealState = HeadPickResponse & { practice: boolean; timedOut: boolean };
@@ -13,6 +14,7 @@ export function HeadToHeadScreen({
   onOfficialFinish,
   onHop,
   onSettled,
+  rivals,
 }: {
   deviceId: string;
   initial: HeadToHeadState;
@@ -20,6 +22,8 @@ export function HeadToHeadScreen({
   onOfficialFinish: (date: string, score: number) => void;
   onHop: (correct: boolean, correctCount: number, index: number) => void;
   onSettled: () => void;
+  /** Shown under a scored result: the friend you raced, the weekly league, the streak shield. */
+  rivals?: (result: NonNullable<HeadToHeadState["result"]>) => ReactNode;
 }) {
   const [practice, setPractice] = useState(initial.runKind === "practice" && initial.status === "in-progress");
   const [round, setRound] = useState<PublicH2HRound | null>(initial.round);
@@ -105,13 +109,9 @@ export function HeadToHeadScreen({
         </p>
         {result.official ? (
           <>
-            <h2>You beat {result.beatPercent}% of players today</h2>
-            <p className="players">
-              {result.players === 1
-                ? "You’re the only finisher so far, so that’s the whole field."
-                : `${result.players} scored runs today.`}
-            </p>
-            <p className="best-today">Best run today: {result.bestToday}</p>
+            {result.place ? <RankBlock place={result.place} unit="picks" /> : null}
+            <p className="best-today">Best run today: {result.bestToday}/10</p>
+            {rivals?.(result)}
             <p className="emoji-row" aria-label="Ten picks">
               {result.marks}
             </p>

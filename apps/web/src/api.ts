@@ -1,4 +1,4 @@
-import type { FieldStats, Guess, GuessResponse, PublicH2HRound, PuzzleResponse } from "@ballpark/shared";
+import type { FieldStats, Guess, GuessResponse, LeagueResponse, Placement, PublicH2HRound, PuzzleResponse } from "@ballpark/shared";
 
 export type HeadToHeadState = {
   field: FieldStats;
@@ -21,6 +21,8 @@ export type HeadToHeadState = {
     marks: string;
     reached: string;
     provisional: boolean;
+    place: Placement | null;
+    race: string | null;
   } | null;
 };
 
@@ -73,6 +75,11 @@ export async function getPuzzle(deviceId: string): Promise<PuzzleResponse> {
 export async function getHeadToHead(deviceId: string): Promise<HeadToHeadState> {
   const response = await fetch(`/api/head-to-head${devQuery()}`, { headers: { "x-device-id": deviceId } });
   return read<HeadToHeadState>(response);
+}
+
+export async function getLeague(deviceId: string): Promise<LeagueResponse> {
+  const response = await fetch(`/api/league${devQuery()}`, { headers: { "x-device-id": deviceId } });
+  return read<LeagueResponse>(response);
 }
 
 export async function postHeadPick(

@@ -104,8 +104,8 @@ describe("head-to-head sequences", () => {
 
   it("formats the share card", () => {
     expect(levelForCorrectCount(8).name).toBe("Moon");
-    expect(headToHeadShareText(325, "🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩", 8, 10, "ballpark.local", "Milky Way")).toBe(
-      "Ballpark #325 · Head-to-head\n🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached Milky Way\nballpark.local",
+    expect(headToHeadShareText(325, "🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩", 8, 10, "ballpark.local", "the planets", "h325-867")).toBe(
+      "Ballpark #325 · Head-to-head\n🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached the planets\nRace my climb: ballpark.local/?race=h325-867",
     );
   });
 

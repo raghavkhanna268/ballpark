@@ -112,7 +112,7 @@ describe("submissions", () => {
   });
 
   it("scores a full Classic round and reports a percentile for one player", async () => {
-    type RoundResult = { score: number; beatPercent: number; players: number; shareText: string; emojis: string[] };
+    type RoundResult = { score: number; beatPercent: number; players: number; shareText: string; emojis: string[]; place: unknown };
     let result: RoundResult | null = null;
     for (const question of spaceDay()) {
       const response = await guess(DEVICE, question.id, correctGuess(question));
@@ -125,14 +125,14 @@ describe("submissions", () => {
       expect(body.reveal.crowd.submissions).toBe(1);
       result = body.result;
     }
-    expect(result).toMatchObject({ beatPercent: 100, players: 1 });
+    expect(result).toMatchObject({ beatPercent: 100, players: 1, place: { rank: 1, players: 1, next: null } });
     // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
     expect(result!.emojis).toHaveLength(5);
     expect(result!.emojis).not.toContain("⬛");
     expect(result!.score).toBeGreaterThanOrEqual(50);
     expect(result?.shareText).toContain("Ballpark #1 · Classic");
     expect(result?.shareText).toContain("reached");
-    expect(result?.shareText).toContain("ballpark.local");
+    expect(result?.shareText).toContain("ballpark.local/?race=c1-");
     expect(result?.shareText).not.toContain("Mercury");
 
     const again = await puzzle();
@@ -162,8 +162,8 @@ describe("submissions", () => {
         };
       };
     };
-    // Ethiopia's prior is under 1%, and nobody else has answered yet, so it is Legendary.
-    expect(rareBody.reveal.label).toBe("Legendary");
+    // Ethiopia's prior is under 1%, and nobody else has answered yet, so it is a Supernova.
+    expect(rareBody.reveal.label).toBe("Supernova");
     expect(rareBody.reveal.points).toBe(100);
     expect(rareBody.reveal.answerText).toBe("Ethiopia");
     expect(rareBody.reveal.crowd.kind).toBe("named");

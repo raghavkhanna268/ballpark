@@ -19,24 +19,34 @@ import {
 
 const BUCKETS = ["0–100", "101–200", "201–300", "301–400", "401+"];
 
+export type StreakView = { streak: number; shield: "ready" | "used" | "saved" };
+
 export function HomeScreen({
   puzzle,
   stats,
+  classicStreak,
   h2hStreak,
   h2hLabel,
   onPlay,
   onResult,
   onHeadToHead,
+  challenge,
+  league,
   logbook,
 }: {
   puzzle: PuzzleResponse;
   stats: Stats;
-  h2hStreak: number;
+  classicStreak: StreakView;
+  h2hStreak: StreakView;
   h2hLabel: string;
   onPlay: () => void;
   onResult: () => void;
   onHeadToHead: () => void;
-  /** The player's logbook card, shown right after the two modes so the long-term goal is in view. */
+  /** A friend's race link, shown above the modes. */
+  challenge?: ReactNode;
+  /** This week's league table. */
+  league?: ReactNode;
+  /** The player's logbook card. */
   logbook?: ReactNode;
 }) {
   const done = puzzle.result !== null;
@@ -63,10 +73,12 @@ export function HomeScreen({
         {puzzle.devDate ? <p className="dev-flag">Dev date {puzzle.date}. This does not change the real UTC day.</p> : null}
       </section>
 
+      {challenge}
+
       <section className="card mode-card">
         <div className="mode-top">
           <h2>Classic</h2>
-          <p className="streak">Streak {stats.currentStreak}</p>
+          <StreakTag view={classicStreak} />
         </div>
         <p>Five open questions. Name any right answer. The fewer players who think of it, the more it scores.</p>
         {done ? (
@@ -83,7 +95,7 @@ export function HomeScreen({
       <section className="card mode-card">
         <div className="mode-top">
           <h2>Head-to-head</h2>
-          <p className="streak">Streak {h2hStreak}</p>
+          <StreakTag view={h2hStreak} />
         </div>
         <p>Ten pairs, easy to hard. A miss does not end it. You answer every one.</p>
         <button className="primary" type="button" onClick={onHeadToHead}>
@@ -91,11 +103,13 @@ export function HomeScreen({
         </button>
       </section>
 
+      {league}
+
       {logbook}
 
       <section className="stats" aria-label="Your stats on this device">
         <Stat label="Played" value={String(stats.played)} />
-        <Stat label="Streak" value={String(stats.currentStreak)} />
+        <Stat label="Streak" value={String(classicStreak.streak)} />
         <Stat label="Best" value={String(stats.maxStreak)} />
         <div className="dist">
           <p>Score distribution</p>
@@ -227,11 +241,16 @@ export function EndScreen({
   puzzle,
   result,
   stats,
+  streak,
+  rivals,
   onHome,
 }: {
   puzzle: PuzzleResponse;
   result: DayResult;
   stats: Stats;
+  streak: StreakView & { savedToday: boolean };
+  /** Your rank, the friend you raced, and the weekly league. */
+  rivals?: ReactNode;
   onHome: () => void;
 }) {
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
@@ -246,10 +265,7 @@ export function EndScreen({
         <span> pts</span>
       </p>
       {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
-      <h2>You beat {result.beatPercent}% of players today</h2>
-      <p className="players">
-        {result.players === 1 ? "You’re the only finisher so far, so that’s the whole field." : `${result.players} players finished today.`}
-      </p>
+      {rivals}
       <p className="emoji-row" aria-label="Five question bands">
         {result.emojis.join("")}
       </p>
@@ -266,13 +282,25 @@ export function EndScreen({
       >
         {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "failed" ? "Copy didn’t work" : "Share"}
       </button>
+      {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
       <p className="streak-line">
-        Streak {stats.currentStreak} · Best {stats.maxStreak} · Played {stats.played}
+        Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
       </p>
       <button className="text-button" type="button" onClick={onHome}>
         Back home
       </button>
     </div>
+  );
+}
+
+/** "Streak 4 · shield ready": one missed day a week won't break a streak. */
+export function StreakTag({ view }: { view: StreakView }) {
+  const shield = view.shield === "ready" ? "shield ready" : view.shield === "saved" ? "shield saved it" : "shield used";
+  return (
+    <p className="streak" title="Streak shield: one missed day a week won’t break your streak.">
+      Streak {view.streak}
+      {view.streak > 0 ? <span className={`shield ${view.shield}`}> · {shield}</span> : null}
+    </p>
   );
 }
 

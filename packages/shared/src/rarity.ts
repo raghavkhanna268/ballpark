@@ -9,14 +9,15 @@ export type NameTier = { name: string; points: number; band: "green" | "yellow" 
 
 /**
  * Rarity tiers, by the share of players who gave the same answer (blended with the editorial prior
- * until enough people have played). The rarer the answer, the more it scores and the farther you fly.
+ * until enough people have played). The rarer the answer, the more it scores and the higher you climb.
+ * Named for how far a climb goes: a common answer is a Liftoff, a one-in-a-hundred answer is a Supernova.
  */
 export const NAME_TIERS: NameTier[] = [
-  { name: "Legendary", points: 100, band: "green", maxShare: 0.01 },
-  { name: "Deep cut", points: 75, band: "green", maxShare: 0.03 },
-  { name: "Rare", points: 50, band: "yellow", maxShare: 0.08 },
-  { name: "Uncommon", points: 25, band: "blue", maxShare: 0.2 },
-  { name: "Common", points: 10, band: "brown", maxShare: 1 },
+  { name: "Supernova", points: 100, band: "green", maxShare: 0.01 },
+  { name: "Deep space", points: 75, band: "green", maxShare: 0.03 },
+  { name: "Moonshot", points: 50, band: "yellow", maxShare: 0.08 },
+  { name: "Orbit", points: 25, band: "blue", maxShare: 0.2 },
+  { name: "Liftoff", points: 10, band: "brown", maxShare: 1 },
 ];
 
 export function nameTier(share: number): NameTier {

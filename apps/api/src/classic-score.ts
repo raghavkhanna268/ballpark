@@ -120,7 +120,7 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
   const said = counts.get(mine.canonical) ?? 1;
   const live = livePercent(said, total);
   // Rarity is how many other players gave the same answer. Counting your own answer would stop the first
-  // player of the day from ever finding a Legendary one.
+  // player of the day from ever finding a Supernova.
   const othersSaid = matched.filter((item) => item?.canonical === mine.canonical).length;
   const sample = others.length;
   const share = blendShare(sample > 0 ? othersSaid / sample : 0, sample, priorShare(mine, accepted));

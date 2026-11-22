@@ -19,9 +19,9 @@ import {
 } from "./worlds";
 import "./journey.css";
 
-export type Hop = { id: number; kind: "idle" | "voyage" | "stumble"; travel: number };
-export type Ghost = { id: "best" | "average" | "top"; label: string; progress: number };
-export type Mission = { target: number };
+/** One answer's flight. In Classic, `tier` is the rarity tier it earned, shown as the boost. */
+export type Hop = { id: number; kind: "idle" | "voyage" | "stumble"; travel: number; tier?: { name: string; points: number } };
+export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number };
 type Motion = "idle" | "voyage" | "stumble" | "replay";
 
 const SOUND_KEY = "ballpark.sound";
@@ -35,7 +35,7 @@ const ROUTE_POINTS = 1600;
 const TRAIL_OFFSET = 34;
 
 type Pose = { v: number; cam: number; dx: number; dy: number; rot: number; sx: number; sy: number };
-type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "mission" | "space" };
+type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "tier" | "space" };
 
 const REST: Omit<Pose, "v" | "cam"> = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1 };
 
@@ -44,7 +44,6 @@ export function Journey({
   hop,
   overview,
   page,
-  mission,
   ghosts = [],
   children,
 }: {
@@ -54,9 +53,7 @@ export function Journey({
   overview: boolean;
   /** Changes whenever the card below the scene shows a new screen, so it starts scrolled to the top. */
   page: string;
-  /** Today's target height, by stop index. */
-  mission?: Mission | null;
-  /** Faint climbers for your best run, today's average player and today's best player. */
+  /** Faint climbers for your best run, today's average and best players, and a friend you are racing. */
   ghosts?: Ghost[];
   children: ReactNode;
 }) {
@@ -78,7 +75,6 @@ export function Journey({
   const pose = useRef<Pose>({ v: progress, cam: progress, ...REST });
   const landedRef = useRef(-1);
   const ghostsRef = useRef(ghosts);
-  const missionRef = useRef(mission);
   const [k, setK] = useState(1);
   const [motion, setMotion] = useState<Motion>("idle");
   const [landed, setLanded] = useState(() => stopAt(progress));
@@ -87,7 +83,6 @@ export function Journey({
   const [sound, setSound] = useState(() => readSound());
 
   ghostsRef.current = ghosts;
-  missionRef.current = mission;
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -164,13 +159,8 @@ export function Journey({
     routeRef.current?.setAttribute("points", route.current.map(([x, y]) => `${x},${y}`).join(" "));
   }
 
-  /** What changed by climbing from `from` to `to`: today's mission, space, a ghost overtaken, or a new height. */
+  /** What changed by climbing from `from` to `to`: space, a rival overtaken, or a new height. */
   function announce(from: number, to: number) {
-    const target = missionRef.current?.target;
-    if (target !== undefined && from < target - 0.001 && to >= target - 0.001) {
-      setToast({ id: Date.now(), title: "Mission complete", detail: `You reached ${WORLD_STOPS[target]!.phrase}`, tone: "mission" });
-      return;
-    }
     if (from < SPACE_STOP - 0.5 && to >= SPACE_STOP - 0.5) {
       setToast({ id: Date.now(), title: "You’re in space", detail: "100 km up · astronaut suit on", tone: "space" });
       return;
@@ -238,6 +228,7 @@ export function Journey({
     }
     const kind = hop.kind === "stumble" ? "stumble" : "voyage";
     setMotion(kind);
+    if (hop.tier && kind === "voyage") setToast({ id: Date.now(), title: hop.tier.name, detail: `+${hop.tier.points} pts`, tone: "tier" });
     if (sound) playHop(kind);
     return run(kind, from, to, kind === "stumble" ? STUMBLE_MS : VOYAGE_MS);
   }, [progress, hop.id]);
@@ -270,8 +261,10 @@ export function Journey({
   const flying = motion !== "idle";
   const stageClass = ["stage", `is-${motion}`, flying && motion !== "replay" ? "is-focus" : "", reduced ? "quiet" : "", overview ? "is-overview" : ""].join(" ");
   const info = WORLD_STOPS[landed]!;
-  const target = mission ? WORLD_STOPS[mission.target] : null;
-  const missionDone = mission ? landed >= mission.target && progress >= mission.target - 0.001 : false;
+  /** The nearest climber above you: who to beat next. */
+  const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
+  /** Liftoff 1 … Supernova 5: the flame grows with the rarity of the answer. */
+  const boost = motion === "voyage" && hop.tier ? `boost-${Math.max(1, Math.min(5, Math.round(hop.tier.points / 25) + 1))}` : "";
   const columns = WORLD_W + SIDE * 2;
 
   return (
@@ -282,13 +275,12 @@ export function Journey({
         </svg>
         <svg ref={mainRef} className="layer" style={{ width: columns * k, height: WORLD_H * k }} viewBox={`${-SIDE} 0 ${columns} ${WORLD_H}`} aria-hidden="true">
           <WorldMain />
-          {target && mission ? <MissionLine y={climberY(mission.target)} label={target.label} /> : null}
           {ghosts.map((ghost, index) => (
             <GhostClimber key={ghost.id} ghost={ghost} lane={index} />
           ))}
           <polyline ref={routeRef} className={`route-trace ${motion}`} points="" />
         </svg>
-        <div className={`explorer ${motion}`} ref={explorerRef} aria-hidden="true">
+        <div className={`explorer ${motion} ${boost}`} ref={explorerRef} aria-hidden="true">
           <Climber />
           {motion === "stumble" ? <Smoke /> : null}
         </div>
@@ -316,10 +308,11 @@ export function Journey({
               {info.label}
             </span>
           </p>
-          {target ? (
-            <p className={missionDone ? "mission done" : "mission"}>
-              <small>{missionDone ? "Mission complete" : "Today’s mission"}</small>
-              <span>Reach {target.phrase}</span>
+          {ghosts.length > 0 && !flying ? (
+            <p className={rival ? "rival" : "rival done"}>
+              <small>{rival ? "Next to beat" : "Above everyone"}</small>
+              <span>{rival ? rival.label : "you’re out in front"}</span>
+              {rival ? <em>{formatAltitude(rival.progress)}</em> : null}
             </p>
           ) : null}
         </div>
@@ -334,7 +327,6 @@ export function Journey({
                 style={{ bottom: `${(index / (STOPS - 1)) * 100}%` }}
               />
             ))}
-            {mission ? <s className="flag" style={{ bottom: `${(mission.target / (STOPS - 1)) * 100}%` }} /> : null}
             {ghosts.map((ghost) => (
               <u key={ghost.id} className={`ghost-tick ${ghost.id}`} style={{ bottom: `${(Math.min(STOPS - 1, ghost.progress) / (STOPS - 1)) * 100}%` }} />
             ))}
@@ -368,22 +360,10 @@ export function formatAltitude(progress: number): string {
   return WORLD_STOPS[stopAt(progress)]!.altitude;
 }
 
-function MissionLine({ y, label }: { y: number; label: string }) {
-  return (
-    <g className="mission-flag" transform={`translate(0 ${y - 54})`}>
-      <line x1={-SIDE} y1="0" x2={WORLD_W + SIDE} y2="0" stroke="#ffb347" strokeOpacity="0.6" strokeDasharray="6 8" />
-      <path d="M14 0 v-24 l22 7 l-22 7" fill="#ffb347" />
-      <text x="42" y="-10" fill="#ffb347" fontSize="12" className="mono" letterSpacing="1">
-        MISSION · {label.toUpperCase()}
-      </text>
-    </g>
-  );
-}
-
 /** A faint outline of another climber, parked at the height they reached. */
 function GhostClimber({ ghost, lane }: { ghost: Ghost; lane: number }) {
-  const x = lane === 0 ? 70 : lane === 1 ? WORLD_W - 70 : WORLD_W - 130;
-  const y = climberY(ghost.progress) + (lane === 2 ? -40 : 0);
+  const x = [70, WORLD_W - 70, WORLD_W - 130, 130][lane % 4]!;
+  const y = climberY(ghost.progress) + (lane >= 2 ? -40 : 0);
   return (
     <g className={`ghost ${ghost.id}`} transform={`translate(${x} ${y})`}>
       <circle cy="-18" r="8" fill="none" strokeWidth="1.4" />

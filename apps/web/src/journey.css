@@ -59,7 +59,7 @@
   right: 0;
   top: 0;
   height: 84px;
-  background: linear-gradient(to bottom, rgba(7, 11, 22, 0.92), rgba(7, 11, 22, 0.6) 55%, rgba(7, 11, 22, 0));
+  background: linear-gradient(to bottom, rgba(7, 11, 22, 0.97), rgba(7, 11, 22, 0.85) 55%, rgba(7, 11, 22, 0));
   pointer-events: none;
 }
 
@@ -71,6 +71,7 @@
 .ghost.best { color: rgba(232, 241, 255, 0.75); }
 .ghost.average { color: rgba(143, 211, 255, 0.7); }
 .ghost.top { color: rgba(255, 179, 71, 0.75); }
+.ghost.friend { color: #ff9ad5; }
 .ghost { opacity: 0.85; }
 
 /* ---------- the climber ---------- */
@@ -99,6 +100,10 @@
 .climber .flame path { fill: var(--amber); transform-box: fill-box; transform-origin: center top; transform: scaleY(0.35); opacity: 0.8; animation: flicker 0.18s ease-in-out infinite alternate; }
 .explorer.voyage .flame path, .explorer.replay .flame path { transform: scaleY(1.25); opacity: 1; animation-name: roar; }
 .explorer.stumble .flame path { fill: #ff7a66; animation: sputter 0.3s steps(2, end) infinite; }
+/* Rarer answers burn hotter: a Liftoff is a normal flame, a Supernova a long white-hot one. */
+.explorer.boost-3 .flame path { animation-name: roar-3; }
+.explorer.boost-4 .flame path { animation-name: roar-4; fill: #ffd27a; }
+.explorer.boost-5 .flame path { animation-name: roar-5; fill: #fff1c9; filter: drop-shadow(0 0 6px #ffb347); }
 .explorer.stumble .suit, .explorer.stumble .limb { stroke: #ffb0a2; }
 .explorer.idle .climber { animation: hover 2.6s ease-in-out infinite; }
 
@@ -154,8 +159,9 @@
 }
 .toast strong { font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .toast span { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.75rem; color: var(--line-art); }
-.toast.mission, .toast.pass, .toast.space { border-color: var(--amber); }
-.toast.mission span, .toast.pass span, .toast.space span { color: var(--amber); }
+.toast.tier, .toast.pass, .toast.space { border-color: var(--amber); }
+.toast.tier span, .toast.pass span, .toast.space span { color: var(--amber); }
+.toast.tier strong { color: var(--amber); letter-spacing: 0.16em; }
 
 /* ---------- heads-up display ---------- */
 .hud {
@@ -170,15 +176,16 @@
   gap: 8px;
   pointer-events: none;
 }
-.where, .mission { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.where, .rival { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .where { animation: arrive 0.5s ease; }
 .where .power { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.75rem; color: var(--line-art); }
-.where .place { font-size: 1.25rem; font-weight: 600; letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink); }
-.mission { align-items: flex-end; text-align: right; }
-.mission small { font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.mission span { font-size: 0.85rem; font-weight: 600; color: var(--amber); }
-.mission.done small { color: var(--amber); }
-.mission.done span::before { content: "✓ "; }
+.where { max-width: 58%; }
+.where .place { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
+.rival { align-items: flex-end; text-align: right; max-width: 40%; animation: arrive 0.5s ease; }
+.rival em { font-style: normal; font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.68rem; color: var(--line-art); }
+.rival small { font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+.rival span { font-size: 0.8rem; font-weight: 600; color: var(--amber); }
+.rival.done small { color: var(--amber); }
 
 /* A vertical altimeter on the right edge: ground at the bottom, the Milky Way at the top. */
 .altimeter {
@@ -200,11 +207,11 @@
 .alt-line i { position: absolute; left: -4px; width: 9px; height: 1px; background: rgba(143, 211, 255, 0.55); }
 .alt-line i.passed { background: var(--amber); }
 .alt-line i.space { left: -8px; width: 17px; background: rgba(255, 179, 71, 0.7); }
-.alt-line s { position: absolute; left: -14px; width: 0; height: 0; margin-bottom: -5px; border-right: 9px solid var(--amber); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
 .alt-line u { position: absolute; left: 5px; width: 0; height: 0; margin-bottom: -4px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid; }
 .alt-line u.best { color: #e8f1ff; }
 .alt-line u.average { color: var(--line-art); }
 .alt-line u.top { color: var(--amber); }
+.alt-line u.friend { color: #ff9ad5; }
 .alt-line em {
   position: absolute;
   left: -5px;
@@ -293,6 +300,9 @@
 @keyframes ping { 0% { transform: scale(0.7); stroke-opacity: 0.5; } 100% { transform: scale(1.5); stroke-opacity: 0; } }
 @keyframes flicker { to { transform: scaleY(0.5); } }
 @keyframes roar { from { transform: scaleY(1.05); } to { transform: scaleY(1.45); } }
+@keyframes roar-3 { from { transform: scaleY(1.35); } to { transform: scaleY(1.8); } }
+@keyframes roar-4 { from { transform: scaleX(1.15) scaleY(1.7); } to { transform: scaleX(1.2) scaleY(2.2); } }
+@keyframes roar-5 { from { transform: scaleX(1.3) scaleY(2.1); } to { transform: scaleX(1.4) scaleY(2.8); } }
 @keyframes sputter { 0% { opacity: 0.9; } 50% { opacity: 0.05; } }
 @keyframes smoke { 0% { opacity: 0.9; transform: translate(0, 0) scale(0.5); } 100% { opacity: 0; transform: translate(-14px, 46px) scale(2); } }
 @keyframes streak { from { transform: translateY(0); } to { transform: translateY(520%); } }
@@ -333,3 +343,27 @@
 .timer.low .timer-track b { background: #ff7a66; }
 .timer.low .mono { color: #ff7a66; }
 .timer.out .mono { color: #ff7a66; }
+
+/* ---------- rivals: rank, friend races, weekly league ---------- */
+.rank-block { display: flex; flex-direction: column; gap: 4px; }
+.rank-block h2 span { color: var(--muted); font-size: 1.1rem; letter-spacing: 0; }
+.friend-line, .league-line { margin: 0; padding: 8px 10px; border-left: 2px solid #ff9ad5; background: rgba(255, 154, 213, 0.08); font-size: 0.9rem; }
+.friend-line.won { border-color: var(--amber); background: rgba(255, 179, 71, 0.1); }
+.league-line { border-color: var(--line-art); background: rgba(143, 211, 255, 0.08); }
+.shield-line { margin: 0; color: var(--amber); font-size: 0.85rem; }
+.race-card { border: 1px solid #ff9ad5; }
+.race-card h2 { margin: 0; font-size: 1.15rem; }
+.race-card .kicker { color: #ff9ad5; }
+.league { display: flex; flex-direction: column; gap: 10px; }
+.league-moved { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.league-moved.up { color: var(--amber); }
+.league-table { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.league-table li { display: grid; grid-template-columns: 2em 1fr auto; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(143, 211, 255, 0.12); font-size: 0.85rem; }
+.league-table li.you { color: var(--amber); }
+.league-table li.you strong { color: var(--amber); }
+.league-table li.cut { border-bottom: 1px dashed var(--amber); }
+.league-table strong { font-weight: 500; color: var(--ink); }
+.league-table .mono { color: var(--muted); }
+.league-table li.you .mono { color: var(--amber); }
+.streak .shield { color: var(--muted); font-weight: 400; }
+.streak .shield.ready, .streak .shield.saved { color: var(--amber); }

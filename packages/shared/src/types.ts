@@ -166,6 +166,10 @@ export type DayResult = {
   shareText: string;
   reached: string;
   provisional: boolean;
+  /** Your rank among today's finishers, and the gap to the next rank up. */
+  place: import("./compete.js").Placement;
+  /** The race code in the share link, so the client can show it. */
+  race: string;
 };
 
 export type PuzzleResponse = {

@@ -1,4 +1,5 @@
 import { classicField } from "./field.js";
+import { joinLeague } from "./league.js";
 import {
   beatPercent,
   classicShareText,
@@ -7,6 +8,8 @@ import {
   NAME_CAP,
   classicStep,
   levelForProgress,
+  placement,
+  raceCode,
   reachedPhrase,
   puzzleNumber,
   puzzleSlot,
@@ -441,6 +444,7 @@ async function maybeFinish(db: D1Database, date: string, deviceId: string, quest
     )
     .bind(deviceId, date, MODE, score, score, JSON.stringify(bands), new Date().toISOString())
     .run();
+  await joinLeague(db, deviceId, date);
 }
 
 async function dayResult(
@@ -469,16 +473,20 @@ async function dayResult(
     .prepare("SELECT points FROM submissions WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
     .bind(deviceId, date, MODE)
     .all<{ points: number }>();
-  const reached = levelForProgress((mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP), 0));
+  const climbed = (mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP), 0);
+  const reached = levelForProgress(climbed);
+  const race = raceCode("classic", number, climbed);
   return {
     score: mine.score,
     bands,
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(reached)),
+    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(reached), race),
     reached: reachedPhrase(reached),
     provisional: date >= utcToday(),
+    place: placement(mine.score, scores),
+    race,
   };
 }
 

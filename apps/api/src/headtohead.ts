@@ -1,4 +1,5 @@
 import { headToHeadField } from "./field.js";
+import { joinLeague } from "./league.js";
 import {
   type FieldStats,
   H2H_LENGTH,
@@ -6,7 +7,10 @@ import {
   buildHeadToHeadSequence,
   formatFactValue,
   headToHeadShareText,
+  journeyProgress,
   levelForJourney,
+  placement,
+  raceCode,
   reachedPhrase,
   puzzleNumber,
   puzzleSlot,
@@ -14,6 +18,7 @@ import {
   toPublicRound,
   utcToday,
   type H2HFact,
+  type Placement,
   type H2HRound,
   type PublicH2HRound,
 } from "@ballpark/shared";
@@ -53,6 +58,9 @@ export type HeadToHeadState = {
     marks: string;
     reached: string;
     provisional: boolean;
+    /** Scored runs only: your rank today and the gap to the next rank up. */
+    place: Placement | null;
+    race: string | null;
   } | null;
   field: FieldStats;
 };
@@ -186,6 +194,7 @@ export async function pickHeadToHead(
       )
       .bind(deviceId, date, MODE, correctCount, correctCount, JSON.stringify(bands), new Date().toISOString())
       .run();
+    await joinLeague(db, deviceId, date);
     result = await officialResult(db, date, deviceId, puzzleNumber(date, epoch), shareHost, epoch, correctCount >= sequence.length);
   } else if (finished) {
     const reached = levelForJourney(correctCount, sequence.length);
@@ -200,6 +209,8 @@ export async function pickHeadToHead(
       marks,
       reached: reachedPhrase(reached),
       provisional: false,
+      place: null,
+      race: null,
     };
   }
 
@@ -391,17 +402,20 @@ async function officialResult(
   const marks = stored.map((band) => (band === "green" || band === "🟩" ? "🟩" : "🟥")).join("");
   const best = scores.length === 0 ? score : Math.max(...scores);
   const level = levelForJourney(score, H2H_LENGTH);
+  const race = raceCode("h2h", number, journeyProgress(score, H2H_LENGTH));
   return {
     official: true,
     score,
     beatPercent: beatPercent(score, scores.length === 0 ? [score] : scores),
     players: Math.max(scores.length, 1),
     bestToday: best,
-    shareText: headToHeadShareText(number, marks, score, H2H_LENGTH, shareHost, reachedPhrase(level)),
+    shareText: headToHeadShareText(number, marks, score, H2H_LENGTH, shareHost, reachedPhrase(level), race),
     cleared,
     marks,
     reached: reachedPhrase(level),
     provisional: date >= utcToday(),
+    place: placement(score, scores.length === 0 ? [score] : scores),
+    race,
   };
 }
 

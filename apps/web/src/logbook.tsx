@@ -3,7 +3,7 @@ import { WORLD_STOPS } from "./worlds";
 
 /**
  * The logbook is what a player keeps across days: their highest climb, the heights they have reached,
- * today's missions completed, and the rare answers they found. It lives on this device only.
+ * and the rare answers they found. It lives on this device only.
  */
 
 export type Mode = "classic" | "h2h";
@@ -12,20 +12,12 @@ export type Logbook = {
   best: Record<Mode, number>;
   farthest: number;
   worlds: number;
-  missions: string[];
   finds: Find[];
 };
 
 const KEY = "ballpark.logbook.v2";
-/**
- * Mission targets, as stop indexes on the climb. Classic reaches the top only with five Legendary answers,
- * so its targets sit lower: the stratosphere needs mostly Uncommon answers and the Moon mostly Deep cuts.
- * Head-to-head reaches the edge of space with about five right and the planets with nine.
- */
-const MISSION_STOPS: Record<Mode, number[]> = { classic: [5, 6, 7, 8], h2h: [6, 7, 8, 9] };
-
 function empty(): Logbook {
-  return { best: { classic: 0, h2h: 0 }, farthest: 0, worlds: 0, missions: [], finds: [] };
+  return { best: { classic: 0, h2h: 0 }, farthest: 0, worlds: 0, finds: [] };
 }
 
 export function loadLogbook(): Logbook {
@@ -37,7 +29,6 @@ export function loadLogbook(): Logbook {
       best: { classic: parsed.best?.classic ?? 0, h2h: parsed.best?.h2h ?? 0 },
       farthest: parsed.farthest ?? 0,
       worlds: parsed.worlds ?? 0,
-      missions: Array.isArray(parsed.missions) ? parsed.missions : [],
       finds: Array.isArray(parsed.finds) ? parsed.finds : [],
     };
   } catch {
@@ -54,30 +45,15 @@ function save(next: Logbook): Logbook {
   return next;
 }
 
-/** Today's target world. The same for everyone, so players can compare. */
-export function missionFor(date: string, mode: Mode): number {
-  let hash = mode === "h2h" ? 7 : 3;
-  for (const char of date) hash = (hash * 31 + char.charCodeAt(0)) % 9973;
-  const stops = MISSION_STOPS[mode];
-  return stops[hash % stops.length]!;
-}
-
-export function missionKey(date: string, mode: Mode): string {
-  return `${mode}:${date}`;
-}
-
 /** Call once a scored run is finished. Returns the updated logbook. */
-export function recordRun(mode: Mode, date: string, progress: number): Logbook {
+export function recordRun(mode: Mode, progress: number): Logbook {
   const current = loadLogbook();
-  const target = missionFor(date, mode);
-  const key = missionKey(date, mode);
   const reached = Math.max(0, Math.min(WORLD_STOPS.length - 1, Math.round(progress)));
   return save({
     ...current,
     best: { ...current.best, [mode]: Math.max(current.best[mode], progress) },
     farthest: Math.max(current.farthest, progress),
     worlds: Math.max(current.worlds, reached),
-    missions: progress >= target - 0.001 && !current.missions.includes(key) ? [...current.missions, key] : current.missions,
   });
 }
 
@@ -93,7 +69,7 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
     <section className="card logbook" aria-label="Your logbook on this device">
       <div className="mode-top">
         <h2>Logbook</h2>
-        <p className="streak">{logbook.missions.length} missions</p>
+        <p className="streak">On this device</p>
       </div>
       <div className="log-stats">
         <p>
@@ -108,7 +84,7 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
         </p>
         <p>
           <span className="mono">{logbook.finds.length}</span>
-          <small>Rare finds</small>
+          <small>Moonshots or better</small>
         </p>
       </div>
       <ol className="world-strip" aria-hidden="true">
@@ -127,7 +103,7 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
           ))}
         </ul>
       ) : (
-        <p className="hint">Rare and legendary answers you find are kept here.</p>
+        <p className="hint">Moonshot, Deep space and Supernova answers you find are kept here.</p>
       )}
     </section>
   );

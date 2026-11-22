@@ -35,6 +35,27 @@ export {
 } from "./dates.js";
 
 export { classicShareText, headToHeadShareText } from "./share.js";
+export type { LeagueResponse, LeagueStanding, Placement, Race, RaceMode, StreakState } from "./compete.js";
+export {
+  H2H_LEAGUE_POINTS,
+  LEAGUES,
+  LEAGUE_DEMOTION_MIN_GROUP,
+  LEAGUE_GROUP_SIZE,
+  LEAGUE_MOVE_DOWN,
+  LEAGUE_MOVE_UP,
+  advanceStreak,
+  callsign,
+  leagueName,
+  liveStreak,
+  nextTier,
+  parseRace,
+  placement,
+  raceCode,
+  raceUrl,
+  shieldReady,
+  weekEnd,
+  weekStart,
+} from "./compete.js";
 export type { AcceptedAnswer } from "./match.js";
 export { levenshtein, matchAccepted, normalizeAnswer, priorShare } from "./match.js";
 export type { NameTier } from "./rarity.js";

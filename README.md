@@ -23,7 +23,7 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). In dev, add `?date=YYYY-MM-
 2. `GET /api/puzzle` returns five open "name one" prompts. A question about countries or elements also gets the whole group as autocomplete (every country, or every element), which is not the answer key. Free-text questions (whales, Shakespeare plays) get no list, because a list of only the right answers would give them away. Accepted answers, context, and sources never leave the server before a guess.
 3. The browser sends one guess per question, with an anonymous device id kept in `localStorage`.
 4. The Worker scores it, stores the submission, and returns the answer, one or two lines of context, a source link, and the crowd stat (median guess, or the share who got it fully right).
-5. After the fifth question, the response includes the day's score out of 500 and "you beat X% of players today". One finisher beats 100% of the other finishers, because there aren't any. Ties are not counted as beaten.
+5. After the fifth question, the response includes the day's score out of 500, your rank among today's finishers ("You're #3 of 40 today, 15 pts behind #2"), and a race link for the share card. Players on the same score share a rank.
 6. A second submission for the same device, question, and UTC day is rejected. Refreshing shows the reveal you already earned.
 
 Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute). That is basic protection, not a cheat-proof board.
@@ -32,11 +32,14 @@ Streaks and the score histogram stay on the device: played, current streak, best
 
 The scene fills most of the screen, with a compact question card below it. It is drawn as a blueprint: thin line art on a dark navy grid, with one amber accent for the climber and its trail. The game is a climb straight up, one stop per right answer: the launch pad, the rooftops, the skyscrapers, the clouds, the mountain peaks, the stratosphere, the edge of space (the Kármán line at 100 km), the space station, the Moon, the planets, and the Milky Way. The sky darkens and the stars come out as you rise. The climber is a jet-pack pilot in a cap and goggles, and above 100 km it is an astronaut in a helmet. The top corner shows your altitude (`ALT ≈ 9 km`) and the stop's name, and an altimeter on the right edge runs from 0 m to the top. Altitudes are rounded on purpose, so the scene never prints a number that a Head-to-head pair asks about. A correct answer flies the climber up along a dashed amber trail. A wrong answer or a timeout makes it sputter, turn red, and lift only a little. The end screen replays the whole climb. `prefers-reduced-motion` jumps to the new height instead of flying. The art is inline SVG, not image downloads.
 
-How high you get is the score you carry around. The game frames each run as "how high can what you know take you", and three things give that a purpose:
+How high you get is the score you carry around. There is no target: a run climbs as far as your answers take it. In Classic, the rarer the answer, the bigger the boost: the tier name flashes in the sky ("SUPERNOVA +100 pts") and the jet flame burns longer and hotter. What keeps people coming back is other people:
 
-- **Today's mission.** Each mode has a target height for the day, the same for everyone (a dashed amber line across the sky, a flag on the altimeter, and "Reach the Moon" in the corner). Classic's targets run from the stratosphere to the Moon; Head-to-head's from the edge of space to the planets. Reaching it shows "Mission complete".
-- **Ghost climbers.** Faint outline climbers rise with you: your own best on this device, today's average, and today's best. Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
-- **Logbook.** The home screen keeps your highest altitude, how many of the 11 heights you have reached, missions completed, and the Rare-or-better answers you found, with the question each came from. It lives in `localStorage`, like the streaks.
+- **Ghost climbers.** Faint outline climbers rise with you: your own best on this device, today's average, today's best, and a friend whose race link you opened. The top-right corner always names the next one above you ("Next to beat · Today's best · ≈ 400 km"). Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
+- **Rank after every game.** The end screen says "You're #3 of 40 today" and how far behind the next rank you are, in points (Classic) or right answers (Head-to-head).
+- **Race a friend.** The share card ends with a link such as `ballpark.local/?race=c326-735` (mode, puzzle number, height climbed). Opening it on the same day shows a challenge card on the home screen, the friend's climb flies beside yours, and the end screen says who climbed higher. The link carries no answers. It is not signed, so it is for fun between friends, not a ranking.
+- **Weekly league.** Finishing any game puts you in this week's league (Monday to Sunday, UTC), in a group of up to 30 players of the same rank: Cadet, Pilot, Navigator, Commander, Captain. League points are your Classic points plus 50 per right Head-to-head pick, so a perfect day in both is 1,000. Next Monday, the top 5 of each group move up a league, and in groups of 15 or more the bottom 5 move down. Players show as stable anonymous callsigns ("Lunar Nova 57"), made from a hash of the device id. `GET /api/league` returns the table.
+- **Streak shield.** One missed day a week doesn't break a streak. The home screen shows "Streak 6 · shield ready", and the end screen says when the shield covered a missed day. Like streaks, it lives on the device.
+- **Logbook.** The home screen keeps your highest altitude, how many of the 11 heights you have reached, and the Moonshot-or-better answers you found, with the question each came from. It lives in `localStorage`.
 
 Every question has a 30-second timer, in both modes. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
 
@@ -46,7 +49,7 @@ Share uses the Web Share API when the browser has it, and copies to the clipboar
 Ballpark #12 · Classic
 🟩🟨🟦🟩⬛ 260 pts
 🏁→🏙️→🎈 reached the stratosphere
-ballpark.local
+Race my climb: ballpark.local/?race=c12-520
 ```
 
 `ballpark.local` is a placeholder host, not a registered domain.
@@ -62,23 +65,23 @@ Each correct pick climbs one stop, with a flip and a jet trail. A miss coughs sm
 ```text
 Ballpark #325 · Head-to-head
 🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩 10/10 · reached the Milky Way
-ballpark.local
+Race my climb: ballpark.local/?race=h325-1000
 ```
 
 ## Scoring
 
-Classic is five open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Legendary one. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
+Classic is five open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Supernova. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
 
 | Tier | Share of other players | Points | Emoji |
 | --- | --- | --- | --- |
-| Legendary | 1% or less | 100 | 🟩 |
-| Deep cut | 3% or less | 75 | 🟩 |
-| Rare | 8% or less | 50 | 🟨 |
-| Uncommon | 20% or less | 25 | 🟦 |
-| Common | more than 20% | 10 | 🟤 |
+| Supernova | 1% or less | 100 | 🟩 |
+| Deep space | 3% or less | 75 | 🟩 |
+| Moonshot | 8% or less | 50 | 🟨 |
+| Orbit | 20% or less | 25 | 🟦 |
+| Liftoff | more than 20% | 10 | 🟤 |
 | Not on the list, or out of time | | 0 | ⬛ |
 
-The ladder shows under every prompt, so the goal is to think past the obvious answer. How high an answer climbs follows its points: 0.6 of a stop for any right answer plus up to 1.4 more, so five Legendary answers reach the Milky Way. A wrong answer lifts 0.28.
+The ladder shows under every prompt, so the goal is to think past the obvious answer. How high an answer climbs follows its points: 0.6 of a stop for any right answer plus up to 1.4 more, so five Supernova answers reach the Milky Way. A wrong answer lifts 0.28.
 
 The estimate, compare and rank scorers below are still in the code and tested, but no sample day uses them now.
 
@@ -125,6 +128,7 @@ Schema, in short:
 - `puzzles` — a theme and five question ids, all name-one
 - `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. Head-to-head `score` is correct picks out of 10. `finalized` flips when the UTC day is recomputed
 - `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
+- `league_members` — one row per device per league week: its rank (`tier`), its group, and whether last week moved it up or down
 
 ## Sample content, and what has to change before a public game
 
