@@ -1,4 +1,6 @@
+import { headToHeadField } from "./field.js";
 import {
+  type FieldStats,
   H2H_LENGTH,
   beatPercent,
   buildHeadToHeadSequence,
@@ -52,9 +54,22 @@ export type HeadToHeadState = {
     reached: string;
     provisional: boolean;
   } | null;
+  field: FieldStats;
 };
 
 export async function loadHeadToHead(
+  db: D1Database,
+  date: string,
+  deviceId: string,
+  epoch: string,
+  shareHost: string,
+  devDate: boolean,
+): Promise<HeadToHeadState> {
+  const state = await loadHeadToHeadState(db, date, deviceId, epoch, shareHost, devDate);
+  return { ...state, field: await headToHeadField(db, date, H2H_LENGTH) };
+}
+
+async function loadHeadToHeadState(
   db: D1Database,
   date: string,
   deviceId: string,
@@ -101,7 +116,7 @@ export async function pickHeadToHead(
   epoch: string,
   shareHost: string,
   index: number,
-  choice: { choiceId?: string; direction?: "higher" | "lower" },
+  choice: { choiceId?: string; direction?: "higher" | "lower"; timedOut?: boolean },
 ): Promise<{
   correct: boolean;
   correctCount: number;
@@ -130,13 +145,15 @@ export async function pickHeadToHead(
   const sequence = await sequenceFor(db, date, seedKey(date, deviceId, run), epoch);
   const round = sequence[index];
   if (!round) throw new HttpError(400, "invalid_guess");
-  if (round.kind === "higher-lower") {
+  if (choice.timedOut) {
+    // The 30-second timer ran out. It counts as a miss.
+  } else if (round.kind === "higher-lower") {
     if (choice.direction !== "higher" && choice.direction !== "lower") throw new HttpError(400, "invalid_guess");
   } else if (!round.items.some((item) => item.id === choice.choiceId)) {
     throw new HttpError(400, "invalid_guess");
   }
 
-  const correct = scoreHeadToHead(round, choice);
+  const correct = choice.timedOut ? false : scoreHeadToHead(round, choice);
   const correctCount = run.correct_count + (correct ? 1 : 0);
   const finished = index === sequence.length - 1;
   const updated = await db
@@ -393,7 +410,7 @@ function base(
   puzzleNumberValue: number,
   shareHost: string,
   devDate: boolean,
-  rest: Omit<HeadToHeadState, "date" | "puzzleNumber" | "shareHost" | "devDate">,
+  rest: Omit<HeadToHeadState, "date" | "puzzleNumber" | "shareHost" | "devDate" | "field">,
 ): HeadToHeadState {
-  return { date, puzzleNumber: puzzleNumberValue, shareHost, devDate, ...rest };
+  return { date, puzzleNumber: puzzleNumberValue, shareHost, devDate, field: { players: 0, averageProgress: null, bestProgress: null }, ...rest };
 }

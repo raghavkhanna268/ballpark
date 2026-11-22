@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { QuestionTimer } from "./timer";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { haptic, shareText } from "./haptic";
 import {
   formatFactValue,
   formatNumber,
+  NAME_TIERS,
   parseShorthand,
   roundSig,
   type Confidence,
@@ -15,7 +17,7 @@ import {
   type Stats,
 } from "@ballpark/shared";
 
-const BUCKETS = ["0–20", "21–40", "41–60", "61–80", "81+"];
+const BUCKETS = ["0–100", "101–200", "201–300", "301–400", "401+"];
 
 export function HomeScreen({
   puzzle,
@@ -25,6 +27,7 @@ export function HomeScreen({
   onPlay,
   onResult,
   onHeadToHead,
+  logbook,
 }: {
   puzzle: PuzzleResponse;
   stats: Stats;
@@ -33,6 +36,8 @@ export function HomeScreen({
   onPlay: () => void;
   onResult: () => void;
   onHeadToHead: () => void;
+  /** The player's logbook card, shown right after the two modes so the long-term goal is in view. */
+  logbook?: ReactNode;
 }) {
   const done = puzzle.result !== null;
   const started = puzzle.questions.some((question) => question.reveal);
@@ -63,7 +68,7 @@ export function HomeScreen({
           <h2>Classic</h2>
           <p className="streak">Streak {stats.currentStreak}</p>
         </div>
-        <p>Estimate a number, name one, pick the larger one, or put a short list in order.</p>
+        <p>Five open questions. Name any right answer. The fewer players who think of it, the more it scores.</p>
         {done ? (
           <button className="primary" type="button" onClick={onResult}>
             See today’s result · {puzzle.result?.score} pts
@@ -85,6 +90,8 @@ export function HomeScreen({
           {h2hLabel}
         </button>
       </section>
+
+      {logbook}
 
       <section className="stats" aria-label="Your stats on this device">
         <Stat label="Played" value={String(stats.played)} />
@@ -128,8 +135,14 @@ export function QuestionScreen({
   return (
     <div className="stack">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
+      <QuestionTimer
+        questionKey={question.id}
+        running={!busy}
+        onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
+      />
       <p className="type-kicker">{typeLabel(question.type)}</p>
       <h2 className="prompt">{question.prompt}</h2>
+      {question.type === "name_one" ? <TierLadder /> : null}
       {question.type === "estimate" && question.slider && question.unit ? (
         <EstimateForm unit={question.unit} slider={question.slider} busy={busy} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
       ) : null}
@@ -580,6 +593,20 @@ function countdownLabel(now: Date): string {
   return `Resets ${local} · ${hours}h ${minutes}m ${seconds}s`;
 }
 
+/** The scoring ladder, shown before the player answers, so the goal is to think past the obvious. */
+function TierLadder() {
+  return (
+    <ol className="tier-ladder" aria-label="Points by how rare your answer is">
+      {[...NAME_TIERS].reverse().map((tier) => (
+        <li key={tier.name} className={`tier-${tier.band}`}>
+          <b>{tier.points}</b>
+          <span>{tier.name}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function NameForm({
   suggestions,
   busy,
@@ -597,7 +624,7 @@ function NameForm({
       onSubmit={(event) => {
         event.preventDefault();
         if (text.trim().length < 1) {
-          setLocalError("Type an answer. The list is everyone in that group, not a hint.");
+          setLocalError(suggestions.length > 0 ? "Type an answer. The list is everyone in that group, not a hint." : "Type an answer first.");
           return;
         }
         onSubmit(text.trim());
@@ -605,14 +632,28 @@ function NameForm({
     >
       <label className="number-field">
         <span className="sr">Your answer</span>
-        <input list="name-suggestions" value={text} onChange={(event) => setText(event.target.value)} autoComplete="off" placeholder="Type a name" />
+        <input
+          list={suggestions.length > 0 ? "name-suggestions" : undefined}
+          value={text}
+          onChange={(event) => setText(event.target.value)}
+          autoComplete="off"
+          autoCapitalize="words"
+          enterKeyHint="done"
+          placeholder="Type any right answer"
+        />
       </label>
-      <datalist id="name-suggestions">
-        {suggestions.map((name) => (
-          <option key={name} value={name} />
-        ))}
-      </datalist>
-      <p className="hint">Suggestions are the whole list. They do not tell you which names score.</p>
+      {suggestions.length > 0 ? (
+        <datalist id="name-suggestions">
+          {suggestions.map((name) => (
+            <option key={name} value={name} />
+          ))}
+        </datalist>
+      ) : null}
+      <p className="hint">
+        {suggestions.length > 0
+          ? "Suggestions are the whole list. They do not tell you which names score."
+          : "No list for this one. Small spelling slips are fine."}
+      </p>
       {localError ? <p className="form-error">{localError}</p> : null}
       <button className="primary" type="submit" disabled={busy}>
         {busy ? "Checking…" : "Lock in answer"}

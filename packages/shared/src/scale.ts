@@ -30,8 +30,8 @@ export const SCALE_LEVELS: ScaleLevel[] = [
  */
 const JOURNEY_INDEX = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11] as const;
 
-/** Two name-one questions (36 each) plus three 20-point questions. */
-export const CLASSIC_SCORE_SPAN = 132;
+/** Five name-one questions at up to 100 points each. Keep in step with NAME_CAP in rarity.ts. */
+export const CLASSIC_SCORE_SPAN = 500;
 
 const PHRASE: Record<string, string> = {
   atom: "the atom",
@@ -68,11 +68,38 @@ export function journeyProgress(correct: number, answered: number): number {
   return safeCorrect + misses / 3;
 }
 
-/** The world a finished run is standing in, including the short hops from misses. */
-export function levelForJourney(correct: number, answered: number): ScaleLevel {
-  const index = Math.max(0, Math.min(JOURNEY_STOP_IDS.length - 1, Math.round(journeyProgress(correct, answered))));
+/**
+ * Classic: how far one answer flies. A miss hops a little. Any scored answer flies at least 0.6 of a world,
+ * and a full-marks answer flies two, so five perfect answers reach the Milky Way.
+ */
+export function classicStep(points: number, max: number): number {
+  if (points <= 0 || max <= 0) return 0.28;
+  return 0.6 + 1.4 * Math.min(1, points / max);
+}
+
+/** Today's field, as distances along the journey, so the client can fly ghosts for the average and the best. */
+export type FieldStats = { players: number; averageProgress: number | null; bestProgress: number | null };
+
+export function fieldStats(progresses: number[]): FieldStats {
+  if (progresses.length === 0) return { players: 0, averageProgress: null, bestProgress: null };
+  const total = progresses.reduce((sum, value) => sum + value, 0);
+  return {
+    players: progresses.length,
+    averageProgress: Math.round((total / progresses.length) * 100) / 100,
+    bestProgress: Math.round(Math.max(...progresses) * 100) / 100,
+  };
+}
+
+/** The world at a distance along the journey, as the scene draws it. */
+export function levelForProgress(progress: number): ScaleLevel {
+  const index = Math.max(0, Math.min(JOURNEY_STOP_IDS.length - 1, Math.round(progress)));
   const id = JOURNEY_STOP_IDS[index]!;
   return SCALE_LEVELS.find((item) => item.id === id) ?? SCALE_LEVELS[0]!;
+}
+
+/** The world a finished run is standing in, including the short hops from misses. */
+export function levelForJourney(correct: number, answered: number): ScaleLevel {
+  return levelForProgress(journeyProgress(correct, answered));
 }
 
 export function levelIndexForClassicScore(score: number, span = CLASSIC_SCORE_SPAN): number {

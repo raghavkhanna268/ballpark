@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import type { PublicH2HRound } from "@ballpark/shared";
 import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
 import { haptic, shareText } from "./haptic";
+import { QuestionTimer } from "./timer";
 
-type RevealState = HeadPickResponse & { practice: boolean };
+type RevealState = HeadPickResponse & { practice: boolean; timedOut: boolean };
 
 export function HeadToHeadScreen({
   deviceId,
@@ -57,7 +58,7 @@ export function HeadToHeadScreen({
     };
   }, [reveal]);
 
-  async function choose(body: { choiceId?: string; direction?: "higher" | "lower" }) {
+  async function choose(body: { choiceId?: string; direction?: "higher" | "lower"; timedOut?: boolean }) {
     if (!round || busy) return;
     setBusy(true);
     setError(null);
@@ -68,7 +69,7 @@ export function HeadToHeadScreen({
       onHop(response.correct, response.correctCount, round.index);
       haptic(response.correct ? "good" : "bad");
       if (response.finished && response.result?.official) onOfficialFinish(initial.date, response.result.score);
-      setReveal({ ...response, practice });
+      setReveal({ ...response, practice, timedOut: body.timedOut === true });
     } catch (caught) {
       setError(errorCopy(caught));
     } finally {
@@ -154,12 +155,12 @@ export function HeadToHeadScreen({
       {practice ? <p className="practice-flag">Practice · not on the board</p> : <p className="type-kicker">Head-to-head</p>}
       {showing && slim ? (
         <section className={`reveal slim ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
-          <h2>{showing.correct ? "Correct" : "Not this one"}</h2>
+          <h2>{showing.correct ? "Correct" : showing.timedOut ? "Out of time" : "Not this one"}</h2>
         </section>
       ) : showing ? (
         <section className={`reveal ${showing.correct ? "band-green" : "band-black"}`} aria-live="polite">
           <p className="emoji">{showing.correct ? "🟩" : "❌"}</p>
-          <h2>{showing.correct ? "Correct" : "Not this one"}</h2>
+          <h2>{showing.correct ? "Correct" : showing.timedOut ? "Out of time" : "Not this one"}</h2>
           <ul className="rows">
             {showing.reveal.rows.map((row) => (
               <li key={row.label}>
@@ -191,7 +192,10 @@ export function HeadToHeadScreen({
           </button>
         </section>
       ) : round ? (
-        <RoundForm round={round} busy={busy} onChoose={(body) => void choose(body)} />
+        <>
+          <QuestionTimer questionKey={`${practice ? "p" : "s"}-${round.index}`} running={!busy} onExpire={() => void choose({ timedOut: true })} />
+          <RoundForm round={round} busy={busy} onChoose={(body) => void choose(body)} />
+        </>
       ) : (
         <p className="status">No pair is available.</p>
       )}

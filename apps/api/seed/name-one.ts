@@ -1,3 +1,5 @@
+import { moreNameOne } from "./name-one-more.ts";
+
 /**
  * SAMPLE name-one questions. verified stays false on the question row.
  * Accepted lists are server-only. Autocomplete uses the broad entity list.
@@ -7,7 +9,8 @@ export type AcceptedSeed = { canonical: string; aliases: string[]; prior: number
 export type NameOneSeed = {
   id: string;
   prompt: string;
-  entitySet: "countries" | "elements";
+  /** null means free text with no autocomplete. */
+  entitySet: "countries" | "elements" | null;
   accepted: AcceptedSeed[];
   context: string;
   sourceName: string;
@@ -535,4 +538,7 @@ export const nameOneQuestions: NameOneSeed[] = [
   },
 ];
 
-export const nameOneById = new Map(nameOneQuestions.map((item) => [item.id, item]));
+/** Every Classic question is a name-one question now. The base estimate, compare and rank rows stay as ids only. */
+export const allNameOne: NameOneSeed[] = [...nameOneQuestions, ...moreNameOne];
+
+export const nameOneById = new Map(allNameOne.map((item) => [item.id, item]));

@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import type { DayResult, Guess, PuzzleResponse, Reveal } from "@ballpark/shared";
+import { NAME_CAP, classicStep, journeyProgress, type DayResult, type FieldStats, type Guess, type PuzzleResponse, type Reveal } from "@ballpark/shared";
 import { ApiError, errorCopy, getHeadToHead, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
-import { Hop, Journey } from "./journey";
+import { Journey, type Ghost, type Hop } from "./journey";
+import { LogbookCard, loadLogbook, missionFor, recordFind, recordRun, type Logbook, type Mode } from "./logbook";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, type HeadToHeadStats, type StoredStats } from "./storage";
 
@@ -26,6 +27,7 @@ export function App() {
   const [h2hFlight, setH2hFlight] = useState(0);
   const [h2hOverview, setH2hOverview] = useState(false);
   const [hop, setHop] = useState<Hop>({ id: 0, kind: "idle", travel: 1 });
+  const [logbook, setLogbook] = useState<Logbook>(() => loadLogbook());
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -61,9 +63,13 @@ export function App() {
       const nextPuzzle = { ...puzzle, questions, result: response.result };
       setPuzzle(nextPuzzle);
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
-      const max = question.type === "name_one" ? 36 : 20;
-      const travel = Math.max(0.15, response.reveal.points / max);
+      const max = question.type === "name_one" ? NAME_CAP : 20;
+      const travel = classicStep(response.reveal.points, max);
       setHop((current) => ({ id: current.id + 1, kind: response.reveal.points > 0 ? "voyage" : "stumble", travel }));
+      if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
+        setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
+      }
+      if (response.result) setLogbook(recordRun("classic", nextPuzzle.date, flightFor(nextPuzzle)));
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
@@ -76,16 +82,15 @@ export function App() {
     }
   }
 
-  const classicFlight =
-    puzzle?.questions.reduce((sum, question) => {
-      if (!question.reveal) return sum;
-      const max = question.type === "name_one" ? 36 : 20;
-      return sum + (question.reveal.points <= 0 ? 0.28 : (question.reveal.points / max) * 2);
-    }, 0) ?? 0;
-  const flight = phase.name === "h2h" ? h2hFlight : classicFlight;
+  const classicFlight = puzzle ? flightFor(puzzle) : 0;
+  const mode: Mode = phase.name === "h2h" ? "h2h" : "classic";
+  const flight = mode === "h2h" ? h2hFlight : classicFlight;
+  const day = puzzle?.date ?? h2h?.date ?? null;
+  const mission = day && phase.name !== "home" ? { target: missionFor(day, mode) } : null;
+  const ghosts = phase.name === "home" ? [] : ghostsFor(logbook.best[mode], mode === "h2h" ? h2h?.field : puzzle?.field);
 
   return (
-    <Journey progress={flight} hop={hop} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
+    <Journey progress={flight} hop={hop} mission={mission} ghosts={ghosts} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
@@ -107,6 +112,7 @@ export function App() {
             setPhase({ name: "ask", index: index === -1 ? 0 : index });
           }}
           onResult={() => setPhase({ name: "end" })}
+          logbook={<LogbookCard logbook={logbook} />}
         />
       ) : null}
       {puzzle && phase.name === "ask" ? (
@@ -149,7 +155,10 @@ export function App() {
             setPhase({ name: "home" });
             void refresh();
           }}
-          onOfficialFinish={(date, score) => setH2hStats(recordHeadToHead(date, score))}
+          onOfficialFinish={(date, score) => {
+            setH2hStats(recordHeadToHead(date, score));
+            setLogbook(recordRun("h2h", date, journeyProgress(score, 10)));
+          }}
           onHop={(correct) => {
             setH2hFlight((current) => current + (correct ? 1 : 1 / 3));
             setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.33 }));
@@ -164,4 +173,19 @@ export function App() {
     </main>
     </Journey>
   );
+}
+
+function flightFor(puzzle: PuzzleResponse): number {
+  return puzzle.questions.reduce((sum, question) => {
+    if (!question.reveal) return sum;
+    return sum + classicStep(question.reveal.points, question.type === "name_one" ? NAME_CAP : 20);
+  }, 0);
+}
+
+function ghostsFor(best: number, field: FieldStats | undefined): Ghost[] {
+  const ghosts: Ghost[] = [];
+  if (best > 0) ghosts.push({ id: "best", label: "Your best", progress: best });
+  if (field && field.players > 0 && field.averageProgress !== null) ghosts.push({ id: "average", label: "Today’s average", progress: field.averageProgress });
+  if (field && field.players > 1 && field.bestProgress !== null) ghosts.push({ id: "top", label: "Today’s best", progress: field.bestProgress });
+  return ghosts;
 }

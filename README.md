@@ -20,23 +20,31 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). In dev, add `?date=YYYY-MM-
 ## How a round works
 
 1. The Worker picks the puzzle for the UTC date. Puzzle #1 is 2026-01-01. The sample seed has 10 days, and later dates rotate through those days: slot `(puzzleNumber - 1) mod 10`.
-2. `GET /api/puzzle` returns prompts, item labels, and a log-slider range. It does not return values, context, or sources.
+2. `GET /api/puzzle` returns five open "name one" prompts. A question about countries or elements also gets the whole group as autocomplete (every country, or every element), which is not the answer key. Free-text questions (whales, Shakespeare plays) get no list, because a list of only the right answers would give them away. Accepted answers, context, and sources never leave the server before a guess.
 3. The browser sends one guess per question, with an anonymous device id kept in `localStorage`.
 4. The Worker scores it, stores the submission, and returns the answer, one or two lines of context, a source link, and the crowd stat (median guess, or the share who got it fully right).
-5. After the fifth question, the response includes the day's score out of 100 and "you beat X% of players today". One finisher beats 100% of the other finishers, because there aren't any. Ties are not counted as beaten.
+5. After the fifth question, the response includes the day's score out of 500 and "you beat X% of players today". One finisher beats 100% of the other finishers, because there aren't any. Ties are not counted as beaten.
 6. A second submission for the same device, question, and UTC day is rejected. Refreshing shows the reveal you already earned.
 
 Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute). That is basic protection, not a cheat-proof board.
 
-Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–20 through 81+. A missed UTC day breaks the streak. There is no account.
+Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–100 through 401+. A missed UTC day breaks the streak. There is no account.
 
-The scene fills most of the screen, with a compact question card below it. It is one continuous illustrated world laid out left to right: an atom, a cell, an ant on a leaf, a street, a city, the country seen from above the clouds, Earth, the Moon, the planets, the nearby stars, the Milky Way, and a galaxy web. Neighbouring stops share props at their edges, so there are no seams, and three layers move at different speeds as the camera pans. A correct answer crouches, launches, does a full backflip at the top of a long arc, and flies a whole stop forward with a jet trail, speed lines and confetti. The camera lags a beat behind, so the explorer visibly crosses the screen before the view catches up. A miss makes the jet cough smoke, the explorer drops and wobbles with dizzy eyes, then manages a short hop about a third as far, with a red flash on the scene. A perfect 10 and a 5 out of 10 land in different places. The end screen replays the whole trip from the atom to where the run landed. `prefers-reduced-motion` jumps to the new place instead of flying. The art is inline vector shapes, not image downloads.
+The scene fills most of the screen, with a compact question card below it. It is drawn as a blueprint: thin line art on a dark navy grid, with one amber accent for the probe and its route. It is one continuous world laid out left to right, one stop per power of ten: an atom, a cell, an ant, a street, a city, the country as a contour map, Earth as a graticule globe, the Moon, the solar system, the nearby stars, the Milky Way, and the galaxy web. The top corner always shows where you are as `10ⁿ m` and a rounded size, and the route line along the bottom runs from 10⁻¹⁰ m to 10²⁶ m. Sizes are rounded on purpose, so the scene never prints a number that a Head-to-head pair asks about. A correct answer flies the probe forward along a dashed amber trail. A wrong answer or a timeout makes it sputter, turn red, and hop a short way. The end screen replays the whole trip. `prefers-reduced-motion` jumps to the new place instead of flying. The art is inline SVG, not image downloads.
+
+How far you get is the score you carry around. The game frames each run as "how far out into the universe can what you know take you", and three things give that a purpose:
+
+- **Today's mission.** Each mode has a target world for the day, the same for everyone (a flag on the route line, and "Reach Solar system" in the corner). Classic's targets run from Country to the Solar system; Head-to-head's from Earth to the nearby stars. Reaching it shows "Mission complete".
+- **Ghost probes.** Faint probes fly with you: your own best on this device, today's average, and today's best. Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
+- **Logbook.** The home screen keeps your farthest distance, how many of the 12 worlds you have reached, missions completed, and the Rare-or-better answers you found, with the question each came from. It lives in `localStorage`, like the streaks.
+
+Every question has a 30-second timer, in both modes. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
 
 Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the rung and stays free of answers:
 
 ```text
 Ballpark #12 · Classic
-🟩🟨🟦🟩⬛ 78 pts
+🟩🟨🟦🟩⬛ 260 pts
 ⚛️→🧍→🌍 reached Earth
 ballpark.local
 ```
@@ -59,6 +67,21 @@ ballpark.local
 
 ## Scoring
 
+Classic is five open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Legendary one. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
+
+| Tier | Share of other players | Points | Emoji |
+| --- | --- | --- | --- |
+| Legendary | 1% or less | 100 | 🟩 |
+| Deep cut | 3% or less | 75 | 🟩 |
+| Rare | 8% or less | 50 | 🟨 |
+| Uncommon | 20% or less | 25 | 🟦 |
+| Common | more than 20% | 10 | 🟤 |
+| Not on the list, or out of time | | 0 | ⬛ |
+
+The ladder shows under every prompt, so the goal is to think past the obvious answer. How far an answer flies follows its points: 0.6 of a world for any right answer plus up to 1.4 more, so five Legendary answers reach the galaxy. A wrong answer hops 0.28.
+
+The estimate, compare and rank scorers below are still in the code and tested, but no sample day uses them now.
+
 Estimate distance is `d = |log10(guess) − log10(answer)|`. Cutoffs are rounded to four decimal places, so a guess of exactly twice the answer counts as within 2× (`log10(2)` is 0.30103, published as 0.3010).
 
 | Band | Cutoff | Emoji | Base points |
@@ -79,7 +102,7 @@ Confidence changes those points. "Right" means within 2× (green or yellow).
 
 The estimate score is clamped to 0–20, so a perfect narrow estimate is 20 and a narrow miss cannot go negative. Closeness and confidence are the whole estimate score. Compare is 20 or 0. Rank is 20 for the exact order, 12 for a single adjacent swap, and 0 otherwise. Head-to-head picks are right or wrong, with no rarity bonus.
 
-Rarity scoring is only for open `name_one` answers ("Name a country with more than 100 million people"). Each Classic day has two of them. The Worker matches case, accents, aliases, and small typos against a server-side list. The autocomplete list is the whole group (every country, or every element) and is not the answer key. A correct name scores `20 × (0.5 + 1.5 × uniqueness)`, capped at 36. An invalid name scores 0. The reveal's "percent of players" is the live share, the same number as that answer's row in the list. Until 20 responses exist, the points blend a fixed prior from the seed, and the card says so.
+The reveal's "percent of players" for a name-one answer is the live share including you, the same number as that answer's row in the list.
 
 At 00:00 UTC a Worker cron recomputes yesterday, and any read of a past day does the same. Percentiles use those final points.
 
@@ -99,7 +122,7 @@ Schema, in short:
 
 - `facts` — id, label, value, unit, metric, context, source, retrieved date, license, topic, difficulty, `verified`. Head-to-head pairs facts that share a metric.
 - `questions` — prompt, type (`estimate` | `compare` | `rank` | `name_one`), unit, polarity, the fact ids, the display order, and for name-one an accepted-answer list that never leaves the server
-- `puzzles` — a theme and five question ids, one of them a name-one
+- `puzzles` — a theme and five question ids, all name-one
 - `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. Head-to-head `score` is correct picks out of 10. `finalized` flips when the UTC day is recomputed
 - `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
 
@@ -111,11 +134,11 @@ This repository is public. Anyone can read the seed. That is acceptable for a lo
 
 To add or edit a sample puzzle:
 
-1. Edit `apps/api/seed/content.ts` or `apps/api/seed/name-one.ts`. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
+1. Edit `apps/api/seed/content.ts`, `apps/api/seed/name-one.ts`, or `apps/api/seed/name-one-more.ts`. Every Classic question is a name-one question that overrides a base question id. Set `entitySet` to `countries` or `elements` when the answers are all in that list (every accepted name must then be in it), or `null` for free text with no autocomplete. Give each accepted answer a prior (how often you expect players to say it) and the aliases people type, and never give one spelling to two answers. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
 2. Run `npm run seed:emit -w @ballpark/api` and commit the TypeScript and the generated SQL together.
 3. Run `npm run dev` again. The setup step reloads the local database.
 
-`assertSeed()` runs as part of generating the SQL and as part of the API tests, so a day that is missing a question type, or a prompt that contains its own answer, fails fast.
+`assertSeed()` runs as part of generating the SQL and as part of the API tests, so a day that is not five name-one questions, a spelling shared by two answers, or a prompt that contains its own answer, fails fast.
 
 ## Checks
 

@@ -41,7 +41,7 @@ describe("today's questions hide the answers", () => {
       questions: Array<{ type: string; reveal: unknown; items: Array<Record<string, unknown>> }>;
     };
     expect(body.theme).toBe("Space");
-    expect(body.questions.map((question) => question.type)).toEqual(["estimate", "name_one", "rank", "estimate", "name_one"]);
+    expect(body.questions.map((question) => question.type)).toEqual(["name_one", "name_one", "name_one", "name_one", "name_one"]);
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("384400");
     expect(raw).not.toContain("299792458");
@@ -49,7 +49,11 @@ describe("today's questions hide the answers", () => {
     expect(raw).not.toContain("Bharat");
     expect(raw).not.toContain("Congo-Kinshasa");
     expect(raw).not.toContain("\"accepted\"");
-    const named = body.questions.find((question) => question.type === "name_one") as { suggestions?: string[] };
+    expect(raw).not.toContain("Ganymede");
+    expect(raw).not.toContain("Cassiopeia");
+    const free = body.questions[0] as unknown as { suggestions?: string[] };
+    expect(free.suggestions).toEqual([]);
+    const named = body.questions.find((question) => (question as { suggestions?: string[] }).suggestions?.length) as { suggestions?: string[] };
     expect(named.suggestions).toContain("India");
     expect(named.suggestions).toContain("Iceland");
     expect(named.suggestions).not.toContain("Bharat");
@@ -91,19 +95,19 @@ describe("submissions", () => {
     const first = await guess(DEVICE, question.id, correctGuess(question));
     expect(first.status).toBe(200);
     const revealed = (await first.json()) as { reveal: { answerText: string; points: number; context: string; bonusPoints: number } };
-    expect(revealed.reveal.answerText).toContain("384,400");
+    expect(revealed.reveal.answerText).toBe("Mercury");
     expect(revealed.reveal.context.length).toBeGreaterThan(20);
-    expect(revealed.reveal.points).toBe(20);
+    expect(revealed.reveal.points).toBeGreaterThan(0);
     expect(revealed.reveal.bonusPoints).toBe(0);
 
-    const second = await guess(DEVICE, question.id, { type: "estimate", value: 10, confidence: "wide" });
+    const second = await guess(DEVICE, question.id, { type: "name_one", text: "Mars" });
     expect(second.status).toBe(409);
     expect(await second.json()).toEqual({ error: "already_submitted" });
 
     const stored = await env.DB.prepare("SELECT COUNT(*) AS count FROM submissions").first<{ count: number }>();
     expect(stored?.count).toBe(1);
 
-    const other = await guess(OTHER, question.id, { type: "estimate", value: 10, confidence: "wide" });
+    const other = await guess(OTHER, question.id, { type: "name_one", text: "Mars" });
     expect(other.status).toBe(200);
   });
 
@@ -121,16 +125,15 @@ describe("submissions", () => {
       expect(body.reveal.crowd.submissions).toBe(1);
       result = body.result;
     }
-    expect(result).toMatchObject({
-      beatPercent: 100,
-      players: 1,
-      emojis: ["🟩", "🟩", "🟩", "🟩", "🟩"],
-    });
-    expect(result!.score).toBeGreaterThan(80);
+    expect(result).toMatchObject({ beatPercent: 100, players: 1 });
+    // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
+    expect(result!.emojis).toHaveLength(5);
+    expect(result!.emojis).not.toContain("⬛");
+    expect(result!.score).toBeGreaterThanOrEqual(50);
     expect(result?.shareText).toContain("Ballpark #1 · Classic");
     expect(result?.shareText).toContain("reached");
     expect(result?.shareText).toContain("ballpark.local");
-    expect(result?.shareText).not.toContain("India");
+    expect(result?.shareText).not.toContain("Mercury");
 
     const again = await puzzle();
     const replay = (await again.json()) as { result: { score: number }; questions: Array<{ reveal: { points: number } | null }> };
@@ -145,6 +148,7 @@ describe("submissions", () => {
     const rareBody = (await rare.json()) as {
       reveal: {
         band: string;
+        label: string;
         points: number;
         answerText: string;
         detail: string;
@@ -158,7 +162,9 @@ describe("submissions", () => {
         };
       };
     };
-    expect(rareBody.reveal.band).toBe("green");
+    // Ethiopia's prior is under 1%, and nobody else has answered yet, so it is Legendary.
+    expect(rareBody.reveal.label).toBe("Legendary");
+    expect(rareBody.reveal.points).toBe(100);
     expect(rareBody.reveal.answerText).toBe("Ethiopia");
     expect(rareBody.reveal.crowd.kind).toBe("named");
     expect(rareBody.reveal.crowd.rare.length).toBeGreaterThan(0);
@@ -180,9 +186,8 @@ describe("submissions", () => {
     expect(invalidBody.reveal.band).toBe("black");
 
     const typo = await guess("66666666-6666-4666-8666-666666666666", named.id, { type: "name_one", text: "Nigera" });
-    expect(((await typo.json()) as { reveal: { answerText: string; band: string } }).reveal).toMatchObject({
-      answerText: "Nigeria",
-      band: "green",
-    });
+    const typoReveal = ((await typo.json()) as { reveal: { answerText: string; points: number } }).reveal;
+    expect(typoReveal.answerText).toBe("Nigeria");
+    expect(typoReveal.points).toBeGreaterThan(0);
   });
 });

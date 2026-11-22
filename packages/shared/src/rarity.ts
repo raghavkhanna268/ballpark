@@ -2,7 +2,27 @@
 export const COLD_START_RESPONSES = 20;
 
 export const NAME_BASE = 20;
-export const NAME_CAP = 36;
+/** A legendary answer. Every name-one question is out of this many points. */
+export const NAME_CAP = 100;
+
+export type NameTier = { name: string; points: number; band: "green" | "yellow" | "blue" | "brown"; maxShare: number };
+
+/**
+ * Rarity tiers, by the share of players who gave the same answer (blended with the editorial prior
+ * until enough people have played). The rarer the answer, the more it scores and the farther you fly.
+ */
+export const NAME_TIERS: NameTier[] = [
+  { name: "Legendary", points: 100, band: "green", maxShare: 0.01 },
+  { name: "Deep cut", points: 75, band: "green", maxShare: 0.03 },
+  { name: "Rare", points: 50, band: "yellow", maxShare: 0.08 },
+  { name: "Uncommon", points: 25, band: "blue", maxShare: 0.2 },
+  { name: "Common", points: 10, band: "brown", maxShare: 1 },
+];
+
+export function nameTier(share: number): NameTier {
+  const value = clamp01(share);
+  return NAME_TIERS.find((tier) => value <= tier.maxShare) ?? NAME_TIERS[NAME_TIERS.length - 1]!;
+}
 
 export function clamp01(value: number): number {
   if (value <= 0) return 0;
@@ -28,7 +48,6 @@ export function rarityMultiplier(uniqueness: number): number {
 }
 
 export function nameOnePoints(share: number): number {
-  const raw = NAME_BASE * rarityMultiplier(1 - share);
-  return Math.min(NAME_CAP, Math.max(0, Math.round(raw)));
+  return nameTier(share).points;
 }
 

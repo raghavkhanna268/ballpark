@@ -91,11 +91,12 @@ async function handleHeadPick(request: Request, env: Env, url: URL): Promise<Res
   await enforceRateLimit(env.DB, `post-ip:${clientIp(request)}`, IP_LIMIT);
   const { date } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
   const body = await readJson(request);
-  const record = body as { index?: unknown; choiceId?: unknown; direction?: unknown };
+  const record = body as { index?: unknown; choiceId?: unknown; direction?: unknown; timedOut?: unknown };
   if (typeof record.index !== "number") throw new HttpError(400, "invalid_guess");
   const choiceId = typeof record.choiceId === "string" ? record.choiceId : undefined;
   const direction = record.direction === "higher" || record.direction === "lower" ? record.direction : undefined;
-  return json(await pickHeadToHead(env.DB, date, deviceId, env.EPOCH, env.SHARE_HOST, record.index, { choiceId, direction }));
+  const timedOut = record.timedOut === true && choiceId === undefined && direction === undefined;
+  return json(await pickHeadToHead(env.DB, date, deviceId, env.EPOCH, env.SHARE_HOST, record.index, { choiceId, direction, timedOut }));
 }
 
 async function handlePractice(request: Request, env: Env, url: URL): Promise<Response> {

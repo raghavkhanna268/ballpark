@@ -1,6 +1,7 @@
-import type { Guess, GuessResponse, PublicH2HRound, PuzzleResponse } from "@ballpark/shared";
+import type { FieldStats, Guess, GuessResponse, PublicH2HRound, PuzzleResponse } from "@ballpark/shared";
 
 export type HeadToHeadState = {
+  field: FieldStats;
   date: string;
   puzzleNumber: number;
   shareHost: string;
@@ -76,7 +77,7 @@ export async function getHeadToHead(deviceId: string): Promise<HeadToHeadState> 
 
 export async function postHeadPick(
   deviceId: string,
-  body: { index: number; choiceId?: string; direction?: "higher" | "lower" },
+  body: { index: number; choiceId?: string; direction?: "higher" | "lower"; timedOut?: boolean },
 ): Promise<HeadPickResponse> {
   const response = await fetch(`/api/head-to-head/pick${devQuery()}`, {
     method: "POST",

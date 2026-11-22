@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { EXPLORER_Y, FAR_RATE, FRONT_RATE, STEP, WORLD_H, WORLD_STOPS, WORLD_W, WorldFar, WorldFront, WorldMain, explorerX } from "./worlds";
+import { EXPLORER_Y, FAR_RATE, FRONT_RATE, STEP, WORLD_H, WORLD_STOPS, WORLD_W, WorldFar, WorldFront, WorldMain, explorerX, toSuper } from "./worlds";
 import "./journey.css";
 
 export type Hop = { id: number; kind: "idle" | "voyage" | "stumble"; travel: number };
+export type Ghost = { id: "best" | "average" | "top"; label: string; progress: number };
+export type Mission = { target: number };
 type Motion = "idle" | "voyage" | "stumble" | "replay";
 
 const SOUND_KEY = "ballpark.sound";
@@ -13,23 +15,32 @@ const SCENE_MAX = 0.8;
 const VOYAGE_MS = 2300;
 const STUMBLE_MS = 1700;
 const REPLAY_MS = 3600;
-const TRAIL_POINTS = 42;
+const ROUTE_POINTS = 1600;
 
 type Pose = { v: number; cam: number; dy: number; rot: number; sx: number; sy: number; jx: number };
+type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "mission" };
+
+const REST: Omit<Pose, "v" | "cam"> = { dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 };
 
 export function Journey({
   progress,
   hop,
   overview,
   page,
+  mission,
+  ghosts = [],
   children,
 }: {
-  /** Changes whenever the card below the scene shows a new screen, so it starts scrolled to the top. */
-  page: string;
   /** 0 is the atom. Each correct answer adds 1. A miss adds about a third. */
   progress: number;
   hop: Hop;
   overview: boolean;
+  /** Changes whenever the card below the scene shows a new screen, so it starts scrolled to the top. */
+  page: string;
+  /** Today's target world, by stop index. */
+  mission?: Mission | null;
+  /** Faint probes for your best run, today's average player and today's best player. */
+  ghosts?: Ghost[];
   children: ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -40,20 +51,26 @@ export function Journey({
   const mainRef = useRef<SVGSVGElement>(null);
   const frontRef = useRef<SVGSVGElement>(null);
   const explorerRef = useRef<HTMLDivElement>(null);
-  const trailRef = useRef<SVGPolylineElement>(null);
-  const trailGlowRef = useRef<SVGPolylineElement>(null);
+  const routeRef = useRef<SVGPolylineElement>(null);
   const markerRef = useRef<HTMLElement>(null);
   const fillRef = useRef<HTMLElement>(null);
+  const powerRef = useRef<HTMLSpanElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
-  const trail = useRef<Array<[number, number]>>([]);
+  const route = useRef<Array<[number, number]>>([]);
   const size = useRef({ w: 390, h: 520, k: 1 });
-  const pose = useRef<Pose>({ v: progress, cam: progress, dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 });
+  const pose = useRef<Pose>({ v: progress, cam: progress, ...REST });
   const landedRef = useRef(-1);
+  const ghostsRef = useRef(ghosts);
+  const missionRef = useRef(mission);
   const [k, setK] = useState(1);
   const [motion, setMotion] = useState<Motion>("idle");
   const [landed, setLanded] = useState(() => clampStop(progress));
   const [arrived, setArrived] = useState(0);
-  const [sound, setSound] = useState(() => localStorage.getItem(SOUND_KEY) === "on");
+  const [toast, setToast] = useState<Toast | null>(null);
+  const [sound, setSound] = useState(() => readSound());
+
+  ghostsRef.current = ghosts;
+  missionRef.current = mission;
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -72,7 +89,13 @@ export function Journey({
     return () => observer.disconnect();
   }, []);
 
-  /** Puts every layer and the explorer where the current pose says. Runs every frame while flying. */
+  useEffect(() => {
+    if (!toast) return;
+    const id = window.setTimeout(() => setToast(null), 2200);
+    return () => window.clearTimeout(id);
+  }, [toast]);
+
+  /** Puts every layer and the probe where the current pose says. Runs every frame while flying. */
   function draw() {
     const { w, h, k: scale } = size.current;
     const p = pose.current;
@@ -92,45 +115,74 @@ export function Journey({
     const stop = clampStop(p.v);
     if (stop !== landedRef.current) {
       landedRef.current = stop;
-      if (labelRef.current) labelRef.current.textContent = WORLD_STOPS[stop]!.label;
+      const info = WORLD_STOPS[stop]!;
+      if (labelRef.current) labelRef.current.textContent = info.label;
+      if (powerRef.current) powerRef.current.textContent = `10${toSuper(info.power)} m · ${info.size}`;
     }
   }
 
-  function pushTrail() {
+  function pushRoute() {
     const p = pose.current;
-    trail.current.push([explorerX(p.v) + p.jx - 30, EXPLORER_Y + p.dy + 26]);
-    if (trail.current.length > TRAIL_POINTS) trail.current.shift();
-    const points = trail.current.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-    trailRef.current?.setAttribute("points", points);
-    trailGlowRef.current?.setAttribute("points", points);
+    const point: [number, number] = [explorerX(p.v) + p.jx - 18, EXPLORER_Y + p.dy];
+    const last = route.current[route.current.length - 1];
+    if (last && Math.hypot(point[0] - last[0], point[1] - last[1]) < 3) return;
+    route.current.push(point);
+    if (route.current.length > ROUTE_POINTS) route.current.shift();
+    routeRef.current?.setAttribute("points", route.current.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "));
   }
 
-  function run(kind: Motion, from: number, to: number, duration: number, onDone?: () => void) {
+  function resetRoute(to: number) {
+    route.current = [[explorerX(0) - 18, EXPLORER_Y]];
+    if (to > 0) route.current.push([explorerX(to) - 18, EXPLORER_Y]);
+    routeRef.current?.setAttribute("points", route.current.map(([x, y]) => `${x},${y}`).join(" "));
+  }
+
+  /** What changed by flying from `from` to `to`: a new world, a ghost overtaken, or today's mission. */
+  function announce(from: number, to: number) {
+    const target = missionRef.current?.target;
+    if (target !== undefined && from < target - 0.001 && to >= target - 0.001) {
+      setToast({ id: Date.now(), title: "Mission complete", detail: `You reached ${WORLD_STOPS[target]!.label}`, tone: "mission" });
+      return;
+    }
+    const passed = ghostsRef.current.filter((ghost) => from < ghost.progress && to >= ghost.progress).sort((a, b) => b.progress - a.progress)[0];
+    if (passed) {
+      setToast({ id: Date.now(), title: `Passed ${passed.label.toLowerCase()}`, detail: `${formatDistance(passed.progress)} out`, tone: "pass" });
+      return;
+    }
+    const before = clampStop(from);
+    const after = clampStop(to);
+    if (after > before) {
+      const info = WORLD_STOPS[after]!;
+      setToast({ id: Date.now(), title: `New world · ${info.label}`, detail: `10${toSuper(info.power)} m · ${info.size}`, tone: "world" });
+    }
+  }
+
+  function run(kind: Motion, from: number, to: number, duration: number) {
     const start = performance.now();
     const d = to - from;
-    trail.current = [];
     let frame = 0;
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
       pose.current = kind === "stumble" ? stumblePose(t, from, d) : kind === "replay" ? replayPose(t, from, d) : voyagePose(t, from, d);
       keepInFrame();
       draw();
-      pushTrail();
+      pushRoute();
       if (t < 1) frame = requestAnimationFrame(tick);
       else {
-        pose.current = { v: to, cam: to, dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 };
+        pose.current = { v: to, cam: to, ...REST };
         draw();
+        pushRoute();
         setMotion("idle");
         setLanded(clampStop(to));
         setArrived((value) => value + 1);
-        onDone?.();
+        if (kind !== "replay") announce(from, to);
       }
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
   }
 
-  /** The camera lags so the explorer visibly crosses the screen, but it never leaves the frame. */
+  /** The camera lags so the probe visibly crosses the screen, but it never leaves the frame. */
   function keepInFrame() {
     const { w, k: scale } = size.current;
     const p = pose.current;
@@ -145,8 +197,9 @@ export function Journey({
     const from = pose.current.v;
     const to = progress;
     if (overview) return;
-    if (reduced || Math.abs(to - from) < 0.001 || Math.abs(to - from) > 2.2) {
-      pose.current = { v: to, cam: to, dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 };
+    if (reduced || Math.abs(to - from) < 0.001 || Math.abs(to - from) > 2.2 || to < from) {
+      pose.current = { v: to, cam: to, ...REST };
+      resetRoute(to);
       draw();
       setLanded(clampStop(to));
       return;
@@ -162,13 +215,14 @@ export function Journey({
     if (!overview) return;
     const to = progress;
     if (reduced || to < 0.5) {
-      pose.current = { v: to, cam: to, dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 };
+      pose.current = { v: to, cam: to, ...REST };
       draw();
       setLanded(clampStop(to));
       return;
     }
     setMotion("replay");
-    pose.current = { v: 0, cam: 0, dy: 0, rot: 0, sx: 1, sy: 1, jx: 0 };
+    pose.current = { v: 0, cam: 0, ...REST };
+    resetRoute(0);
     draw();
     return run("replay", 0, to, Math.min(REPLAY_MS, 900 + to * 420));
   }, [overview]);
@@ -183,6 +237,9 @@ export function Journey({
 
   const flying = motion !== "idle";
   const stageClass = ["stage", `is-${motion}`, flying && motion !== "replay" ? "is-focus" : "", reduced ? "quiet" : "", overview ? "is-overview" : ""].join(" ");
+  const info = WORLD_STOPS[landed]!;
+  const target = mission ? WORLD_STOPS[mission.target] : null;
+  const missionDone = mission ? landed >= mission.target && progress >= mission.target - 0.001 : false;
 
   return (
     <div className={stageClass} ref={stageRef}>
@@ -192,41 +249,46 @@ export function Journey({
         </svg>
         <svg ref={mainRef} className="layer" style={layerStyle(WORLD_W, k)} viewBox={`${-PAD} 0 ${WORLD_W + PAD * 2} ${WORLD_H}`} aria-hidden="true">
           <WorldMain />
-          <polyline ref={trailGlowRef} className={`trail-glow ${motion}`} points="" />
-          <polyline ref={trailRef} className={`trail ${motion}`} points="" />
-        </svg>
-        <div className="speedlines" aria-hidden="true">
-          {Array.from({ length: 10 }, (_, index) => (
-            <i key={index} style={{ top: `${8 + index * 9}%`, animationDelay: `${(index * 73) % 400}ms` }} />
+          {target && mission ? <MissionFlag x={explorerX(mission.target)} label={target.label} /> : null}
+          {ghosts.map((ghost, index) => (
+            <GhostProbe key={ghost.id} ghost={ghost} lane={index} />
           ))}
-        </div>
+          <polyline ref={routeRef} className={`route-trace ${motion}`} points="" />
+        </svg>
         <div className={`explorer ${motion}`} ref={explorerRef} aria-hidden="true">
-          <Explorer mood={motion === "stumble" ? "dizzy" : flying ? "joy" : "calm"} />
+          <Probe />
           {motion === "stumble" ? <Smoke /> : null}
-          {motion === "voyage" ? <Sparks /> : null}
         </div>
         <svg ref={frontRef} className="layer front" style={layerStyle(WORLD_W * FRONT_RATE, k)} viewBox={`${-PAD} 0 ${WORLD_W * FRONT_RATE + PAD * 2} ${WORLD_H}`} aria-hidden="true">
           <WorldFront />
         </svg>
-        {motion === "voyage" ? <Confetti burst={hop.id} /> : null}
+        <div className="speedlines" aria-hidden="true">
+          {Array.from({ length: 8 }, (_, index) => (
+            <i key={index} style={{ top: `${12 + index * 10}%`, animationDelay: `${(index * 73) % 400}ms` }} />
+          ))}
+        </div>
         {motion === "stumble" ? <div className="miss-flash" key={hop.id} /> : null}
+        {toast ? (
+          <div className={`toast ${toast.tone}`} key={toast.id} role="status">
+            <strong>{toast.title}</strong>
+            <span>{toast.detail}</span>
+          </div>
+        ) : null}
         <div className="hud">
           <p className="where" key={arrived}>
-            <small>You are in</small> <span ref={labelRef}>{WORLD_STOPS[landed]!.label}</span>
+            <span className="power" ref={powerRef}>
+              10{toSuper(info.power)} m · {info.size}
+            </span>
+            <span className="place" ref={labelRef}>
+              {info.label}
+            </span>
           </p>
-          <button
-            className="sound-toggle"
-            type="button"
-            aria-pressed={sound}
-            onClick={() => {
-              const next = !sound;
-              setSound(next);
-              localStorage.setItem(SOUND_KEY, next ? "on" : "off");
-              if (next) playHop("voyage");
-            }}
-          >
-            {sound ? "Sound on" : "Sound off"}
-          </button>
+          {target ? (
+            <p className={missionDone ? "mission done" : "mission"}>
+              <small>{missionDone ? "Mission complete" : "Today’s mission"}</small>
+              <span>Reach {target.label}</span>
+            </p>
+          ) : null}
         </div>
         <div className="route" aria-hidden="true">
           <div className="route-line">
@@ -234,11 +296,28 @@ export function Journey({
             {WORLD_STOPS.map((stop, index) => (
               <i key={stop.id} className={index <= landed ? "passed" : ""} style={{ left: `${(index / (STOPS - 1)) * 100}%` }} />
             ))}
+            {mission ? <s className="flag" style={{ left: `${(mission.target / (STOPS - 1)) * 100}%` }} /> : null}
+            {ghosts.map((ghost) => (
+              <u key={ghost.id} className={`ghost-tick ${ghost.id}`} style={{ left: `${(Math.min(STOPS - 1, ghost.progress) / (STOPS - 1)) * 100}%` }} />
+            ))}
             <em ref={markerRef} />
           </div>
           <div className="route-ends">
-            <span>Atom</span>
-            <span>Galaxy web</span>
+            <span>10⁻¹⁰ m</span>
+            <button
+              className="sound-toggle"
+              type="button"
+              aria-pressed={sound}
+              onClick={() => {
+                const next = !sound;
+                setSound(next);
+                writeSound(next);
+                if (next) playHop("voyage");
+              }}
+            >
+              {sound ? "Sound on" : "Sound off"}
+            </button>
+            <span>10²⁶ m</span>
           </div>
         </div>
       </div>
@@ -246,6 +325,39 @@ export function Journey({
         {children}
       </div>
     </div>
+  );
+}
+
+/** Distance out from the atom, as a power of ten, for a fractional progress value. */
+export function formatDistance(progress: number): string {
+  const low = WORLD_STOPS[Math.max(0, Math.min(STOPS - 1, Math.floor(progress)))]!;
+  const high = WORLD_STOPS[Math.max(0, Math.min(STOPS - 1, Math.ceil(progress)))]!;
+  const power = Math.round(low.power + (high.power - low.power) * (progress - Math.floor(progress)));
+  return `10${toSuper(power)} m`;
+}
+
+function MissionFlag({ x, label }: { x: number; label: string }) {
+  return (
+    <g className="mission-flag" transform={`translate(${x} 0)`}>
+      <line x1="0" y1="60" x2="0" y2="520" stroke="#ffb347" strokeOpacity="0.55" strokeDasharray="6 8" />
+      <path d="M0 60 L34 70 L0 80 Z" fill="#ffb347" />
+      <text x="40" y="76" fill="#ffb347" fontSize="12" className="mono" letterSpacing="1">
+        MISSION · {label.toUpperCase()}
+      </text>
+    </g>
+  );
+}
+
+function GhostProbe({ ghost, lane }: { ghost: Ghost; lane: number }) {
+  const y = EXPLORER_Y + (lane === 0 ? -96 : lane === 1 ? 96 : -150);
+  return (
+    <g className={`ghost ${ghost.id}`} transform={`translate(${explorerX(ghost.progress)} ${y})`}>
+      <path d="M-14 -10 L16 0 L-14 10 L-8 0 Z" fill="none" strokeWidth="1.6" />
+      <circle r="20" fill="none" strokeOpacity="0.35" />
+      <text x="0" y="36" textAnchor="middle" fontSize="11" className="mono">
+        {ghost.label}
+      </text>
+    </g>
   );
 }
 
@@ -260,41 +372,33 @@ function clampStop(value: number): number {
 const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
 const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
 
-/** Right answer: crouch, launch, a full backflip at the top of a long arc, then land a whole world further on. */
+/** Right answer: crouch, launch, a full loop at the top of a long arc, then land a whole world further on. */
 function voyagePose(t: number, from: number, d: number): Pose {
   if (t < 0.12) {
     const c = Math.sin((t / 0.12) * Math.PI);
-    return { v: from - 0.02 * c, cam: from, dy: 14 * c, rot: -8 * c, sx: 1 + 0.18 * c, sy: 1 - 0.2 * c, jx: 0 };
+    return { v: from - 0.02 * c, cam: from, dy: 14 * c, rot: -10 * c, sx: 1 - 0.15 * c, sy: 1 + 0.12 * c, jx: 0 };
   }
   const u = clamp01((t - 0.12) / 0.7);
   const e = ease(u);
   const flip = ease(clamp01((u - 0.18) / 0.5));
-  const stretch = Math.sin(Math.min(1, u * 4) * Math.PI) * 0.2;
+  const stretch = Math.sin(Math.min(1, u * 4) * Math.PI) * 0.25;
   const land = t > 0.82 ? Math.sin(((t - 0.82) / 0.18) * Math.PI) : 0;
   return {
     v: from + d * e,
     cam: from + d * ease(clamp01((t - 0.24) / 0.76)),
-    dy: -Math.sin(u * Math.PI) * 120 + land * 10,
-    rot: -360 * flip + 18 * Math.sin(u * Math.PI),
-    sx: 1 - stretch * 0.5 + land * 0.14,
-    sy: 1 + stretch - land * 0.16,
+    dy: -Math.sin(u * Math.PI) * 120 + land * 8,
+    rot: -360 * flip - 20 * Math.sin(u * Math.PI),
+    sx: 1 + stretch,
+    sy: 1 - stretch * 0.4,
     jx: 0,
   };
 }
 
-/** Wrong answer: the jet coughs, the explorer drops and wobbles, then manages a short hop. */
+/** Wrong answer: the engine cuts out, the probe drops and spins, then manages a short hop. */
 function stumblePose(t: number, from: number, d: number): Pose {
   if (t < 0.38) {
     const s = t / 0.38;
-    return {
-      v: from,
-      cam: from,
-      dy: 30 * ease(s),
-      rot: Math.sin(t * 70) * 16,
-      sx: 1,
-      sy: 1,
-      jx: Math.sin(t * 110) * 5,
-    };
+    return { v: from, cam: from, dy: 34 * ease(s), rot: Math.sin(t * 70) * 22 + 30 * s, sx: 1, sy: 1, jx: Math.sin(t * 110) * 5 };
   }
   if (t < 0.82) {
     const u = (t - 0.38) / 0.44;
@@ -302,85 +406,36 @@ function stumblePose(t: number, from: number, d: number): Pose {
     return {
       v: from + d * e,
       cam: from + d * ease(clamp01((t - 0.3) / 0.7)),
-      dy: 30 * (1 - e) - Math.sin(u * Math.PI) * 50,
-      rot: -22 * Math.sin(u * Math.PI) + 10 * Math.sin(u * 18),
+      dy: 34 * (1 - e) - Math.sin(u * Math.PI) * 46,
+      rot: 30 * (1 - u) - 14 * Math.sin(u * Math.PI) + 8 * Math.sin(u * 18),
       sx: 1,
       sy: 1,
       jx: 0,
     };
   }
   const l = (t - 0.82) / 0.18;
-  const squash = Math.sin(l * Math.PI);
-  return { v: from + d, cam: from + d * ease(clamp01((t - 0.3) / 0.7)), dy: 6 * squash, rot: 6 * Math.sin(l * Math.PI * 2), sx: 1 + 0.16 * squash, sy: 1 - 0.18 * squash, jx: 0 };
+  return { v: from + d, cam: from + d * ease(clamp01((t - 0.3) / 0.7)), dy: 4 * Math.sin(l * Math.PI), rot: 6 * Math.sin(l * Math.PI * 2), sx: 1, sy: 1, jx: 0 };
 }
 
 /** End screen: fly the whole route again with the camera alongside. */
 function replayPose(t: number, from: number, d: number): Pose {
   const e = ease(t);
-  return { v: from + d * e, cam: from + d * ease(clamp01(t * 1.05 - 0.02)), dy: -Math.sin(t * Math.PI) * 40, rot: 10 * Math.sin(t * Math.PI), sx: 1, sy: 1, jx: 0 };
+  return { v: from + d * e, cam: from + d * ease(clamp01(t * 1.05 - 0.02)), dy: -Math.sin(t * Math.PI) * 30, rot: -6 * Math.sin(t * Math.PI), sx: 1, sy: 1, jx: 0 };
 }
 
-function Explorer({ mood }: { mood: "calm" | "joy" | "dizzy" }) {
+function Probe() {
   return (
-    <svg viewBox="-60 -70 120 150" width="96" height="120" className="explorer-art">
-      {/* jet flame, drawn behind the pack */}
-      <g className="flame" transform="translate(-34 22)">
-        <path d="M0 0 C-14 10 -14 34 0 70 C14 34 14 10 0 0 Z" fill="#ff7a2c" />
-        <path d="M0 6 C-8 14 -8 30 0 52 C8 30 8 14 0 6 Z" fill="#ffd34a" />
-        <path d="M0 12 C-3 18 -3 28 0 38 C3 28 3 18 0 12 Z" fill="#fff6d0" />
+    <svg viewBox="-40 -40 80 80" width="76" height="76" className="probe" aria-hidden="true">
+      <g className="thrust">
+        <line x1="-22" y1="-5" x2="-46" y2="-5" />
+        <line x1="-20" y1="0" x2="-58" y2="0" />
+        <line x1="-22" y1="5" x2="-46" y2="5" />
       </g>
-      <g className="bob">
-        {/* jetpack */}
-        <rect x="-46" y="-14" width="22" height="40" rx="8" fill="#b8431f" stroke="#5a2410" strokeWidth="3" />
-        <rect x="-42" y="22" width="14" height="8" rx="2" fill="#3a3a44" />
-        {/* body */}
-        <rect x="-28" y="-6" width="52" height="50" rx="20" fill="#f4efe4" stroke="#1c1915" strokeWidth="3.5" />
-        <rect x="-10" y="10" width="18" height="12" rx="3" fill="#0e5c52" />
-        <circle cx="-1" cy="16" r="3" fill="#7fe0c8" />
-        {/* arms */}
-        <path className="arm-back" d="M-22 6 q-14 10 -16 24" stroke="#1c1915" strokeWidth="9" strokeLinecap="round" fill="none" />
-        <path className="arm-front" d="M18 6 q18 -4 26 -18" stroke="#1c1915" strokeWidth="9" strokeLinecap="round" fill="none" />
-        <path className="arm-back" d="M-22 6 q-14 10 -16 24" stroke="#f4efe4" strokeWidth="5" strokeLinecap="round" fill="none" />
-        <path className="arm-front" d="M18 6 q18 -4 26 -18" stroke="#f4efe4" strokeWidth="5" strokeLinecap="round" fill="none" />
-        {/* legs */}
-        <path d="M-14 42 v14 M10 42 v14" stroke="#1c1915" strokeWidth="10" strokeLinecap="round" />
-        <path d="M-14 42 v14 M10 42 v14" stroke="#f4efe4" strokeWidth="6" strokeLinecap="round" />
-        {/* helmet */}
-        <circle cx="0" cy="-30" r="34" fill="#f4efe4" stroke="#1c1915" strokeWidth="3.5" />
-        <rect x="-22" y="-48" width="48" height="34" rx="16" fill="#16324a" />
-        <path d="M-14 -44 q8 -4 16 -2" stroke="#7fd3ff" strokeWidth="4" strokeLinecap="round" fill="none" />
-        {mood === "dizzy" ? (
-          <g stroke="#ffd34a" strokeWidth="3" strokeLinecap="round">
-            <path d="M-12 -36 l8 8 M-4 -36 l-8 8 M8 -36 l8 8 M16 -36 l-8 8" />
-            <path d="M-6 -20 q4 -4 8 0 q4 4 8 0" fill="none" />
-          </g>
-        ) : mood === "joy" ? (
-          <g fill="none" stroke="#9ff0ff" strokeWidth="3.5" strokeLinecap="round">
-            <path d="M-12 -30 q4 -7 8 0 M8 -30 q4 -7 8 0" />
-            <path d="M-6 -22 q8 8 16 0" />
-          </g>
-        ) : (
-          <g>
-            <circle className="eye" cx="-7" cy="-32" r="3.5" fill="#9ff0ff" />
-            <circle className="eye" cx="11" cy="-32" r="3.5" fill="#9ff0ff" />
-            <path d="M-4 -22 q6 4 12 0" stroke="#9ff0ff" strokeWidth="3" strokeLinecap="round" fill="none" />
-          </g>
-        )}
-        {/* antenna */}
-        <path d="M14 -62 l8 -12" stroke="#1c1915" strokeWidth="3" />
-        <circle cx="23" cy="-75" r="5" fill="#b8431f" className="antenna" />
-      </g>
+      <circle className="ring outer" r="30" />
+      <circle className="ring" r="21" />
+      <path className="hull" d="M-13 -11 L17 0 L-13 11 L-7 0 Z" />
+      <circle className="core" cx="-1" cy="0" r="2.6" />
     </svg>
-  );
-}
-
-function Sparks() {
-  return (
-    <div className="sparks">
-      {Array.from({ length: 10 }, (_, index) => (
-        <i key={index} style={{ ["--i" as string]: String(index) }} />
-      ))}
-    </div>
   );
 }
 
@@ -389,16 +444,6 @@ function Smoke() {
     <div className="smoke">
       {Array.from({ length: 6 }, (_, index) => (
         <i key={index} style={{ animationDelay: `${index * 110}ms` }} />
-      ))}
-    </div>
-  );
-}
-
-function Confetti({ burst }: { burst: number }) {
-  return (
-    <div className="confetti" key={burst} aria-hidden="true">
-      {Array.from({ length: 18 }, (_, index) => (
-        <i key={index} style={{ ["--i" as string]: String(index), left: `${6 + ((index * 17) % 88)}%`, animationDelay: `${(index % 6) * 60}ms` }} />
       ))}
     </div>
   );
@@ -414,6 +459,22 @@ function useReducedMotion(): boolean {
     return () => media.removeEventListener("change", update);
   }, []);
   return reduced;
+}
+
+function readSound(): boolean {
+  try {
+    return localStorage.getItem(SOUND_KEY) === "on";
+  } catch {
+    return false;
+  }
+}
+
+function writeSound(on: boolean) {
+  try {
+    localStorage.setItem(SOUND_KEY, on ? "on" : "off");
+  } catch {
+    // Sound stays on for this visit only.
+  }
 }
 
 function playHop(kind: "voyage" | "stumble") {

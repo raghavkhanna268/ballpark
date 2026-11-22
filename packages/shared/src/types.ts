@@ -106,6 +106,8 @@ export type RankGuess = {
 export type NameGuess = {
   type: "name_one";
   text: string;
+  /** The 30-second timer ran out. Scores zero. */
+  timedOut?: boolean;
 };
 
 export type Guess = EstimateGuess | CompareGuess | RankGuess | NameGuess;
@@ -177,6 +179,8 @@ export type PuzzleResponse = {
   devDate: boolean;
   questions: PublicQuestion[];
   result: DayResult | null;
+  /** Finished Classic runs today, as distances along the journey. */
+  field: import("./scale.js").FieldStats;
 };
 
 export type GuessResponse = {

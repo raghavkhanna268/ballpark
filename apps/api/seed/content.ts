@@ -6,7 +6,7 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { COUNTRIES, ELEMENTS, METRIC_COPY, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { COUNTRIES, ELEMENTS, METRIC_COPY, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
 import { nameOneById, type AcceptedSeed } from "./name-one.ts";
@@ -314,16 +314,16 @@ export const questions: SeedQuestion[] = baseQuestions.map((item) => {
 });
 
 const basePuzzles: SeedPuzzle[] = [
-  { slot: 0, theme: "Space", blurb: "Distances, sizes, and how long a year really is.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
-  { slot: 1, theme: "Planet Earth", blurb: "Peaks, seas, and the deepest place in the ocean.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
-  { slot: 2, theme: "The human body", blurb: "Bones, cells, and the long road through the gut.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
-  { slot: 3, theme: "Inventions", blurb: "Clocks, towers, and the machines that came after.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
-  { slot: 4, theme: "Landmarks", blurb: "A few thousand years of buildings, in order.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
-  { slot: 5, theme: "Living world", blurb: "Whales, wings, and how long a pregnancy can last.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
-  { slot: 6, theme: "Maps", blurb: "Countries, membership, and the size of a border.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
-  { slot: 7, theme: "Laboratory", blurb: "Melting points, a half-life, and the speed of sound.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
-  { slot: 8, theme: "Culture", blurb: "Books, premieres, paintings, and one very exact race.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
-  { slot: 9, theme: "Measured Earth", blurb: "The equator, the Moon, and the rocky planets.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
+  { slot: 0, theme: "Space", blurb: "Planets, moons, constellations, and a couple of maps.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
+  { slot: 1, theme: "Planet Earth", blurb: "High peaks, long rivers, European seas, and some rare gases.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
+  { slot: 2, theme: "The human body", blurb: "Bones, organs, the brain, and a little chemistry.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
+  { slot: 3, theme: "Inventions", blurb: "Old machines, strings, code, and some very small countries.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
+  { slot: 4, theme: "Landmarks", blurb: "Wonders, Olympic cities, tall towers, and the biggest countries.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
+  { slot: 5, theme: "Living world", blurb: "Whales, wild cats, flightless birds, and two maps.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
+  { slot: 6, theme: "Maps", blurb: "Borders, coastlines, the alphabet, and the Security Council.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
+  { slot: 7, theme: "Laboratory", blurb: "Gases, coin metals, and elements named after places.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
+  { slot: 8, theme: "Culture", blurb: "Sports, paintings, plays, and the far north.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
+  { slot: 9, theme: "Measured Earth", blurb: "The equator, deserts, the Caribbean, and the heavy end of the periodic table.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
 ];
 
 export const puzzles = basePuzzles;
@@ -389,18 +389,31 @@ export function assertSeed(): void {
         const units = new Set(item.factIds.map((id) => factById.get(id)!.unit));
         if (units.size !== 1) throw new Error(`${item.id} mixes units`);
       } else if (item.type === "name_one") {
-        if (item.factIds.length !== 0 || !item.entitySet || !item.accepted || item.accepted.length < 5) {
+        if (item.factIds.length !== 0 || !item.accepted || item.accepted.length < 5) {
           throw new Error(`${item.id} is a bad name-one question`);
         }
         const names = new Set(item.accepted.map((answer) => answer.canonical));
         if (names.size !== item.accepted.length) throw new Error(`${item.id} repeats a canonical answer`);
-        const suggestions = new Set(suggestionsFor(item.entitySet));
-        const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
-        if (suggestions.size !== pool.length) throw new Error(`${item.id} suggestions drifted`);
+        const spellings = new Map<string, string>();
+        for (const answer of item.accepted) {
+          for (const name of [answer.canonical, ...answer.aliases]) {
+            const key = normalizeAnswer(name);
+            const owner = spellings.get(key);
+            if (owner && owner !== answer.canonical) throw new Error(`${item.id} gives "${name}" to two answers`);
+            spellings.set(key, answer.canonical);
+          }
+        }
+        // Free-text questions have no autocomplete. A list of only the right answers would give them away.
+        const suggestions = item.entitySet ? new Set(suggestionsFor(item.entitySet)) : null;
+        if (suggestions) {
+          const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
+          if (suggestions.size !== pool.length) throw new Error(`${item.id} suggestions drifted`);
+        }
+        const promptWords = ` ${normalizeAnswer(item.prompt)} `;
         for (const answer of item.accepted) {
           if (!(answer.prior > 0)) throw new Error(`${item.id} needs a positive prior`);
-          if (!suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
-          if (item.prompt.toLowerCase().includes(answer.canonical.toLowerCase())) {
+          if (suggestions && !suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
+          if (promptWords.includes(` ${normalizeAnswer(answer.canonical)} `)) {
             throw new Error(`${item.id} prompt contains ${answer.canonical}`);
           }
         }
@@ -408,10 +421,8 @@ export function assertSeed(): void {
         throw new Error(`${item.id} rank needs 3 or 4 facts`);
       }
     }
-    const nameCount = puzzle.questionIds.filter((id) => questionById.get(id)?.type === "name_one").length;
-    if (nameCount !== 2) throw new Error(`${puzzle.theme} needs two name-one questions`);
-    if (!types.has("estimate")) throw new Error(`${puzzle.theme} is missing an estimate`);
-    if (!types.has("compare") && !types.has("rank")) throw new Error(`${puzzle.theme} needs a compare or a rank`);
+    // Classic is open answers only: every question is "name one", scored by how rare the answer is.
+    if (types.size !== 1 || !types.has("name_one")) throw new Error(`${puzzle.theme} must be all name-one questions`);
   }
   if (seenSlots.size !== 10) throw new Error("Slots must be 0 through 9");
 }

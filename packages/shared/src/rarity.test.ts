@@ -48,7 +48,10 @@ describe("rarity scoring", () => {
     const rare = nameOnePoints(priorShare(accepted[1]!, accepted));
     const common = nameOnePoints(priorShare(accepted[0]!, accepted));
     expect(rare).toBeGreaterThan(common);
-    expect(nameOnePoints(0)).toBe(36);
+    expect(nameOnePoints(0)).toBe(100);
+    expect(nameOnePoints(0.02)).toBe(75);
+    expect(nameOnePoints(0.05)).toBe(50);
+    expect(nameOnePoints(0.15)).toBe(25);
     expect(nameOnePoints(1)).toBe(10);
   });
 
@@ -72,7 +75,7 @@ describe("zoom path", () => {
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {
     expect(levelForClassicScore(0).id).toBe("atom");
-    expect(levelForClassicScore(132).name).toBe("Milky Way");
+    expect(levelForClassicScore(500).name).toBe("Milky Way");
     expect(zoomShareLine(levelForCorrectCount(10))).toBe("⚛️→🏙️→🌌 reached Milky Way");
     expect(zoomShareLine(levelForCorrectCount(10))).not.toContain("correct");
   });

@@ -1,9 +1,12 @@
+import { classicField } from "./field.js";
 import {
   beatPercent,
   classicShareText,
   formatFactValue,
   formatFactor,
-  levelForClassicScore,
+  NAME_CAP,
+  classicStep,
+  levelForProgress,
   reachedPhrase,
   puzzleNumber,
   puzzleSlot,
@@ -115,6 +118,7 @@ export async function loadPuzzleResponse(
     devDate,
     questions: publicQuestions,
     result: await dayResult(db, date, deviceId, number, shareHost, epoch),
+    field: await classicField(db, date, questions),
   };
 }
 
@@ -296,6 +300,7 @@ function validateGuess(question: PlayQuestion, guess: Guess): void {
     return;
   }
   if (guess.type === "name_one") {
+    if (guess.timedOut === true) return;
     const text = guess.text.trim();
     if (text.length < 1 || text.length > 80) throw new HttpError(400, "invalid_guess");
     return;
@@ -367,7 +372,7 @@ async function revealFor(db: D1Database, date: string, question: PlayQuestion, g
   return {
     band: scored.band,
     emoji: BAND_EMOJI[scored.band],
-    label: question.type === "estimate" ? BAND_LABEL[scored.band] : plainLabel(scored.band),
+    label: question.type === "estimate" ? BAND_LABEL[scored.band] : question.type === "name_one" ? (scored.tier ?? scored.answerText) : plainLabel(scored.band),
     points: scored.points,
     answerText,
     detail,
@@ -459,14 +464,20 @@ async function dayResult(
   const scores = board.results.map((row) => row.score);
   const bands = parseStringArray(mine.bands) as Band[];
   const emojis = bands.map((band) => BAND_EMOJI[band]);
+  // The world named in the result is the one the scene flew to, so it adds up the same per-answer flights.
+  const mineRows = await db
+    .prepare("SELECT points FROM submissions WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
+    .bind(deviceId, date, MODE)
+    .all<{ points: number }>();
+  const reached = levelForProgress((mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP), 0));
   return {
     score: mine.score,
     bands,
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(levelForClassicScore(mine.score))),
-    reached: reachedPhrase(levelForClassicScore(mine.score)),
+    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(reached)),
+    reached: reachedPhrase(reached),
     provisional: date >= utcToday(),
   };
 }
