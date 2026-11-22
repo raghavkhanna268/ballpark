@@ -36,7 +36,7 @@ export function HeadToHeadScreen({
       return;
     }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const delay = reduced ? 500 : reveal.correct ? 1900 : 1400;
+    const delay = reduced ? 500 : reveal.correct ? 2600 : 2000;
     const collapse = window.setTimeout(() => setSlim(true), reduced ? 180 : 480);
     const id = window.setTimeout(() => {
       if (reveal.next) {

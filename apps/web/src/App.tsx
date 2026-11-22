@@ -85,7 +85,7 @@ export function App() {
   const flight = phase.name === "h2h" ? h2hFlight : classicFlight;
 
   return (
-    <Journey progress={flight} hop={hop} overview={phase.name === "end" || h2hOverview}>
+    <Journey progress={flight} hop={hop} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>
     <main>
       {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
