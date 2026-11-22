@@ -1,7 +1,6 @@
 -- SAMPLE DATA. verified = 0 on every row.
 -- Generated from seed/content.ts. Do not edit by hand.
 -- Pending human verification. Not an official puzzle set.
-BEGIN TRANSACTION;
 DELETE FROM h2h_picks;
 DELETE FROM h2h_runs;
 DELETE FROM daily_results;
@@ -353,4 +352,3 @@ INSERT INTO puzzles (slot, theme, blurb, question_ids) VALUES (16, 'Measured Ear
 INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES ('cricket', 'Cricket Crazy', '🏏', 'Tests, World Cups, the IPL, and silly mid-off.', '["pq-cricket-tests","pq-cricket-cwc","pq-cricket-ipl","pq-cricket-out","pq-cricket-field"]', 1);
 INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES ('screen', 'Screen Time', '🎬', 'Dwarfs, Friends, Simpsons, princesses, and Bond.', '["pq-screen-dwarfs","pq-screen-friends","pq-screen-simpsons","pq-screen-princess","pq-screen-bond"]', 2);
 INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES ('space', 'Space Nerd', '🚀', 'Moon landings, dwarf planets, and animals in orbit.', '["pq-space-landers","pq-space-dwarf","pq-space-elements","pq-space-moons","pq-space-animals"]', 3);
-COMMIT;

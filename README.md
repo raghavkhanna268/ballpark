@@ -2,7 +2,7 @@
 
 Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. Two modes share one fact table: **Classic** (five questions) and **Head-to-head** (ten pairs, and you answer every one). Both are scored on the server. There is no account.
 
-Nothing here is deployed. Do not run `wrangler deploy`, `wrangler d1 create`, or any command that talks to a Cloudflare account.
+One test deploy exists, made by hand from the owner's Mac on 2026-11-22 at their request: https://ballpark.raghavkhanna.workers.dev (sample questions, Ballpark+ checkout off). Do not run `wrangler deploy`, `wrangler d1 create`, or any other command that talks to a Cloudflare account unless the owner asks for it. See [Test deploy](#test-deploy).
 
 ## Run it
 
@@ -206,6 +206,17 @@ npm run build:deploy
 ```
 
 That builds `apps/web`, writes `apps/api/src/assets.generated.ts` (gitignored), and runs `wrangler deploy --dry-run --outdir dist/worker` with `apps/api/wrangler.deploy.jsonc`. The dry run does not upload anything. The bundle's `src/deploy.ts` serves those files, falls back to `index.html` for client routes, and forwards `/api/*` to the game handler. Both configs schedule `0 0 * * *` so a closed day is finalized at midnight UTC. Do not add deploy secrets, and do not put a deploy step in CI.
+
+## Test deploy
+
+Only when the owner asks, and from a machine signed in to their Cloudflare account (`npx wrangler login`). From `apps/api`:
+
+1. `npx wrangler d1 create ballpark` once, then put its id in `wrangler.deploy.jsonc` in place of the placeholder. Keep that edit local.
+2. `npx tsx scripts/emit-seed.ts`, then `npx wrangler d1 migrations apply ballpark --remote --config wrangler.deploy.jsonc`, then `npx wrangler d1 execute ballpark --remote --config wrangler.deploy.jsonc --file=./seed/seed.sql`. The seed deletes every saved result first, so load it only into a fresh database. `seed.sql` has no `BEGIN`/`COMMIT`, because remote D1 rejects explicit transactions.
+3. From the repo root, `npm run build:deploy`. Then, from `apps/api`, `npx wrangler deploy --config wrangler.deploy.jsonc`.
+4. Set `SHARE_HOST` to the printed workers.dev host, then build and deploy again, so share links point at the deploy.
+
+`PLUS_TEST_UNLOCK` stays `"false"` in that config, so packs stay locked there until Razorpay keys are added as Worker secrets.
 
 ## Ethics
 

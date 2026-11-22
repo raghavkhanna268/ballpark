@@ -18,7 +18,7 @@ const lines: string[] = [
   "-- SAMPLE DATA. verified = 0 on every row.",
   "-- Generated from seed/content.ts. Do not edit by hand.",
   "-- Pending human verification. Not an official puzzle set.",
-  "BEGIN TRANSACTION;",
+  // No BEGIN/COMMIT: remote D1 rejects explicit transactions in an executed file.
   "DELETE FROM h2h_picks;",
   "DELETE FROM h2h_runs;",
   "DELETE FROM daily_results;",
@@ -99,7 +99,7 @@ for (const item of packs) {
   );
 }
 
-lines.push("COMMIT;", "");
+lines.push("");
 const sql = lines.join("\n");
 const out = join(dirname(fileURLToPath(import.meta.url)), "../seed/seed.sql");
 
