@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { PublicH2HRound } from "@ballpark/shared";
 import { errorCopy, postHeadPick, postPractice, type HeadPickResponse, type HeadToHeadState } from "./api";
+import { CountUp } from "./game";
 import { haptic, shareText } from "./haptic";
 import { RankBlock } from "./rivals";
 import { QuestionTimer } from "./timer";
@@ -102,9 +103,10 @@ export function HeadToHeadScreen({
     return (
       <div className="stack end">
         <p className="kicker">{result.official ? `Head-to-head · #${initial.puzzleNumber}` : "Practice run"}</p>
+        <p className="mission">Run complete</p>
         <h2>You reached {result.reached}</h2>
         <p className="score">
-          {result.score}
+          <CountUp value={result.score} pad={2} />
           <span> / 10</span>
         </p>
         {result.official ? (

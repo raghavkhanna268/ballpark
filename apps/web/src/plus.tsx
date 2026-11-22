@@ -12,6 +12,7 @@ import {
   type Reveal,
 } from "@ballpark/shared";
 import { ApiError, errorCopy, getPack, postPackGuess, postPlusOrder, postPlusVerify, postTestUnlock } from "./api";
+import { CountUp, Tally, currentCombo } from "./game";
 import { haptic, shareText } from "./haptic";
 import { QuestionScreen, RevealScreen } from "./screens";
 
@@ -272,9 +273,10 @@ export function PackRun({
   deviceId: string;
   packId: string;
   onHome: () => void;
-  /** How high the climber already is when the pack opens. */
-  onFlight: (progress: number) => void;
-  onHop: (points: number, tier: string | null) => void;
+  /** How high the climber already is when the pack opens, the points so far, and the right answers in a row. */
+  onFlight: (progress: number, score: number, combo: number) => void;
+  /** One answer scored: its points, and its tier label when it scored any. */
+  onHop: (points: number, label: string | null) => void;
   onEnd: () => void;
 }) {
   const [pack, setPack] = useState<PackResponse | null>(null);
@@ -288,7 +290,8 @@ export function PackRun({
       .then((loaded) => {
         if (!live) return;
         setPack(loaded);
-        onFlight(flight(loaded));
+        const points = loaded.questions.map((question) => question.reveal?.points ?? null);
+        onFlight(flight(loaded), points.reduce<number>((sum, value) => sum + (value ?? 0), 0), currentCombo(points));
         if (loaded.result) {
           setPhase({ name: "end" });
           onEnd();
@@ -384,11 +387,13 @@ function PackEnd({ pack, result, onHome }: { pack: PackResponse; result: PackRes
       <p className="kicker">
         Ballpark+ · {pack.pack.emoji} {pack.pack.title}
       </p>
+      <p className="mission">Pack complete</p>
       <h2>You reached {result.reached}</h2>
       <p className="score">
-        {result.score}
+        <CountUp value={result.score} pad={3} />
         <span> pts</span>
       </p>
+      <Tally rows={pack.questions.map((question) => question.reveal)} />
       <div className="rank-block">
         <h2>
           You’re #{rank} <span>of {players} who played this pack</span>

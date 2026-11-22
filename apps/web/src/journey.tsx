@@ -17,10 +17,21 @@ import {
   climberY,
   stopAt,
 } from "./worlds";
+import { useCountUp } from "./game";
 import "./journey.css";
 
-/** One answer's flight. In Classic, `tier` is the rarity tier it earned, shown as the boost. */
-export type Hop = { id: number; kind: "idle" | "voyage" | "stumble"; travel: number; tier?: { name: string; points: number } };
+/** One answer's flight. */
+export type Hop = {
+  id: number;
+  kind: "idle" | "voyage" | "stumble";
+  travel: number;
+  /** What a scoring answer earned: the pop-up's label and points, and a level from 1 to 5 that sizes the flame and the glow. */
+  gain?: { label: string; points: number; level: number; unit?: string };
+  /** Right answers in a row after this one, or the run that a miss just broke. Cosmetic: it never changes the score. */
+  combo?: number;
+};
+/** The score in the heads-up display. It counts up after each answer, like an arcade score. */
+export type HudScore = { value: number; label: string; digits: number };
 export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number };
 type Motion = "idle" | "voyage" | "stumble" | "replay";
 
@@ -35,7 +46,7 @@ const ROUTE_POINTS = 1600;
 const TRAIL_OFFSET = 34;
 
 type Pose = { v: number; cam: number; dx: number; dy: number; rot: number; sx: number; sy: number };
-type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "tier" | "space" };
+type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "tier" | "space" | "miss"; level?: number };
 
 const REST: Omit<Pose, "v" | "cam"> = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1 };
 
@@ -45,6 +56,8 @@ export function Journey({
   overview,
   page,
   ghosts = [],
+  score = null,
+  combo = 0,
   children,
 }: {
   /** 0 is the launch pad. Each correct answer climbs 1. A miss climbs about a third. */
@@ -55,6 +68,10 @@ export function Journey({
   page: string;
   /** Faint climbers for your best run, today's average and best players, and a friend you are racing. */
   ghosts?: Ghost[];
+  /** The run's score, shown top right while a run is on screen. */
+  score?: HudScore | null;
+  /** Right answers in a row. Shown as a combo meter from two up. */
+  combo?: number;
   children: ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -80,6 +97,7 @@ export function Journey({
   const [landed, setLanded] = useState(() => stopAt(progress));
   const [arrived, setArrived] = useState(0);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [fly, setFly] = useState<{ id: number; text: string } | null>(null);
   const [sound, setSound] = useState(() => readSound());
 
   ghostsRef.current = ghosts;
@@ -108,6 +126,12 @@ export function Journey({
     const id = window.setTimeout(() => setToast(null), 2200);
     return () => window.clearTimeout(id);
   }, [toast]);
+
+  useEffect(() => {
+    if (!fly) return;
+    const id = window.setTimeout(() => setFly(null), 1500);
+    return () => window.clearTimeout(id);
+  }, [fly]);
 
   /** World y at the top of the scene, so the camera's stop sits at ANCHOR of the scene height. */
   function cameraTop(cam: number): number {
@@ -228,7 +252,13 @@ export function Journey({
     }
     const kind = hop.kind === "stumble" ? "stumble" : "voyage";
     setMotion(kind);
-    if (hop.tier && kind === "voyage") setToast({ id: Date.now(), title: hop.tier.name, detail: `+${hop.tier.points} pts`, tone: "tier" });
+    const streak = hop.combo ?? 0;
+    if (hop.gain && kind === "voyage") {
+      const { label, points, level, unit = "pts" } = hop.gain;
+      setToast({ id: Date.now(), title: label, detail: `+${points} ${unit}${streak >= 2 ? ` · combo x${streak}` : ""}`, tone: "tier", level });
+      if (score && points > 0) setFly({ id: hop.id, text: `+${points}` });
+    }
+    if (kind === "stumble") setToast({ id: Date.now(), title: "Miss", detail: streak >= 2 ? `combo x${streak} lost` : "+0 · still climbing", tone: "miss" });
     if (sound) playHop(kind);
     return run(kind, from, to, kind === "stumble" ? STUMBLE_MS : VOYAGE_MS);
   }, [progress, hop.id]);
@@ -264,7 +294,7 @@ export function Journey({
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
   /** Liftoff 1 … Supernova 5: the flame grows with the rarity of the answer. */
-  const boost = motion === "voyage" && hop.tier ? `boost-${Math.max(1, Math.min(5, Math.round(hop.tier.points / 25) + 1))}` : "";
+  const boost = motion === "voyage" && hop.gain ? `boost-${hop.gain.level}` : "";
   const columns = WORLD_W + SIDE * 2;
 
   return (
@@ -292,29 +322,46 @@ export function Journey({
             <i key={index} style={{ left: `${10 + index * 11}%`, animationDelay: `${(index * 73) % 400}ms` }} />
           ))}
         </div>
-        {motion === "stumble" ? <div className="miss-flash" key={hop.id} /> : null}
+        {motion === "stumble" ? <div className="miss-flash" key={`miss-${hop.id}`} /> : null}
         {toast ? (
-          <div className={`toast ${toast.tone}`} key={toast.id} role="status">
+          <div className={`toast ${toast.tone} ${toast.level ? `level-${toast.level}` : ""}`} key={toast.id} role="status">
             <strong>{toast.title}</strong>
             <span>{toast.detail}</span>
           </div>
         ) : null}
+        {fly && !reduced ? (
+          <div className="fly" key={`fly-${fly.id}`} aria-hidden="true">
+            {fly.text}
+          </div>
+        ) : null}
         <div className="hud">
-          <p className="where" key={arrived}>
-            <span className="power" ref={altRef}>
-              ALT {info.altitude}
-            </span>
-            <span className="place" ref={labelRef}>
-              {info.label}
-            </span>
-          </p>
-          {ghosts.length > 0 && !flying ? (
-            <p className={rival ? "rival" : "rival done"}>
-              <small>{rival ? "Next to beat" : "Above everyone"}</small>
-              <span>{rival ? rival.label : "you’re out in front"}</span>
-              {rival ? <em>{formatAltitude(rival.progress)}</em> : null}
+          <div className="hud-side">
+            <p className="where" key={`where-${arrived}`}>
+              <span className="power" ref={altRef}>
+                ALT {info.altitude}
+              </span>
+              <span className="place" ref={labelRef}>
+                {info.label}
+              </span>
             </p>
-          ) : null}
+            {combo >= 2 ? (
+              <p className="combo" key={`combo-${combo}`}>
+                Combo <b>x{combo}</b>
+              </p>
+            ) : null}
+          </div>
+          <div className="hud-side end">
+            {score ? <ScoreBox score={score} /> : null}
+            {ghosts.length > 0 && !flying ? (
+              <p className={rival ? "rival" : "rival done"}>
+                <small>{rival ? "Next to beat" : "Above everyone"}</small>
+                <span>
+                  {rival ? rival.label : "you’re out in front"}
+                  {rival ? <em> {formatAltitude(rival.progress)}</em> : null}
+                </span>
+              </p>
+            ) : null}
+          </div>
         </div>
         <div className="altimeter" aria-hidden="true">
           <span className="alt-end">top</span>
@@ -352,6 +399,17 @@ export function Journey({
         {children}
       </div>
     </div>
+  );
+}
+
+/** The run's score, top right. It waits for the points to fly over, then counts up. */
+function ScoreBox({ score }: { score: HudScore }) {
+  const shown = useCountUp(score.value, { delay: 950, duration: 600 });
+  return (
+    <p className={shown < score.value ? "scorebox counting" : "scorebox"}>
+      <small>{score.label}</small>
+      <strong>{String(shown).padStart(score.digits, "0")}</strong>
+    </p>
   );
 }
 

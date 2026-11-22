@@ -1,5 +1,6 @@
 import { QuestionTimer } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { CountUp, Tally } from "./game";
 import { haptic, shareText } from "./haptic";
 import {
   formatFactValue,
@@ -212,7 +213,8 @@ export function RevealScreen({
         </p>
         <h2>{reveal.label}</h2>
         <p className="points">
-          {reveal.points}
+          {reveal.points > 0 ? "+" : ""}
+          <CountUp value={reveal.points} delay={150} duration={700} />
           <span> pts</span>
         </p>
         {reveal.bonusPoints > 0 ? <p className="delta">Crowd bonus +{reveal.bonusPoints}</p> : null}
@@ -274,11 +276,13 @@ export function EndScreen({
       <p className="kicker">
         Classic · #{puzzle.puzzleNumber}
       </p>
+      <p className="mission">Mission complete</p>
       <h2>You reached {result.reached}</h2>
       <p className="score">
-        {result.score}
+        <CountUp value={result.score} pad={3} />
         <span> pts</span>
       </p>
+      <Tally rows={puzzle.questions.map((question) => question.reveal)} />
       {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
       {rivals}
       <p className="emoji-row" aria-label="Five question bands">
@@ -352,7 +356,9 @@ function PlayHeader({ puzzle, index, onHome }: { puzzle: PuzzleResponse; index: 
         Home
       </button>
       <p>
-        {index + 1} of {puzzle.questions.length}
+        <b className="stage-no">
+          Stage {index + 1}/{puzzle.questions.length}
+        </b>
         <span> · {puzzle.theme}</span>
       </p>
       <div className="dots" aria-hidden="true">

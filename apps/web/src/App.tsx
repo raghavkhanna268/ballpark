@@ -16,7 +16,8 @@ import {
 import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
-import { Journey, type Ghost, type Hop } from "./journey";
+import { currentCombo, gainLevel } from "./game";
+import { Journey, type Ghost, type Hop, type HudScore } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
 import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
@@ -53,6 +54,9 @@ export function App() {
   const [plus, setPlus] = useState<PlusStatus | null>(null);
   const [packs, setPacks] = useState<PackSummary[]>([]);
   const [packFlight, setPackFlight] = useState(0);
+  /** Score and right-answers-in-a-row for the heads-up display in Head-to-head and packs. Classic reads them from the puzzle. */
+  const [h2hRun, setH2hRun] = useState({ score: 0, combo: 0 });
+  const [packRun, setPackRun] = useState({ score: 0, combo: 0 });
 
   const refreshPlus = useCallback(async () => {
     try {
@@ -111,8 +115,10 @@ export function App() {
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
       const max = question.type === "name_one" ? NAME_CAP : 20;
       const travel = classicStep(response.reveal.points, max);
-      const tier = question.type === "name_one" && response.reveal.points > 0 ? { name: response.reveal.label, points: response.reveal.points } : undefined;
-      setHop((current) => ({ id: current.id + 1, kind: response.reveal.points > 0 ? "voyage" : "stumble", travel, tier }));
+      const scored = response.reveal.points > 0;
+      const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(response.reveal.points, max) } : undefined;
+      const combo = scored ? currentCombo(pointsOf(nextPuzzle)) : currentCombo(pointsOf(puzzle));
+      setHop((current) => ({ id: current.id + 1, kind: scored ? "voyage" : "stumble", travel, gain, combo }));
       if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
         setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
       }
@@ -146,12 +152,22 @@ export function App() {
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
   const challenge = classicRace && !puzzle?.result ? classicRace : h2hRace && h2h?.status !== "finished" ? h2hRace : null;
+  const inClassic = phase.name === "ask" || phase.name === "reveal" || phase.name === "end";
+  const hudScore: HudScore | null = inClassic
+    ? { value: puzzle ? classicScore(puzzle) : 0, label: "Score", digits: 3 }
+    : mode === "h2h"
+      ? { value: h2hRun.score, label: "Picks", digits: 2 }
+      : mode === "pack"
+        ? { value: packRun.score, label: "Score", digits: 3 }
+        : null;
+  const combo = inClassic && puzzle ? currentCombo(pointsOf(puzzle)) : mode === "h2h" ? h2hRun.combo : mode === "pack" ? packRun.combo : 0;
 
   function startHeadToHead() {
     const correct = h2h?.correct ?? 0;
     const answered = h2h?.status === "finished" ? 10 : (h2h?.round?.index ?? 0);
     setH2hFlight(correct + Math.max(0, answered - correct) / 3);
     setH2hOverview(h2h?.status === "finished");
+    setH2hRun({ score: h2h?.status === "finished" ? (h2h.result?.score ?? correct) : correct, combo: 0 });
     setPhase({ name: "h2h" });
   }
 
@@ -163,6 +179,7 @@ export function App() {
 
   function openPack(id: string) {
     setPackFlight(0);
+    setPackRun({ score: 0, combo: 0 });
     setPhase({ name: "pack", id, done: false });
   }
 
@@ -175,6 +192,8 @@ export function App() {
       progress={flight}
       hop={hop}
       ghosts={ghosts}
+      score={hudScore}
+      combo={combo}
       overview={phase.name === "end" || h2hOverview || (phase.name === "pack" && phase.done)}
       page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "pack" ? `pack-${phase.id}` : phase.name}
     >
@@ -264,9 +283,17 @@ export function App() {
               {h2hStreak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
             </>
           )}
-          onHop={(correct) => {
+          onHop={(correct, correctCount) => {
+            const combo = correct ? h2hRun.combo + 1 : h2hRun.combo;
+            setH2hRun({ score: correctCount, combo: correct ? combo : 0 });
             setH2hFlight((current) => current + (correct ? 1 : 1 / 3));
-            setHop((current) => ({ id: current.id + 1, kind: correct ? "voyage" : "stumble", travel: correct ? 1 : 0.33 }));
+            setHop((current) => ({
+              id: current.id + 1,
+              kind: correct ? "voyage" : "stumble",
+              travel: correct ? 1 : 0.33,
+              gain: correct ? { label: "Correct", points: 1, level: 3, unit: "pick" } : undefined,
+              combo,
+            }));
           }}
           onSettled={() => setH2hOverview(true)}
         />
@@ -292,11 +319,22 @@ export function App() {
             goHome();
             void refreshPlus();
           }}
-          onFlight={setPackFlight}
-          onHop={(points, tier) => {
+          onFlight={(progress, score, combo) => {
+            setPackFlight(progress);
+            setPackRun({ score, combo });
+          }}
+          onHop={(points, label) => {
             const travel = classicStep(points, NAME_CAP);
+            const combo = points > 0 ? packRun.combo + 1 : packRun.combo;
+            setPackRun({ score: packRun.score + points, combo: points > 0 ? combo : 0 });
             setPackFlight((current) => current + travel);
-            setHop((current) => ({ id: current.id + 1, kind: points > 0 ? "voyage" : "stumble", travel, tier: tier ? { name: tier, points } : undefined }));
+            setHop((current) => ({
+              id: current.id + 1,
+              kind: points > 0 ? "voyage" : "stumble",
+              travel,
+              gain: label ? { label, points, level: gainLevel(points, NAME_CAP) } : undefined,
+              combo,
+            }));
           }}
           onEnd={() => setPhase((current) => (current.name === "pack" ? { ...current, done: true } : current))}
         />
@@ -315,6 +353,15 @@ function flightFor(puzzle: PuzzleResponse): number {
     if (!question.reveal) return sum;
     return sum + classicStep(question.reveal.points, question.type === "name_one" ? NAME_CAP : 20);
   }, 0);
+}
+
+/** Each answered question's points in order, with null for the ones still to play. */
+function pointsOf(puzzle: PuzzleResponse): Array<number | null> {
+  return puzzle.questions.map((question) => question.reveal?.points ?? null);
+}
+
+function classicScore(puzzle: PuzzleResponse): number {
+  return puzzle.questions.reduce((sum, question) => sum + (question.reveal?.points ?? 0), 0);
 }
 
 function ghostsFor(best: number, field: FieldStats | undefined, race: Race | null): Ghost[] {

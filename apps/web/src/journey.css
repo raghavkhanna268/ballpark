@@ -20,6 +20,11 @@
   --miss-ink: #c4ccda;
   --line-art: #8fd3ff;
   --amber: #ffb347;
+  /* Game layer: a display face for numbers and call-outs, and neon glows in the Blueprint colours. */
+  --display: Orbitron, Outfit, "Avenir Next", sans-serif;
+  --glow-amber: 0 0 6px rgba(255, 179, 71, 0.85), 0 0 18px rgba(255, 179, 71, 0.45);
+  --glow-cyan: 0 0 6px rgba(143, 211, 255, 0.8), 0 0 16px rgba(143, 211, 255, 0.35);
+  --miss-red: #ff7a66;
   position: fixed;
   inset: 0;
   display: flex;
@@ -58,13 +63,22 @@
   left: 0;
   right: 0;
   top: 0;
-  height: 84px;
+  height: 100px;
   background: linear-gradient(to bottom, rgba(7, 11, 22, 0.97), rgba(7, 11, 22, 0.85) 55%, rgba(7, 11, 22, 0));
   pointer-events: none;
 }
+/* Faint scanlines over the sky, like an old arcade screen. */
+.scene::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(143, 211, 255, 0) 0 3px, rgba(143, 211, 255, 0.035) 3px 4px);
+  pointer-events: none;
+}
 
-.route-trace { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 4 7; stroke-linecap: round; opacity: 0.9; }
-.route-trace.stumble { stroke: #ff7a66; }
+.route-trace { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 4 7; stroke-linecap: round; opacity: 0.95; filter: drop-shadow(0 0 3px rgba(255, 179, 71, 0.9)); }
+.route-trace.stumble { stroke: #ff7a66; filter: drop-shadow(0 0 3px rgba(255, 122, 102, 0.9)); }
 
 .ghost path, .ghost circle { stroke: currentColor; }
 .ghost text { fill: currentColor; letter-spacing: 1px; }
@@ -85,7 +99,7 @@
   will-change: transform;
   pointer-events: none;
 }
-.climber { display: block; overflow: visible; }
+.climber { display: block; overflow: visible; filter: drop-shadow(0 0 3px rgba(143, 211, 255, 0.55)); }
 .climber .suit { fill: #0e1830; stroke: #e8f1ff; stroke-width: 1.6; }
 .climber .limb { fill: none; stroke: #e8f1ff; stroke-width: 3.2; stroke-linecap: round; }
 .climber .pack { fill: #0e1830; stroke: var(--line-art); stroke-width: 1.4; }
@@ -140,28 +154,71 @@
 }
 .stage.is-stumble .scene { animation: shake 0.5s linear; }
 
+/* Pop-ups: a glowing call-out for each answer, with a punch-in like a game. */
 .toast {
   position: absolute;
   z-index: 7;
   left: 50%;
-  top: 16%;
+  top: 106px;
+  isolation: isolate;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: 10px 18px;
-  border: 1px solid var(--line-art);
-  background: rgba(10, 16, 32, 0.88);
+  gap: 4px;
+  padding: 8px 18px;
+  border: 1px solid rgba(143, 211, 255, 0.6);
+  background: rgba(10, 16, 32, 0.86);
+  box-shadow: var(--glow-cyan);
   color: var(--ink);
   white-space: nowrap;
   animation: toast 2.2s ease forwards;
 }
-.toast strong { font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; }
-.toast span { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.75rem; color: var(--line-art); }
-.toast.tier, .toast.pass, .toast.space { border-color: var(--amber); }
-.toast.tier span, .toast.pass span, .toast.space span { color: var(--amber); }
-.toast.tier strong { color: var(--amber); letter-spacing: 0.16em; }
+.toast strong { font-family: var(--display); font-weight: 900; font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.toast span { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--line-art); }
+.toast.pass, .toast.space { border-color: var(--amber); box-shadow: var(--glow-amber); }
+.toast.pass span, .toast.space span { color: var(--amber); }
+/* An answer's tier: big glowing type and no box, with rays behind the rare ones. */
+.toast.tier { border: none; background: none; box-shadow: none; padding: 6px 10px; animation-name: toast-punch; }
+.toast.tier strong { font-size: 1.75rem; letter-spacing: 0.1em; color: #fff4dc; text-shadow: var(--glow-amber), 0 0 34px rgba(255, 179, 71, 0.35); }
+.toast.tier span { font-size: 0.82rem; color: var(--amber); text-shadow: 0 0 8px rgba(255, 179, 71, 0.6); }
+.toast.tier.level-1 strong, .toast.tier.level-2 strong { font-size: 1.45rem; color: #e8f6ff; text-shadow: var(--glow-cyan); }
+.toast.tier.level-1 span, .toast.tier.level-2 span { color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
+.toast.tier.level-5 strong { font-size: 2rem; color: #ffffff; text-shadow: 0 0 6px #fff1c9, 0 0 16px var(--amber), 0 0 40px rgba(255, 179, 71, 0.7); }
+.toast.tier.level-4::before, .toast.tier.level-5::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  width: 240px;
+  height: 240px;
+  margin: -120px 0 0 -120px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 179, 71, 0.22) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
+  mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
+  animation: spin 8s linear infinite;
+}
+.toast.tier.level-5::before { background: repeating-conic-gradient(rgba(255, 241, 201, 0.32) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg); }
+.toast.miss { border-color: rgba(255, 122, 102, 0.7); box-shadow: 0 0 6px rgba(255, 122, 102, 0.7), 0 0 18px rgba(255, 122, 102, 0.3); }
+.toast.miss strong { color: var(--miss-red); font-size: 1.3rem; text-shadow: 0 0 8px rgba(255, 122, 102, 0.7); }
+.toast.miss span { color: #ffb0a2; }
+
+/* The points lift off the pop-up and fly into the score, top right. */
+.fly {
+  position: absolute;
+  z-index: 8;
+  right: 18px;
+  top: 30px;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  pointer-events: none;
+  animation: fly 1.35s cubic-bezier(0.55, 0, 0.35, 1) forwards;
+}
 
 /* ---------- heads-up display ---------- */
 .hud {
@@ -176,15 +233,37 @@
   gap: 8px;
   pointer-events: none;
 }
-.where, .rival { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.hud-side { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 58%; }
+.hud-side.end { align-items: flex-end; text-align: right; max-width: 46%; }
+.where, .rival, .scorebox, .combo { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .where { animation: arrive 0.5s ease; }
-.where .power { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.75rem; color: var(--line-art); }
-.where { max-width: 58%; }
+.where .power { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
 .where .place { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
-.rival { align-items: flex-end; text-align: right; max-width: 40%; animation: arrive 0.5s ease; }
-.rival em { font-style: normal; font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.68rem; color: var(--line-art); }
-.rival small { font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
-.rival span { font-size: 0.8rem; font-weight: 600; color: var(--amber); }
+.scorebox { align-items: flex-end; }
+.scorebox small, .rival small { font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.scorebox strong { font-family: var(--display); font-weight: 900; font-size: 1.55rem; line-height: 1; letter-spacing: 0.06em; color: var(--amber); text-shadow: var(--glow-amber); font-variant-numeric: tabular-nums; }
+.scorebox.counting strong { color: #fff4dc; animation: score-pulse 0.3s ease-in-out infinite alternate; }
+.combo {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-art);
+  border-radius: 999px;
+  background: rgba(10, 16, 32, 0.7);
+  box-shadow: var(--glow-cyan);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line-art);
+  animation: combo-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.combo b { font-size: 0.85rem; font-weight: 900; color: #e8f6ff; }
+.rival { align-items: flex-end; animation: arrive 0.5s ease; }
+.rival span { font-size: 0.74rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
+.rival em { font-style: normal; font-family: var(--display); font-weight: 700; font-size: 0.64rem; color: var(--line-art); }
 .rival.done small { color: var(--amber); }
 
 /* A vertical altimeter on the right edge: ground at the bottom, the Milky Way at the top. */
@@ -192,7 +271,7 @@
   position: absolute;
   z-index: 7;
   right: 12px;
-  top: 74px;
+  top: 104px;
   bottom: 40px;
   width: 30px;
   display: flex;
@@ -203,7 +282,7 @@
 }
 .alt-end { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.58rem; color: rgba(143, 211, 255, 0.7); white-space: nowrap; }
 .alt-line { position: relative; flex: 1; width: 1px; background: rgba(143, 211, 255, 0.35); }
-.alt-line b { position: absolute; left: -1px; bottom: 0; width: 3px; background: var(--amber); }
+.alt-line b { position: absolute; left: -1px; bottom: 0; width: 3px; background: var(--amber); box-shadow: 0 0 8px rgba(255, 179, 71, 0.8); }
 .alt-line i { position: absolute; left: -4px; width: 9px; height: 1px; background: rgba(143, 211, 255, 0.55); }
 .alt-line i.passed { background: var(--amber); }
 .alt-line i.space { left: -8px; width: 17px; background: rgba(255, 179, 71, 0.7); }
@@ -220,7 +299,7 @@
   margin-bottom: -5px;
   border-radius: 50%;
   background: var(--amber);
-  box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.25), 0 0 12px rgba(255, 179, 71, 0.9);
 }
 .sound-toggle {
   position: absolute;
@@ -311,10 +390,31 @@
 @keyframes arrive { 0% { opacity: 0.2; transform: translateY(-4px); } 100% { opacity: 1; transform: none; } }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes pop { 40% { transform: scale(1.45); } }
+@keyframes toast-punch {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.3); }
+  9% { opacity: 1; transform: translateX(-50%) scale(1.22); }
+  16% { transform: translateX(-50%) scale(0.94); }
+  22% { transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(1); }
+}
+@keyframes fly {
+  0%, 24% { opacity: 0; transform: translate(calc(-50vw + 46px), 190px) scale(0.8); }
+  34% { opacity: 1; transform: translate(calc(-50vw + 46px), 172px) scale(1.6); }
+  44% { opacity: 1; transform: translate(calc(-50vw + 46px), 168px) scale(1.6); }
+  82% { opacity: 1; transform: translate(0, 0) scale(0.9); }
+  100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+}
+@keyframes score-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+@keyframes combo-in { 0% { opacity: 0; transform: scale(0.4); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes blink { 50% { opacity: 0.25; } }
+@keyframes tally-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes ready { 50% { box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 26px rgba(255, 179, 71, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55); } }
 
 @media (prefers-reduced-motion: reduce) {
   .bob-slow, .drift, .twinkle, .galaxy-spin, .explorer .climber, .climber .flame path, .smoke i, .speedlines i,
-  .miss-flash, .where, .toast, .stage.is-stumble .scene { animation: none; }
+  .miss-flash, .where, .toast, .stage.is-stumble .scene, .toast.tier::before, .combo, .scorebox strong, .timer-track i,
+  .tally li, .mission, .sheet .mode-card .primary { animation: none; }
   .scene { transition: none; }
 }
 .sheet .bar-track { background: rgba(255, 255, 255, 0.05); }
@@ -336,13 +436,15 @@
 .finds span { grid-column: 1 / -1; color: var(--muted); font-size: 0.75rem; }
 
 /* ---------- question timer ---------- */
-.timer { display: flex; align-items: center; gap: 8px; }
-.timer-track { flex: 1; height: 3px; background: rgba(143, 211, 255, 0.18); overflow: hidden; }
-.timer-track b { display: block; height: 100%; background: var(--amber); transform-origin: left center; }
-.timer .mono { font-size: 0.8rem; color: var(--amber); min-width: 2.2em; text-align: right; }
-.timer.low .timer-track b { background: #ff7a66; }
-.timer.low .mono { color: #ff7a66; }
-.timer.out .mono { color: #ff7a66; }
+/* Ten blocks that go dark one by one, every three seconds, and turn red for the last ten. */
+.timer { display: flex; align-items: center; gap: 10px; }
+.timer-track { flex: 1; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.timer-track i { height: 8px; border-radius: 1px; background: rgba(143, 211, 255, 0.12); transition: background 0.2s, box-shadow 0.2s; }
+.timer-track i.on { background: var(--line-art); box-shadow: 0 0 6px rgba(143, 211, 255, 0.7); }
+.timer .mono { font-family: var(--display); font-weight: 700; font-size: 0.78rem; color: var(--line-art); min-width: 2.6em; text-align: right; }
+.timer.low .timer-track i.on { background: var(--miss-red); box-shadow: 0 0 6px rgba(255, 122, 102, 0.8); }
+.timer.low .timer-track i.on:last-of-type, .timer.low .timer-track i.on:has(+ i:not(.on)) { animation: blink 0.5s steps(2, end) infinite; }
+.timer.low .mono, .timer.out .mono { color: var(--miss-red); text-shadow: 0 0 8px rgba(255, 122, 102, 0.6); }
 
 /* ---------- rivals: rank, friend races, weekly league ---------- */
 .rank-block { display: flex; flex-direction: column; gap: 4px; }
@@ -407,3 +509,116 @@
 .ad-slot p { margin: 0; flex: 1; color: var(--muted); font-size: 0.85rem; }
 .ad-label { padding: 1px 6px; border: 1px solid var(--muted); border-radius: 4px; color: var(--muted); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .ad-slot .text-button { font-size: 0.8rem; }
+
+/* ---------- game layer on the card: HUD panel, chunky buttons, stage labels, tallies ---------- */
+/* A sharper panel with amber corner brackets, like a frame on a blueprint or a game dialog. */
+.sheet .stack, .sheet .end {
+  border-color: rgba(143, 211, 255, 0.22);
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) top left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 2px 16px no-repeat,
+    var(--card);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(143, 211, 255, 0.05);
+}
+
+/* Chunky, beveled game buttons that press down. */
+.sheet .primary {
+  position: relative;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffd08a 0%, #ffb347 45%, #f39a2b 100%);
+  color: #1a1206;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 18px rgba(255, 179, 71, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  cursor: pointer;
+}
+.sheet .primary:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a8640f, 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 179, 71, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.sheet .primary:disabled { opacity: 1; filter: saturate(0.4) brightness(0.8); }
+.sheet .primary:focus-visible { outline: 2px solid var(--line-art); outline-offset: 3px; }
+/* The home screen's play buttons breathe, like a "press start". */
+.sheet .mode-card .primary { animation: ready 2.4s ease-in-out infinite; }
+
+/* Fields and choices glow cyan when they have focus or are picked. */
+.sheet .number-field:focus-within { border-color: var(--line-art); box-shadow: 0 0 0 1px var(--line-art), 0 0 16px rgba(143, 211, 255, 0.3); }
+.sheet .choice.selected { border-color: var(--amber); box-shadow: 0 0 12px rgba(255, 179, 71, 0.3); }
+
+/* Stage 2/5 and the stage blocks. */
+.sheet .play-head p { display: flex; align-items: baseline; gap: 0.35em; min-width: 0; }
+.sheet .play-head p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-no { font-family: var(--display); font-weight: 900; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); text-shadow: 0 0 8px rgba(255, 179, 71, 0.55); white-space: nowrap; }
+.sheet .dots { gap: 3px; }
+.sheet .dots i { width: 14px; height: 6px; border-radius: 1px; background: rgba(143, 211, 255, 0.15); }
+.sheet .dots i.done { background: var(--line-art); box-shadow: 0 0 5px rgba(143, 211, 255, 0.6); }
+.sheet .dots i.on { background: var(--amber); box-shadow: 0 0 6px rgba(255, 179, 71, 0.8); }
+.sheet .type-kicker { font-family: var(--display); font-weight: 700; font-size: 0.64rem; letter-spacing: 0.18em; color: var(--line-art); }
+
+/* The reveal's points tally up in the display face. */
+.sheet .reveal .points { margin: 0; font-family: var(--display); font-weight: 900; font-size: 1.9rem; line-height: 1.1; color: var(--amber); text-shadow: var(--glow-amber); }
+.sheet .reveal .points .count, .sheet .end .score .count { color: inherit; font-size: inherit; letter-spacing: inherit; }
+.sheet .reveal .points span:not(.count) { font-size: 0.8rem; color: var(--muted); text-shadow: none; letter-spacing: 0.1em; }
+.sheet .reveal.band-black .points { color: var(--muted); text-shadow: none; }
+
+/* End screens: a mission-complete banner, an arcade score, and a stage-by-stage tally. */
+.mission {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  transform-origin: left center;
+  animation: toast-punch-in 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.sheet .end .score { font-family: var(--display); font-weight: 900; font-size: 3.4rem; letter-spacing: 0.04em; line-height: 1; color: var(--amber); text-shadow: var(--glow-amber), 0 0 40px rgba(255, 179, 71, 0.3); font-variant-numeric: tabular-nums; }
+.sheet .end .score span:not(.count) { font-family: var(--display); font-size: 0.9rem; letter-spacing: 0.12em; color: var(--muted); text-shadow: none; }
+.tally-block { display: flex; flex-direction: column; gap: 6px; }
+.tally { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid rgba(143, 211, 255, 0.18); }
+.tally li {
+  display: grid;
+  grid-template-columns: 5.6em 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(143, 211, 255, 0.16);
+  font-size: 0.84rem;
+  animation: tally-in 0.35s ease-out both;
+}
+.tally-stage { font-family: var(--display); font-weight: 700; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--line-art); }
+.tally-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.tally b { font-family: var(--display); font-weight: 900; font-size: 0.85rem; color: var(--amber); }
+.best-combo {
+  align-self: flex-start;
+  margin: 2px 0 0;
+  padding: 3px 10px;
+  border: 1px solid var(--line-art);
+  border-radius: 999px;
+  box-shadow: var(--glow-cyan);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line-art);
+}
+@keyframes toast-punch-in { 0% { opacity: 0; transform: scale(0.5); } 100% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet .mode-card .primary, .mission, .tally li, .sheet .primary { animation: none; transition: none; }
+}
