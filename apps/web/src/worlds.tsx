@@ -58,14 +58,16 @@ export function WorldMain() {
   return (
     <g>
       <defs>
-        {/* Dusk blue at the ground, darkening to black in space. */}
+        {/* Day to night: bright blueprint blue at the ground, indigo by the stratosphere, black past the Kármán line. */}
         <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1={WORLD_H} x2="0" y2="0">
-          <stop offset="0" stopColor="#1b3563" />
-          <stop offset="0.3" stopColor="#132a50" />
-          <stop offset="0.47" stopColor="#0d1a36" />
-          <stop offset="0.56" stopColor="#080f22" />
-          <stop offset="0.75" stopColor="#060a18" />
-          <stop offset="1" stopColor="#04060f" />
+          {SKY.map(([at, color]) => (
+            <stop key={at} offset={skyOffset(at)} stopColor={color} />
+          ))}
+        </linearGradient>
+        {/* The thin glow of the atmosphere just under the edge of space. */}
+        <linearGradient id="airglow" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor={LINE} stopOpacity="0.3" />
+          <stop offset="1" stopColor={LINE} stopOpacity="0" />
         </linearGradient>
         <radialGradient id="soft">
           <stop offset="0" stopColor={LINE} stopOpacity="0.14" />
@@ -73,6 +75,8 @@ export function WorldMain() {
         </radialGradient>
       </defs>
       <rect x={-SIDE} y="0" width={WORLD_W + SIDE * 2} height={WORLD_H} fill="url(#sky)" />
+      <rect x={-SIDE} y={KARMAN_Y} width={WORLD_W + SIDE * 2} height="300" fill="url(#airglow)" />
+      <Layers />
       <Stars />
       <Skyline />
       {WORLD_STOPS.map((stop, index) => (
@@ -81,6 +85,51 @@ export function WorldMain() {
         </g>
       ))}
       <Ground />
+    </g>
+  );
+}
+
+/** World y of the Kármán line drawn at the edge of space. */
+const KARMAN_Y = climberY(SPACE_STOP) + 40;
+
+/**
+ * Sky colour by progress (0 is the launch pad). It brightens the low stops so the climb
+ * visibly darkens: blueprint blue, then indigo, then black from the Kármán line up.
+ */
+const SKY: Array<[number, string]> = [
+  [-0.6, "#3070bd"],
+  [1, "#2c66ae"],
+  [2, "#275a9c"],
+  [3, "#224d89"],
+  [4, "#1c3f72"],
+  [5, "#172b5a"],
+  [5.6, "#0f1a3b"],
+  [SPACE_STOP - 0.09, "#070b1c"],
+  [7, "#03050c"],
+  [STOPS - 1 + 1.3, "#020307"],
+];
+
+/** Where a progress value sits on the sky gradient, which runs from the bottom of the world (0) to the top (1). */
+function skyOffset(progress: number): number {
+  return Math.max(0, Math.min(1, 1 - climberY(progress) / WORLD_H));
+}
+
+/** Dashed boundaries between the layers of the atmosphere, labelled like a chart. */
+function Layers() {
+  const lines = [
+    { y: climberY(4) - 210, text: "TROPOPAUSE · STRATOSPHERE BEGINS" },
+    { y: climberY(5) - 110, text: "STRATOPAUSE · MESOSPHERE BEGINS" },
+  ];
+  return (
+    <g>
+      {lines.map((item) => (
+        <g key={item.text}>
+          <line x1={-SIDE} y1={item.y} x2={WORLD_W + SIDE} y2={item.y} stroke={LINE} strokeOpacity="0.5" strokeDasharray="6 6" />
+          <text x="16" y={item.y - 8} fill={LINE} fillOpacity="0.85" fontSize="11" className="mono" letterSpacing="2">
+            {item.text}
+          </text>
+        </g>
+      ))}
     </g>
   );
 }
@@ -112,6 +161,8 @@ function Stars() {
 function Ground() {
   return (
     <g>
+      {/* Solid ground under the bright low sky, so the launch pad reads as standing on something. */}
+      <rect x={-SIDE} y={GROUND} width={WORLD_W + SIDE * 2} height={WORLD_H - GROUND} fill={INK} />
       <line x1={-SIDE} y1={GROUND} x2={WORLD_W + SIDE} y2={GROUND} stroke={LINE} strokeWidth="1.6" />
       {Array.from({ length: 70 }, (_, index) => {
         const x = -SIDE + index * 34;
