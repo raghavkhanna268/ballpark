@@ -103,7 +103,7 @@ describe("head-to-head sequences", () => {
   });
 
   it("formats the share card", () => {
-    expect(levelForCorrectCount(8).name).toBe("Solar system");
+    expect(levelForCorrectCount(8).name).toBe("Moon");
     expect(headToHeadShareText(325, "🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩", 8, 10, "ballpark.local", "Milky Way")).toBe(
       "Ballpark #325 · Head-to-head\n🟩🟩🟥🟩🟩🟩🟥🟩🟩🟩 8/10 · reached Milky Way\nballpark.local",
     );

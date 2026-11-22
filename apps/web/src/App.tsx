@@ -28,6 +28,8 @@ export function App() {
   const [h2hOverview, setH2hOverview] = useState(false);
   const [hop, setHop] = useState<Hop>({ id: 0, kind: "idle", travel: 1 });
   const [logbook, setLogbook] = useState<Logbook>(() => loadLogbook());
+  /** "Your best" ghost is your best before this visit, so finishing a run does not overtake itself. */
+  const [bestBefore] = useState(() => loadLogbook().best);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -87,7 +89,7 @@ export function App() {
   const flight = mode === "h2h" ? h2hFlight : classicFlight;
   const day = puzzle?.date ?? h2h?.date ?? null;
   const mission = day && phase.name !== "home" ? { target: missionFor(day, mode) } : null;
-  const ghosts = phase.name === "home" ? [] : ghostsFor(logbook.best[mode], mode === "h2h" ? h2h?.field : puzzle?.field);
+  const ghosts = phase.name === "home" ? [] : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field);
 
   return (
     <Journey progress={flight} hop={hop} mission={mission} ghosts={ghosts} overview={phase.name === "end" || h2hOverview} page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name}>

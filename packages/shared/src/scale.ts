@@ -2,64 +2,54 @@ export type ScaleLevel = {
   id: string;
   name: string;
   emoji: string;
-  /** Rough size of this rung, as the exponent in 10^n metres. */
+  /** How high this stop is, rounded on purpose so it never repeats a quiz answer. */
+  altitude: string;
+  /** Rough altitude as the exponent in 10^n metres (0 for the launch pad). */
   exponent: number;
-  beyond?: boolean;
-  extra?: number;
 };
 
+/**
+ * The climb, from the launch pad straight up. Index 0 is the start and index 10 is a perfect run.
+ * A correct answer climbs one stop. Above the edge of space the climber is an astronaut.
+ */
 export const SCALE_LEVELS: ScaleLevel[] = [
-  { id: "atom", name: "Atom", emoji: "⚛️", exponent: -10 },
-  { id: "cell", name: "Cell", emoji: "🔬", exponent: -5 },
-  { id: "ant", name: "Ant", emoji: "🐜", exponent: -3 },
-  { id: "human", name: "Human", emoji: "🧍", exponent: 0 },
-  { id: "building", name: "Building", emoji: "🏠", exponent: 2 },
-  { id: "city", name: "City", emoji: "🏙️", exponent: 4 },
-  { id: "country", name: "Country", emoji: "🗺️", exponent: 6 },
-  { id: "earth", name: "Earth", emoji: "🌍", exponent: 7 },
-  { id: "moon", name: "Moon orbit", emoji: "🌕", exponent: 9 },
-  { id: "solar", name: "Solar system", emoji: "☀️", exponent: 13 },
-  { id: "stars", name: "Nearby stars", emoji: "✨", exponent: 17 },
-  { id: "galaxy", name: "Milky Way", emoji: "🌌", exponent: 21 },
-  { id: "universe", name: "Observable universe", emoji: "🌀", exponent: 26 },
+  { id: "launch", name: "Launch pad", emoji: "🏁", altitude: "0 m", exponent: 0 },
+  { id: "rooftops", name: "Rooftops", emoji: "🏠", altitude: "≈ 20 m", exponent: 1.3 },
+  { id: "skyscrapers", name: "Skyscrapers", emoji: "🏙️", altitude: "≈ 500 m", exponent: 2.7 },
+  { id: "clouds", name: "Clouds", emoji: "☁️", altitude: "≈ 2 km", exponent: 3.3 },
+  { id: "peaks", name: "Mountain peaks", emoji: "🏔️", altitude: "≈ 9 km", exponent: 4 },
+  { id: "stratosphere", name: "Stratosphere", emoji: "🎈", altitude: "≈ 30 km", exponent: 4.5 },
+  { id: "space", name: "Edge of space", emoji: "🚀", altitude: "100 km", exponent: 5 },
+  { id: "station", name: "Space station", emoji: "🛰️", altitude: "≈ 400 km", exponent: 5.6 },
+  { id: "moon", name: "Moon", emoji: "🌕", altitude: "≈ 400,000 km", exponent: 8.6 },
+  { id: "planets", name: "Planets", emoji: "🪐", altitude: "≈ 1 billion km", exponent: 12 },
+  { id: "galaxy", name: "Milky Way", emoji: "🌌", altitude: "≈ 30,000 light years", exponent: 20.4 },
 ];
 
-/**
- * Eleven stops for a finished game: index 0 is the start, index 10 is a perfect run.
- * Building is skipped so ten correct answers land on the Milky Way.
- */
-const JOURNEY_INDEX = [0, 1, 2, 3, 5, 6, 7, 8, 9, 10, 11] as const;
+/** The first stop where the climber wears a space suit. */
+export const SPACE_STOP = 6;
 
 /** Five name-one questions at up to 100 points each. Keep in step with NAME_CAP in rarity.ts. */
 export const CLASSIC_SCORE_SPAN = 500;
 
 const PHRASE: Record<string, string> = {
-  atom: "the atom",
-  cell: "the cell",
-  ant: "the ant",
-  human: "the street",
-  building: "the building",
-  city: "the city",
-  country: "the country",
-  earth: "Earth",
+  launch: "the launch pad",
+  rooftops: "the rooftops",
+  skyscrapers: "the tops of the skyscrapers",
+  clouds: "the clouds",
+  peaks: "the mountain peaks",
+  stratosphere: "the stratosphere",
+  space: "the edge of space",
+  station: "the space station",
   moon: "the Moon",
-  solar: "the solar system",
-  stars: "the nearby stars",
+  planets: "the planets",
   galaxy: "the Milky Way",
-  universe: "the observable universe",
 };
 
 /** Head-to-head: the stop depends on how many picks were right, not how many were answered. */
 export function levelForCorrectCount(correct: number): ScaleLevel {
-  const clamped = Math.max(0, Math.min(10, Math.round(correct)));
-  return SCALE_LEVELS[JOURNEY_INDEX[clamped]]!;
+  return levelForProgress(correct);
 }
-
-/**
- * Visual stops, in order. A correct answer advances one stop. A miss advances a third,
- * so a finished 5/10 and a finished 10/10 do not land on the same world.
- */
-const JOURNEY_STOP_IDS = ["atom", "cell", "ant", "human", "city", "country", "earth", "moon", "solar", "stars", "galaxy", "universe"] as const;
 
 /** Distance along the illustrated path. Correct answers count as 1, misses as 1/3. */
 export function journeyProgress(correct: number, answered: number): number {
@@ -90,11 +80,10 @@ export function fieldStats(progresses: number[]): FieldStats {
   };
 }
 
-/** The world at a distance along the journey, as the scene draws it. */
+/** The stop at a height along the climb, as the scene draws it. */
 export function levelForProgress(progress: number): ScaleLevel {
-  const index = Math.max(0, Math.min(JOURNEY_STOP_IDS.length - 1, Math.round(progress)));
-  const id = JOURNEY_STOP_IDS[index]!;
-  return SCALE_LEVELS.find((item) => item.id === id) ?? SCALE_LEVELS[0]!;
+  const index = Math.max(0, Math.min(SCALE_LEVELS.length - 1, Math.round(progress)));
+  return SCALE_LEVELS[index]!;
 }
 
 /** The world a finished run is standing in, including the short hops from misses. */
@@ -115,11 +104,12 @@ export function reachedPhrase(level: ScaleLevel): string {
   return PHRASE[level.id] ?? level.name;
 }
 
+/** The climb for the share card, with no answers in it: "🏁→☁️→🚀 reached the edge of space". */
 export function zoomShareLine(level: ScaleLevel): string {
   const index = Math.max(0, SCALE_LEVELS.findIndex((item) => item.id === level.id));
   const mid = Math.floor(index / 2);
   const parts = [SCALE_LEVELS[0]!.emoji];
   if (mid > 0 && mid < index) parts.push(SCALE_LEVELS[mid]!.emoji);
   if (index > 0) parts.push(SCALE_LEVELS[index]!.emoji);
-  return `${parts.join("→")} reached ${level.name}`;
+  return `${parts.join("→")} reached ${reachedPhrase(level)}`;
 }

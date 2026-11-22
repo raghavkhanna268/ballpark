@@ -1,8 +1,8 @@
-import { formatDistance } from "./journey";
+import { formatAltitude } from "./journey";
 import { WORLD_STOPS } from "./worlds";
 
 /**
- * The logbook is what a player keeps across days: their farthest trip, the worlds they have reached,
+ * The logbook is what a player keeps across days: their highest climb, the heights they have reached,
  * today's missions completed, and the rare answers they found. It lives on this device only.
  */
 
@@ -16,11 +16,11 @@ export type Logbook = {
   finds: Find[];
 };
 
-const KEY = "ballpark.logbook.v1";
+const KEY = "ballpark.logbook.v2";
 /**
- * Mission targets, as world indexes. Classic tops out at 10 worlds only with five Legendary answers, so its
- * targets sit lower: Country needs mostly Uncommon answers and Planets needs mostly Deep cuts.
- * Head-to-head reaches Earth with four right and Nearby stars with nine.
+ * Mission targets, as stop indexes on the climb. Classic reaches the top only with five Legendary answers,
+ * so its targets sit lower: the stratosphere needs mostly Uncommon answers and the Moon mostly Deep cuts.
+ * Head-to-head reaches the edge of space with about five right and the planets with nine.
  */
 const MISSION_STOPS: Record<Mode, number[]> = { classic: [5, 6, 7, 8], h2h: [6, 7, 8, 9] };
 
@@ -97,14 +97,14 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
       </div>
       <div className="log-stats">
         <p>
-          <span className="mono">{logbook.farthest > 0 ? formatDistance(logbook.farthest) : "—"}</span>
-          <small>Farthest · {logbook.farthest > 0 ? farthest.label : "not yet"}</small>
+          <span className="mono">{logbook.farthest > 0 ? formatAltitude(logbook.farthest) : "—"}</span>
+          <small>Highest · {logbook.farthest > 0 ? farthest.label : "not yet"}</small>
         </p>
         <p>
           <span className="mono">
             {logbook.farthest > 0 ? logbook.worlds + 1 : 0}/{WORLD_STOPS.length}
           </span>
-          <small>Worlds reached</small>
+          <small>Heights reached</small>
         </p>
         <p>
           <span className="mono">{logbook.finds.length}</span>

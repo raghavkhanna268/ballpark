@@ -49,7 +49,7 @@ export function HomeScreen({
         <h1 className="wordmark">
           Ballpark<span>.</span>
         </h1>
-        <p className="lede">A small explorer. Five questions, or ten pairs. Every answer moves you.</p>
+        <p className="lede">How high can what you know take you? Every right answer climbs.</p>
       </header>
 
       <section className="card day-card">

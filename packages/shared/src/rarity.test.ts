@@ -57,10 +57,11 @@ describe("rarity scoring", () => {
 
 });
 
-describe("zoom path", () => {
-  it("starts at an atom and lands on the Milky Way after ten correct answers", () => {
-    expect(levelForCorrectCount(0).name).toBe("Atom");
-    expect(levelForCorrectCount(1).name).toBe("Cell");
+describe("altitude climb", () => {
+  it("starts on the launch pad and reaches the Milky Way after ten correct answers", () => {
+    expect(levelForCorrectCount(0).name).toBe("Launch pad");
+    expect(levelForCorrectCount(1).name).toBe("Rooftops");
+    expect(levelForCorrectCount(6).name).toBe("Edge of space");
     expect(levelForCorrectCount(10).name).toBe("Milky Way");
     expect(levelForCorrectCount(12).name).toBe("Milky Way");
   });
@@ -68,15 +69,16 @@ describe("zoom path", () => {
   it("lands a perfect run and a 5/10 on different worlds once misses hop a third", () => {
     expect(journeyProgress(10, 10)).toBe(10);
     expect(levelForJourney(10, 10).name).toBe("Milky Way");
-    expect(levelForJourney(5, 10).name).toBe("Moon orbit");
-    expect(levelForJourney(0, 10).id).toBe("human");
-    expect(levelForJourney(8, 10).name).toBe("Nearby stars");
+    expect(levelForJourney(5, 10).name).toBe("Space station");
+    expect(levelForJourney(0, 10).id).toBe("clouds");
+    expect(levelForJourney(8, 10).name).toBe("Planets");
   });
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {
-    expect(levelForClassicScore(0).id).toBe("atom");
+    expect(levelForClassicScore(0).id).toBe("launch");
     expect(levelForClassicScore(500).name).toBe("Milky Way");
-    expect(zoomShareLine(levelForCorrectCount(10))).toBe("⚛️→🏙️→🌌 reached Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(10))).toBe("🏁→🎈→🌌 reached the Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(6))).toBe("🏁→☁️→🚀 reached the edge of space");
     expect(zoomShareLine(levelForCorrectCount(10))).not.toContain("correct");
   });
 

@@ -30,22 +30,22 @@ Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute
 
 Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–100 through 401+. A missed UTC day breaks the streak. There is no account.
 
-The scene fills most of the screen, with a compact question card below it. It is drawn as a blueprint: thin line art on a dark navy grid, with one amber accent for the probe and its route. It is one continuous world laid out left to right, one stop per power of ten: an atom, a cell, an ant, a street, a city, the country as a contour map, Earth as a graticule globe, the Moon, the solar system, the nearby stars, the Milky Way, and the galaxy web. The top corner always shows where you are as `10ⁿ m` and a rounded size, and the route line along the bottom runs from 10⁻¹⁰ m to 10²⁶ m. Sizes are rounded on purpose, so the scene never prints a number that a Head-to-head pair asks about. A correct answer flies the probe forward along a dashed amber trail. A wrong answer or a timeout makes it sputter, turn red, and hop a short way. The end screen replays the whole trip. `prefers-reduced-motion` jumps to the new place instead of flying. The art is inline SVG, not image downloads.
+The scene fills most of the screen, with a compact question card below it. It is drawn as a blueprint: thin line art on a dark navy grid, with one amber accent for the climber and its trail. The game is a climb straight up, one stop per right answer: the launch pad, the rooftops, the skyscrapers, the clouds, the mountain peaks, the stratosphere, the edge of space (the Kármán line at 100 km), the space station, the Moon, the planets, and the Milky Way. The sky darkens and the stars come out as you rise. The climber is a jet-pack pilot in a cap and goggles, and above 100 km it is an astronaut in a helmet. The top corner shows your altitude (`ALT ≈ 9 km`) and the stop's name, and an altimeter on the right edge runs from 0 m to the top. Altitudes are rounded on purpose, so the scene never prints a number that a Head-to-head pair asks about. A correct answer flies the climber up along a dashed amber trail. A wrong answer or a timeout makes it sputter, turn red, and lift only a little. The end screen replays the whole climb. `prefers-reduced-motion` jumps to the new height instead of flying. The art is inline SVG, not image downloads.
 
-How far you get is the score you carry around. The game frames each run as "how far out into the universe can what you know take you", and three things give that a purpose:
+How high you get is the score you carry around. The game frames each run as "how high can what you know take you", and three things give that a purpose:
 
-- **Today's mission.** Each mode has a target world for the day, the same for everyone (a flag on the route line, and "Reach Solar system" in the corner). Classic's targets run from Country to the Solar system; Head-to-head's from Earth to the nearby stars. Reaching it shows "Mission complete".
-- **Ghost probes.** Faint probes fly with you: your own best on this device, today's average, and today's best. Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
-- **Logbook.** The home screen keeps your farthest distance, how many of the 12 worlds you have reached, missions completed, and the Rare-or-better answers you found, with the question each came from. It lives in `localStorage`, like the streaks.
+- **Today's mission.** Each mode has a target height for the day, the same for everyone (a dashed amber line across the sky, a flag on the altimeter, and "Reach the Moon" in the corner). Classic's targets run from the stratosphere to the Moon; Head-to-head's from the edge of space to the planets. Reaching it shows "Mission complete".
+- **Ghost climbers.** Faint outline climbers rise with you: your own best on this device, today's average, and today's best. Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
+- **Logbook.** The home screen keeps your highest altitude, how many of the 11 heights you have reached, missions completed, and the Rare-or-better answers you found, with the question each came from. It lives in `localStorage`, like the streaks.
 
 Every question has a 30-second timer, in both modes. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
 
-Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the rung and stays free of answers:
+Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the height you reached and stays free of answers:
 
 ```text
 Ballpark #12 · Classic
 🟩🟨🟦🟩⬛ 260 pts
-⚛️→🧍→🌍 reached Earth
+🏁→🏙️→🎈 reached the stratosphere
 ballpark.local
 ```
 
@@ -57,11 +57,11 @@ Head-to-head is a second daily on the home screen, with its own streak. The Work
 
 `GET /api/head-to-head` returns only the current pair's labels. A higher-or-lower round also includes the one value that is meant to be visible. Context, sources, and the other values arrive after `POST /api/head-to-head/pick`. The body must carry the current sequence index. Skipping ahead or replaying an index is rejected. A wrong pick reveals the values and the game continues. The scored game ends after all ten picks. A second scored game the same day is rejected. After that, a practice game uses a different sequence and is not written to the board.
 
-Each pick flies the explorer along that world. A correct pick travels a full step, with a flip and a jet trail. A miss coughs smoke, wobbles, and hops about a third as far. The end screen shows the whole path, the explorer where it landed, the score out of 10, the percent of players beaten, and the best score that day (a number, no names). Ranking is by correct answers. Equal scores are ties: a faster finish does not rank higher, because timing a knowledge question rewards skimming. The share card names the world you reached:
+Each correct pick climbs one stop, with a flip and a jet trail. A miss coughs smoke, wobbles, and lifts about a third as far. The end screen shows the whole climb, where the climber stopped, the score out of 10, the percent of players beaten, and the best score that day (a number, no names). Ranking is by correct answers. Equal scores are ties: a faster finish does not rank higher, because timing a knowledge question rewards skimming. The share card names the height you reached:
 
 ```text
 Ballpark #325 · Head-to-head
-🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩 10/10 · reached Milky Way
+🟩🟩🟩🟩🟩🟩🟩🟩🟩🟩 10/10 · reached the Milky Way
 ballpark.local
 ```
 
@@ -78,7 +78,7 @@ Classic is five open "name one" questions a day, scored by how rare your answer 
 | Common | more than 20% | 10 | 🟤 |
 | Not on the list, or out of time | | 0 | ⬛ |
 
-The ladder shows under every prompt, so the goal is to think past the obvious answer. How far an answer flies follows its points: 0.6 of a world for any right answer plus up to 1.4 more, so five Legendary answers reach the galaxy. A wrong answer hops 0.28.
+The ladder shows under every prompt, so the goal is to think past the obvious answer. How high an answer climbs follows its points: 0.6 of a stop for any right answer plus up to 1.4 more, so five Legendary answers reach the Milky Way. A wrong answer lifts 0.28.
 
 The estimate, compare and rank scorers below are still in the code and tested, but no sample day uses them now.
 

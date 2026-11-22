@@ -1,42 +1,44 @@
 import type { ReactNode } from "react";
+import { SCALE_LEVELS, SPACE_STOP, reachedPhrase } from "@ballpark/shared";
 
 /**
- * One continuous world in a blueprint style: thin line drawings on dark ink, laid out left to right
- * from an atom to the galaxy web. Every stop is STEP world units wide and carries its real scale.
- * Neighbouring stops share drawings at their edges, so the camera never cuts between scenes.
+ * One tall world in a blueprint style: thin line drawings on dark ink, stacked from the launch pad
+ * straight up to the Milky Way. Every stop is STEP world units above the last. The climber stays in
+ * the middle column, so the art sits to the sides and the camera only ever moves up.
  */
 
-export const STEP = 520;
-export const WORLD_H = 600;
+export const STEP = 460;
+/** Width of the drawn column. Wider screens see open sky on both sides. */
+export const WORLD_W = 420;
+/** Extra sky and ground drawn on each side for wide screens. */
+export const SIDE = 900;
 
-export const WORLD_STOPS = [
-  { id: "atom", label: "Atom", power: -10, size: "≈ 0.1 nm" },
-  { id: "cell", label: "Cell", power: -5, size: "≈ 10 µm" },
-  { id: "insect", label: "Ant", power: -3, size: "≈ 5 mm" },
-  { id: "street", label: "Street", power: 1, size: "≈ 10 m" },
-  { id: "city", label: "City", power: 4, size: "≈ 10 km" },
-  { id: "country", label: "Country", power: 6, size: "≈ 1,000 km" },
-  { id: "earth", label: "Earth", power: 7, size: "≈ 10,000 km" },
-  { id: "moon", label: "Moon", power: 9, size: "≈ 1 light second out" },
-  { id: "solar", label: "Solar system", power: 13, size: "≈ 9 billion km" },
-  { id: "stars", label: "Nearby stars", power: 17, size: "≈ 4 light years" },
-  { id: "galaxy", label: "Milky Way", power: 21, size: "≈ 100,000 light years" },
-  { id: "universe", label: "Galaxy web", power: 26, size: "≈ 93 billion light years" },
-] as const;
+export const WORLD_STOPS = SCALE_LEVELS.map((level) => ({
+  id: level.id,
+  label: level.name,
+  altitude: level.altitude,
+  /** "the Moon", for sentences like "Reach the Moon". */
+  phrase: reachedPhrase(level),
+}));
+export { SPACE_STOP };
 
-export const WORLD_W = STEP * WORLD_STOPS.length;
+const STOPS = WORLD_STOPS.length;
+/** World y of the launch pad. y grows downward, so higher stops have smaller y. */
+const BASE_Y = (STOPS - 1) * STEP + 600;
+export const WORLD_H = BASE_Y + 260;
+export const CLIMBER_X = WORLD_W / 2;
 
-/** Where the probe floats at a given progress, in world units. */
-export function explorerX(progress: number): number {
-  return progress * STEP + 250;
+/** Where the climber floats at a given progress, in world units. */
+export function climberY(progress: number): number {
+  return BASE_Y - progress * STEP;
 }
-export const EXPLORER_Y = 300;
 
 export const INK = "#0a1020";
 const LINE = "#8fd3ff";
 const DIM = "rgba(143, 211, 255, 0.35)";
 const FAINT = "rgba(143, 211, 255, 0.16)";
 const AMBER = "#ffb347";
+const GROUND = BASE_Y + 46;
 
 /** Deterministic pseudo-random so the art is the same on every render. */
 function rand(seed: number): number {
@@ -46,6 +48,7 @@ function rand(seed: number): number {
 
 const line = { fill: "none", stroke: LINE, strokeWidth: 1.6, vectorEffect: "non-scaling-stroke" as const };
 const dim = { fill: "none", stroke: DIM, strokeWidth: 1.2, vectorEffect: "non-scaling-stroke" as const };
+const solid = { fill: INK, stroke: LINE, strokeWidth: 1.6, vectorEffect: "non-scaling-stroke" as const };
 
 /* ------------------------------------------------------------------ */
 /* Main layer: moves 1:1 with the camera.                              */
@@ -55,370 +58,359 @@ export function WorldMain() {
   return (
     <g>
       <defs>
-        <linearGradient id="ink" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2={WORLD_W} y2="0">
-          <stop offset="0" stopColor="#0b1428" />
-          <stop offset="0.3" stopColor="#0a1324" />
-          <stop offset="0.5" stopColor="#0a1020" />
-          <stop offset="1" stopColor="#070a16" />
+        {/* Dusk blue at the ground, darkening to black in space. */}
+        <linearGradient id="sky" gradientUnits="userSpaceOnUse" x1="0" y1={WORLD_H} x2="0" y2="0">
+          <stop offset="0" stopColor="#1b3563" />
+          <stop offset="0.3" stopColor="#132a50" />
+          <stop offset="0.47" stopColor="#0d1a36" />
+          <stop offset="0.56" stopColor="#080f22" />
+          <stop offset="0.75" stopColor="#060a18" />
+          <stop offset="1" stopColor="#04060f" />
         </linearGradient>
         <radialGradient id="soft">
           <stop offset="0" stopColor={LINE} stopOpacity="0.14" />
           <stop offset="1" stopColor={LINE} stopOpacity="0" />
         </radialGradient>
       </defs>
-      <rect x="-400" y="0" width={WORLD_W + 800} height={WORLD_H} fill="url(#ink)" />
-      <StarDust />
+      <rect x={-SIDE} y="0" width={WORLD_W + SIDE * 2} height={WORLD_H} fill="url(#sky)" />
+      <Stars />
+      <Skyline />
       {WORLD_STOPS.map((stop, index) => (
-        <Zone key={stop.id} i={index}>
+        <g key={stop.id} transform={`translate(0 ${climberY(index)})`}>
           <ZoneArt id={stop.id} />
-        </Zone>
+        </g>
       ))}
+      <Ground />
     </g>
   );
 }
 
-function Zone({ i, children }: { i: number; children: ReactNode }) {
-  return <g transform={`translate(${i * STEP} 0)`}>{children}</g>;
-}
-
-export function toSuper(power: number): string {
-  const map: Record<string, string> = { "-": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
-  return String(power)
-    .split("")
-    .map((char) => map[char] ?? char)
-    .join("");
-}
-
-/** Stars thicken once the probe leaves the atmosphere. Before that, a faint particle haze. */
-function StarDust() {
-  const start = STEP * 5.6;
+/** Stars fade in above the mountains and thicken in space. */
+function Stars() {
+  const lowest = climberY(4.4);
   return (
     <g>
-      {Array.from({ length: 220 }, (_, index) => {
-        const x = start + rand(index) * (WORLD_W - start + 200);
-        const fade = Math.min(1, (x - start) / (STEP * 0.8));
-        return <circle key={index} cx={x} cy={rand(index + 500) * WORLD_H} r={0.5 + rand(index + 900)} fill="#e8f1ff" opacity={(0.2 + 0.5 * rand(index + 77)) * fade} />;
+      {Array.from({ length: 320 }, (_, index) => {
+        const y = rand(index + 500) * lowest;
+        const fade = Math.min(1, (lowest - y) / (STEP * 1.6));
+        return (
+          <circle
+            key={index}
+            cx={-SIDE + rand(index) * (WORLD_W + SIDE * 2)}
+            cy={y}
+            r={0.5 + rand(index + 900) * 1.1}
+            fill="#e8f1ff"
+            opacity={(0.2 + 0.55 * rand(index + 77)) * fade}
+            className={index % 9 === 0 ? "twinkle" : undefined}
+          />
+        );
       })}
-      {Array.from({ length: 60 }, (_, index) => (
-        <circle key={`d${index}`} cx={rand(index + 3000) * STEP * 3} cy={rand(index + 3100) * WORLD_H} r={0.8} fill={LINE} opacity={0.25} />
-      ))}
     </g>
   );
 }
 
-function ZoneArt({ id }: { id: string }) {
-  if (id === "atom") return <Atom />;
-  if (id === "cell") return <Cell />;
-  if (id === "insect") return <Ant />;
-  if (id === "street") return <Street />;
-  if (id === "city") return <City />;
-  if (id === "country") return <Country />;
-  if (id === "earth") return <Earth />;
-  if (id === "moon") return <Moon />;
-  if (id === "solar") return <Planets />;
-  if (id === "stars") return <Stars />;
-  if (id === "galaxy") return <Galaxy />;
-  return <Web />;
-}
-
-function Label({ x, y, text, to }: { x: number; y: number; text: string; to?: [number, number] }) {
+function Ground() {
   return (
     <g>
-      {to ? <line x1={to[0]} y1={to[1]} x2={x - 4} y2={y - 4} stroke={DIM} /> : null}
-      <text x={x} y={y} fill={DIM} fontSize="11" className="mono">
-        {text}
-      </text>
-    </g>
-  );
-}
-
-/* ---- 0. Atom ---- */
-function Atom() {
-  const nucleons = [
-    [0, 0],
-    [-13, -8],
-    [12, -10],
-    [-10, 12],
-    [12, 11],
-    [0, -19],
-    [-21, 3],
-    [21, 1],
-    [1, 20],
-  ];
-  return (
-    <g>
-      <g transform="translate(330 290)">
-        <circle r="110" fill="url(#soft)" />
-        <ellipse rx="180" ry="56" {...line} />
-        <ellipse rx="180" ry="56" {...line} transform="rotate(60)" />
-        <ellipse rx="180" ry="56" {...line} transform="rotate(-60)" />
-        <g className="orbit o1">
-          <circle cx="180" cy="0" r="5" fill={LINE} />
-        </g>
-        <g transform="rotate(60)">
-          <g className="orbit o2">
-            <circle cx="-180" cy="0" r="5" fill={LINE} />
-          </g>
-        </g>
-        <g transform="rotate(-60)">
-          <g className="orbit o3">
-            <circle cx="180" cy="0" r="5" fill={LINE} />
-          </g>
-        </g>
-        {nucleons.map(([x, y], index) => (
-          <circle key={index} cx={x} cy={y} r="11" fill={INK} stroke={index % 2 ? LINE : AMBER} strokeWidth="1.6" />
-        ))}
-      </g>
-      <Label x={400} y={170} text="electron" to={[372, 196]} />
-      <Label x={380} y={400} text="nucleus" to={[345, 312]} />
-      {/* a water molecule drifting toward the cell */}
-      <g transform="translate(560 140)" className="bob-slow">
-        <circle r="16" {...line} />
-        <circle cx="-26" cy="18" r="10" {...dim} />
-        <circle cx="26" cy="18" r="10" {...dim} />
-        <line x1="-12" y1="9" x2="-18" y2="13" stroke={LINE} />
-        <line x1="12" y1="9" x2="18" y2="13" stroke={LINE} />
-      </g>
-      <Label x={540} y={190} text="H₂O" />
-    </g>
-  );
-}
-
-/* ---- 1. Cell ---- */
-function Cell() {
-  const mito = [
-    [-120, 40, 20],
-    [100, 90, -25],
-    [-50, 110, 8],
-    [140, 10, 70],
-  ];
-  return (
-    <g>
-      {/* DNA strand arriving from the atom side */}
-      <g transform="translate(-40 360) rotate(-20)">
-        {Array.from({ length: 12 }, (_, index) => {
-          const y = index * 14;
-          const w = Math.sin(index * 0.7) * 18;
-          return <line key={index} x1={-w} y1={y} x2={w} y2={y} stroke={index % 3 ? DIM : AMBER} strokeWidth="1.4" />;
-        })}
-        <path d={Array.from({ length: 12 }, (_, i) => `${i ? "L" : "M"}${-Math.sin(i * 0.7) * 18} ${i * 14}`).join(" ")} {...line} />
-        <path d={Array.from({ length: 12 }, (_, i) => `${i ? "L" : "M"}${Math.sin(i * 0.7) * 18} ${i * 14}`).join(" ")} {...line} />
-      </g>
-      <g transform="translate(320 290)">
-        <ellipse rx="190" ry="160" {...line} />
-        <ellipse rx="178" ry="148" {...dim} strokeDasharray="5 6" />
-        <path d="M-90 -100 q22 -12 44 0 t44 0 t44 0 M-100 -80 q26 -12 52 0 t52 0 t40 0" {...dim} />
-        <circle cx="20" cy="0" r="54" {...line} />
-        <circle cx="34" cy="-10" r="16" fill={FAINT} stroke={LINE} strokeWidth="1.4" />
-        {mito.map(([x, y, r], index) => (
-          <g key={index} transform={`translate(${x} ${y}) rotate(${r})`}>
-            <ellipse rx="28" ry="12" {...line} />
-            <path d="M-20 0 l5 -6 l5 12 l5 -12 l5 12 l5 -12 l5 12 l5 -6" fill="none" stroke={AMBER} strokeOpacity="0.8" strokeWidth="1.2" />
-          </g>
-        ))}
-        {[
-          [-140, -40],
-          [-90, -120],
-          [110, -100],
-          [160, 60],
-          [-10, 120],
-        ].map(([x, y], index) => (
-          <circle key={index} cx={x} cy={y} r="6" {...dim} />
-        ))}
-      </g>
-      <Label x={380} y={220} text="nucleus" to={[360, 250]} />
-      <Label x={130} y={470} text="mitochondrion" to={[190, 345]} />
-    </g>
-  );
-}
-
-/* ---- 2. Ant on a leaf ---- */
-function Ant() {
-  return (
-    <g>
-      {/* blades of grass, tall at the cell side */}
-      {Array.from({ length: 9 }, (_, index) => {
-        const x = -40 + index * 22;
-        const h = 360 - index * 22;
-        return <path key={index} d={`M${x} 600 Q${x + 10} ${600 - h * 0.6} ${x + 24} ${600 - h}`} {...dim} />;
+      <line x1={-SIDE} y1={GROUND} x2={WORLD_W + SIDE} y2={GROUND} stroke={LINE} strokeWidth="1.6" />
+      {Array.from({ length: 70 }, (_, index) => {
+        const x = -SIDE + index * 34;
+        return <line key={index} x1={x} y1={GROUND + 4} x2={x - 18} y2={GROUND + 22} stroke={FAINT} />;
       })}
-      {/* the leaf */}
-      <path d="M40 470 C140 380 360 370 540 430 C420 510 200 540 40 470 Z" {...line} />
-      <path d="M50 468 C180 440 360 430 530 432" {...line} />
-      {[120, 200, 280, 360, 440].map((x) => (
-        <g key={x}>
-          <path d={`M${x} ${458 - (x - 50) * 0.06} q30 -24 60 -34`} {...dim} />
-          <path d={`M${x} ${458 - (x - 50) * 0.06} q30 22 60 32`} {...dim} />
-        </g>
-      ))}
-      {/* the ant, drawn as a technical side view */}
-      <g transform="translate(320 400)">
-        <g className="legs">
-          <path d="M-30 4 l-18 26 M-10 6 l-6 30 M10 6 l8 30 M30 4 l20 26 M-20 4 l-30 14 M20 4 l30 14" {...line} />
-        </g>
-        <ellipse cx="-44" cy="-6" rx="32" ry="22" fill={INK} stroke={LINE} strokeWidth="1.6" />
-        <ellipse cx="-4" cy="-2" rx="18" ry="13" fill={INK} stroke={LINE} strokeWidth="1.6" />
-        <circle cx="28" cy="-12" r="18" fill={INK} stroke={LINE} strokeWidth="1.6" />
-        <circle cx="36" cy="-16" r="3" fill={AMBER} />
-        <path d="M32 -28 q6 -28 24 -38 M40 -26 q16 -20 36 -22" {...line} />
-      </g>
-      <Label x={380} y={330} text="Formica rufa" to={[350, 380]} />
-      <line x1="270" y1="360" x2="380" y2="360" stroke={AMBER} strokeOpacity="0.6" />
-      <text x="325" y="352" textAnchor="middle" fill={AMBER} fontSize="11" className="mono">
-        5 mm
-      </text>
     </g>
   );
 }
 
-/* ---- 3. Street ---- */
-function Street() {
+/** Houses and towers stand on the ground; their roofs and spires are the next two stops up. */
+function Skyline() {
+  const roof = climberY(1) + 110;
+  const spire = climberY(2) + 70;
+  const towers = [
+    { x: -150, w: 70, top: spire + 60 },
+    { x: -60, w: 56, top: spire },
+    { x: 330, w: 64, top: spire + 30 },
+    { x: 420, w: 80, top: spire + 90 },
+  ];
   const houses = [
-    { x: 30, w: 100, h: 150 },
-    { x: 150, w: 90, h: 190 },
-    { x: 330, w: 110, h: 140 },
-    { x: 450, w: 90, h: 200 },
+    { x: -40, w: 110 },
+    { x: 300, w: 120 },
   ];
   return (
     <g>
-      {/* last blades of grass at the kerb */}
-      {Array.from({ length: 6 }, (_, index) => (
-        <path key={index} d={`M${-60 + index * 10} 470 q4 -24 10 -38`} {...dim} />
+      {towers.map((tower, index) => (
+        <g key={`t${index}`}>
+          <rect x={tower.x} y={tower.top} width={tower.w} height={GROUND - tower.top} {...solid} stroke={DIM} />
+          {Array.from({ length: Math.floor((GROUND - tower.top) / 30) }, (_, row) =>
+            Array.from({ length: Math.floor(tower.w / 16) - 1 }, (_, col) =>
+              rand(index * 97 + row * 11 + col) > 0.78 ? (
+                <rect key={`${row}-${col}`} x={tower.x + 9 + col * 16} y={tower.top + 14 + row * 30} width="5" height="9" fill={AMBER} opacity="0.7" />
+              ) : null,
+            ),
+          )}
+          <line x1={tower.x + tower.w / 2} y1={tower.top} x2={tower.x + tower.w / 2} y2={tower.top - 60} stroke={LINE} />
+          <circle cx={tower.x + tower.w / 2} cy={tower.top - 62} r="3" fill={AMBER} className="twinkle" />
+        </g>
       ))}
       {houses.map((house, index) => (
-        <g key={index}>
-          <rect x={house.x} y={470 - house.h} width={house.w} height={house.h} {...line} fill={INK} />
-          <path d={`M${house.x - 8} ${470 - house.h} L${house.x + house.w / 2} ${470 - house.h - 50} L${house.x + house.w + 8} ${470 - house.h}`} {...line} />
-          <rect x={house.x + house.w / 2 - 12} y={426} width="24" height="44" {...dim} />
-          {Array.from({ length: Math.floor((house.h - 60) / 46) }, (_, row) =>
+        <g key={`h${index}`}>
+          <rect x={house.x} y={roof} width={house.w} height={GROUND - roof} {...solid} />
+          <path d={`M${house.x - 10} ${roof} L${house.x + house.w / 2} ${roof - 54} L${house.x + house.w + 10} ${roof} Z`} {...solid} />
+          <rect x={house.x + house.w - 30} y={roof - 40} width="12" height="26" {...solid} />
+          {Array.from({ length: Math.floor((GROUND - roof - 40) / 70) }, (_, row) =>
             [0, 1].map((col) => (
               <rect
                 key={`${row}-${col}`}
-                x={house.x + 14 + col * (house.w - 46)}
-                y={470 - house.h + 20 + row * 46}
+                x={house.x + 16 + col * (house.w - 50)}
+                y={roof + 26 + row * 70}
                 width="18"
-                height="22"
-                fill={rand(index * 10 + row * 2 + col) > 0.5 ? AMBER : "none"}
-                fillOpacity="0.75"
+                height="24"
+                fill={rand(index * 10 + row * 2 + col) > 0.45 ? AMBER : "none"}
+                fillOpacity="0.7"
                 stroke={DIM}
               />
             )),
           )}
         </g>
       ))}
-      {/* a person, for scale */}
-      <g transform="translate(285 470)">
-        <circle cy="-62" r="8" {...line} />
-        <path d="M0 -54 v30 M0 -24 l-8 24 M0 -24 l8 24 M0 -46 l-12 14 M0 -46 l12 14" {...line} />
-        <line x1="22" y1="0" x2="22" y2="-70" stroke={AMBER} strokeOpacity="0.7" />
-        <line x1="18" y1="-70" x2="26" y2="-70" stroke={AMBER} strokeOpacity="0.7" />
-        <text x="28" y="-34" fill={AMBER} fontSize="11" className="mono">
-          1.7 m
-        </text>
-      </g>
-      <line x1="-60" y1="470" x2="580" y2="470" stroke={LINE} strokeWidth="1.6" />
-      <line x1="-60" y1="490" x2="580" y2="490" stroke={DIM} strokeDasharray="22 16" />
     </g>
   );
 }
 
-/* ---- 4. City ---- */
-function City() {
-  const towers = [
-    { x: -20, w: 60, h: 180 },
-    { x: 50, w: 54, h: 260 },
-    { x: 114, w: 74, h: 220 },
-    { x: 198, w: 48, h: 330 },
-    { x: 256, w: 80, h: 250 },
-    { x: 346, w: 54, h: 300 },
-    { x: 410, w: 70, h: 210 },
-    { x: 490, w: 50, h: 150 },
-  ];
+function ZoneArt({ id }: { id: string }) {
+  if (id === "launch") return <LaunchPad />;
+  if (id === "rooftops") return <Rooftops />;
+  if (id === "skyscrapers") return <Spires />;
+  if (id === "clouds") return <Clouds />;
+  if (id === "peaks") return <Peaks />;
+  if (id === "stratosphere") return <Stratosphere />;
+  if (id === "space") return <EdgeOfSpace />;
+  if (id === "station") return <Station />;
+  if (id === "moon") return <Moon />;
+  if (id === "planets") return <Planets />;
+  return <Galaxy />;
+}
+
+function Label({ x, y, text, to, amber }: { x: number; y: number; text: string; to?: [number, number]; amber?: boolean }) {
   return (
     <g>
-      {towers.map((tower, index) => (
-        <g key={index}>
-          <rect x={tower.x} y={470 - tower.h} width={tower.w} height={tower.h} {...line} fill={INK} />
-          {Array.from({ length: Math.floor(tower.h / 24) - 1 }, (_, row) =>
-            Array.from({ length: Math.floor(tower.w / 14) - 1 }, (_, col) =>
-              rand(index * 97 + row * 11 + col) > 0.72 ? (
-                <rect key={`${row}-${col}`} x={tower.x + 8 + col * 14} y={470 - tower.h + 12 + row * 24} width="5" height="8" fill={AMBER} opacity="0.8" />
-              ) : null,
-            ),
-          )}
+      {to ? <line x1={to[0]} y1={to[1]} x2={x - 4} y2={y - 4} stroke={DIM} /> : null}
+      <text x={x} y={y} fill={amber ? AMBER : DIM} fontSize="11" className="mono">
+        {text}
+      </text>
+    </g>
+  );
+}
+
+/* Zone art is drawn around (210, 0), the climber's spot at that stop. Keep the middle column clear. */
+
+/* ---- 0. Launch pad ---- */
+function LaunchPad() {
+  return (
+    <g>
+      {/* the gantry */}
+      <g transform="translate(110 46)">
+        <line x1="0" y1="0" x2="0" y2="-250" {...line} />
+        <line x1="26" y1="0" x2="26" y2="-250" {...line} />
+        {Array.from({ length: 6 }, (_, index) => (
+          <path key={index} d={`M0 ${-index * 42} L26 ${-(index + 1) * 42} M26 ${-index * 42} L0 ${-(index + 1) * 42}`} {...dim} />
+        ))}
+        <line x1="26" y1="-70" x2="64" y2="-70" {...line} />
+        <circle cx="13" cy="-256" r="3" fill={AMBER} className="twinkle" />
+      </g>
+      {/* the pad */}
+      <path d="M150 40 h120 l-10 6 h-100 Z" {...solid} />
+      <text x="210" y="62" textAnchor="middle" fill={AMBER} fontSize="10" className="mono" letterSpacing="2">
+        PAD 01
+      </text>
+      {/* trees */}
+      {[318, 352, 384].map((x, index) => (
+        <g key={x}>
+          <line x1={x} y1="46" x2={x} y2={20 - index * 4} {...line} />
+          <circle cx={x} cy={8 - index * 6} r={16 + index * 3} {...dim} />
         </g>
       ))}
-      <line x1="222" y1="140" x2="222" y2="96" stroke={LINE} />
-      <circle cx="222" cy="94" r="3" fill={AMBER} className="twinkle" />
-      <line x1="-60" y1="470" x2="580" y2="470" stroke={LINE} strokeWidth="1.6" />
     </g>
   );
 }
 
-/* ---- 5. Country, as a contour map ---- */
-function Country() {
+/* ---- 1. Rooftops ---- */
+function Rooftops() {
   return (
     <g>
-      {[0, 1, 2, 3, 4, 5].map((ring) => (
+      {/* aerials and a line of birds */}
+      <path d="M346 70 v-50 M334 34 h24 M338 44 h16" {...line} />
+      {[
+        [70, -40],
+        [96, -58],
+        [120, -36],
+        [330, -120],
+        [352, -134],
+      ].map(([x, y], index) => (
+        <path key={index} d={`M${x! - 8} ${y} q4 -6 8 0 q4 -6 8 0`} {...line} className="bob-slow" />
+      ))}
+    </g>
+  );
+}
+
+/* ---- 2. Skyscraper tops ---- */
+function Spires() {
+  return (
+    <g>
+      {/* a tower crane on the right */}
+      <g transform="translate(340 160)">
+        <line x1="0" y1="0" x2="0" y2="-200" {...line} />
+        <line x1="10" y1="0" x2="10" y2="-200" {...line} />
+        {Array.from({ length: 5 }, (_, index) => (
+          <path key={index} d={`M0 ${-index * 40} L10 ${-(index + 1) * 40}`} {...dim} />
+        ))}
+        <line x1="-120" y1="-200" x2="60" y2="-200" {...line} />
+        <line x1="-100" y1="-200" x2="-100" y2="-140" {...dim} />
+        <rect x="-108" y="-140" width="16" height="10" {...dim} />
+      </g>
+    </g>
+  );
+}
+
+function Cloud({ x, y, w, front }: { x: number; y: number; w: number; front?: boolean }) {
+  const h = w * 0.32;
+  return (
+    <path
+      d={`M${x} ${y} a${h * 0.6} ${h * 0.6} 0 0 1 ${w * 0.22} ${-h * 0.5} a${h * 0.8} ${h * 0.8} 0 0 1 ${w * 0.38} ${-h * 0.2} a${h * 0.6} ${h * 0.6} 0 0 1 ${w * 0.4} ${h * 0.7} Z`}
+      fill={front ? "rgba(10, 16, 32, 0.6)" : "none"}
+      stroke={front ? LINE : DIM}
+      strokeWidth={front ? 1.6 : 1.2}
+    />
+  );
+}
+
+/* ---- 3. Clouds ---- */
+function Clouds() {
+  return (
+    <g>
+      <Cloud x={-80} y={150} w={240} />
+      <Cloud x={280} y={120} w={220} />
+      <Cloud x={20} y={-120} w={150} />
+      <Cloud x={300} y={-60} w={160} />
+      <Cloud x={-120} y={230} w={300} front />
+      <Cloud x={250} y={240} w={300} front />
+      {/* a small plane crossing below */}
+      <g transform="translate(70 70)">
+        <path d="M0 0 h44 l8 -4 M18 0 l-10 -14 M24 0 l-10 12 M44 0 l4 -10" {...line} />
+        <line x1="-6" y1="0" x2="-80" y2="0" stroke={DIM} strokeDasharray="4 6" />
+      </g>
+    </g>
+  );
+}
+
+/* ---- 4. Mountain peaks, above the clouds ---- */
+function Peaks() {
+  return (
+    <g>
+      <path d="M-200 230 L-60 70 L0 120 L60 20 L120 140 L150 110 L170 160" {...line} />
+      <path d="M260 160 L300 40 L330 80 L380 -30 L470 120 L600 230" {...line} />
+      <path d="M44 40 L60 20 L76 46 M282 92 L300 40 L314 60 M362 10 L380 -30 L398 16" fill="none" stroke={AMBER} strokeWidth="1.4" />
+      {/* a flag on the highest summit */}
+      <path d="M380 -30 v-26 l16 6 l-16 6" fill="none" stroke={AMBER} strokeWidth="1.4" />
+      <Cloud x={-120} y={232} w={320} front />
+      <Cloud x={260} y={236} w={320} front />
+      {/* an airliner a little higher up, on its contrail */}
+      <g transform="translate(40 -170)">
+        <path d="M0 0 h56 l10 -5 M22 0 l-12 -18 M30 0 l-12 15 M56 0 l5 -12" {...line} />
+        <line x1="-8" y1="0" x2="-160" y2="0" stroke={DIM} strokeDasharray="5 7" />
+      </g>
+    </g>
+  );
+}
+
+/* ---- 5. Stratosphere ---- */
+function Stratosphere() {
+  return (
+    <g>
+      {/* Earth's curve shows for the first time */}
+      <path d={`M-200 250 Q210 150 620 250`} {...line} />
+      <path d={`M-200 262 Q210 166 620 262`} {...dim} />
+      {/* a weather balloon */}
+      <g transform="translate(340 -70)" className="bob-slow">
+        <circle r="34" {...line} />
+        <path d="M-24 22 Q0 40 24 22" {...dim} />
+        <line x1="0" y1="34" x2="0" y2="90" stroke={DIM} />
+        <rect x="-8" y="90" width="16" height="12" {...line} />
+      </g>
+      <path d="M-200 60 q40 -10 80 0 t80 0 t80 0 t80 0 t80 0 t80 0" stroke={AMBER} strokeOpacity="0.4" fill="none" />
+      <Label x={20} y={50} text="ozone layer" amber />
+    </g>
+  );
+}
+
+/* ---- 6. Edge of space: the Kármán line ---- */
+function EdgeOfSpace() {
+  return (
+    <g>
+      <path d={`M-200 300 Q210 170 620 300`} {...line} />
+      {/* aurora */}
+      {[0, 1, 2].map((band) => (
         <path
-          key={ring}
-          d={`M${60 + ring * 22} ${440 - ring * 4} C${120 + ring * 10} ${330 - ring * 24} ${260} ${260 + ring * 14} ${340 - ring * 10} ${310 + ring * 18} S${470 - ring * 20} ${420 - ring * 10} ${480 - ring * 26} ${450 - ring * 6} Z`}
+          key={band}
+          d={`M-120 ${150 + band * 14} q40 -30 80 0 t80 0 t80 0 t80 0 t80 0 t80 0`}
           fill="none"
-          stroke={ring === 5 ? AMBER : ring % 2 ? DIM : LINE}
-          strokeWidth={ring === 5 ? 1.6 : 1.2}
+          stroke={band === 1 ? AMBER : LINE}
+          strokeOpacity={0.25 + band * 0.1}
         />
       ))}
-      <path d="M-60 520 C40 490 120 540 220 506 C320 470 420 530 580 490" fill="none" stroke={LINE} strokeWidth="2" strokeDasharray="1 0" />
-      <Label x={250} y={498} text="river" />
-      <Label x={360} y={250} text="summit" to={[300, 330]} />
-      {/* the city, now a dot */}
-      <circle cx="40" cy="470" r="4" fill={AMBER} />
-      <Label x={50} y={492} text="city" />
+      <line x1={-SIDE} y1="40" x2={WORLD_W + SIDE} y2="40" stroke={AMBER} strokeDasharray="10 8" strokeWidth="1.4" />
+      <text x="16" y="32" fill={AMBER} fontSize="11" className="mono" letterSpacing="2">
+        KÁRMÁN LINE · 100 km · SPACE STARTS HERE
+      </text>
     </g>
   );
 }
 
-/* ---- 6. Earth ---- */
-function Earth() {
+/* ---- 7. Space station ---- */
+function Station() {
+  const panel = (x: number, y: number) => (
+    <g transform={`translate(${x} ${y})`}>
+      <rect x="0" y="0" width="22" height="54" {...line} fill="rgba(255, 179, 71, 0.08)" />
+      <line x1="11" y1="0" x2="11" y2="54" stroke={DIM} />
+      {[13, 27, 40].map((yy) => (
+        <line key={yy} x1="0" y1={yy} x2="22" y2={yy} stroke={DIM} />
+      ))}
+    </g>
+  );
   return (
     <g>
-      <g transform="translate(340 290)">
-        <circle r="170" fill="url(#soft)" />
-        <circle r="150" {...line} fill={INK} />
-        {[-100, -50, 0, 50, 100].map((y) => {
-          const w = Math.sqrt(150 * 150 - y * y);
-          return <ellipse key={y} cy={y} rx={w} ry={w * 0.12} {...dim} />;
-        })}
-        {[30, 70, 110].map((w) => (
-          <ellipse key={w} rx={w} ry="150" {...dim} />
-        ))}
-        <path d="M-90 -90 C-50 -120 10 -110 20 -76 C30 -40 -20 -30 -40 0 C-60 26 -96 10 -106 -28 C-112 -56 -106 -80 -90 -90 Z" fill="none" stroke={AMBER} strokeWidth="1.6" />
-        <path d="M30 14 C68 -6 112 22 104 58 C94 96 56 118 30 100 C10 84 2 40 30 14 Z" fill="none" stroke={AMBER} strokeWidth="1.6" />
+      <g transform="translate(20 -170)" className="drift">
+        <line x1="0" y1="27" x2="130" y2="27" {...line} />
+        {panel(0, 0)}
+        {panel(26, 0)}
+        {panel(104, 0)}
+        {panel(128, 0)}
+        <rect x="52" y="18" width="46" height="18" rx="6" {...solid} />
+        <rect x="64" y="36" width="20" height="14" rx="4" {...solid} />
       </g>
-      {/* satellite on a low orbit */}
-      <ellipse cx="340" cy="290" rx="210" ry="60" {...dim} strokeDasharray="3 6" transform="rotate(-14 340 290)" />
-      <g transform="translate(140 300)">
-        <rect x="-5" y="-4" width="10" height="8" {...line} />
-        <rect x="-24" y="-3" width="16" height="6" {...dim} />
-        <rect x="8" y="-3" width="16" height="6" {...dim} />
+      {/* a satellite on the other side */}
+      <g transform="translate(350 90) rotate(20)">
+        <rect x="-8" y="-6" width="16" height="12" {...line} />
+        <rect x="-36" y="-4" width="24" height="8" {...dim} />
+        <rect x="12" y="-4" width="24" height="8" {...dim} />
+        <path d="M0 -6 v-10 m-8 0 a8 4 0 0 0 16 0" {...line} />
       </g>
     </g>
   );
 }
 
-/* ---- 7. Moon ---- */
+/* ---- 8. The Moon ---- */
 function Moon() {
   return (
     <g>
-      <path d="M-180 300 C40 120 200 140 300 290" {...dim} strokeDasharray="3 7" />
-      <g transform="translate(320 300)">
-        <circle r="110" {...line} fill={INK} />
+      <g transform="translate(350 -70)">
+        <circle r="120" fill="url(#soft)" />
+        <circle r="100" {...solid} />
         {[
-          [-40, -40, 22],
-          [30, 24, 30],
-          [-50, 50, 16],
-          [56, -50, 12],
-          [0, -8, 10],
+          [-40, -30, 20],
+          [26, 22, 26],
+          [-46, 44, 14],
+          [48, -46, 12],
+          [0, -6, 9],
         ].map(([x, y, r], index) => (
           <g key={index}>
             <circle cx={x} cy={y} r={r} {...dim} />
@@ -426,84 +418,58 @@ function Moon() {
           </g>
         ))}
       </g>
-      <Label x={110} y={180} text="1 light second from Earth" />
+      {/* Earth, small and far below */}
+      <g transform="translate(60 170)">
+        <circle r="26" {...solid} />
+        <path d="M-16 -8 C-8 -18 6 -14 6 -4 C6 6 -8 6 -12 12" fill="none" stroke={AMBER} strokeWidth="1.2" />
+        <ellipse rx="26" ry="5" {...dim} />
+      </g>
     </g>
   );
 }
 
-/* ---- 8. Planets ---- */
+/* ---- 9. The planets ---- */
 function Planets() {
   return (
     <g>
-      <circle cx="40" cy="120" r="90" fill="none" stroke={AMBER} strokeWidth="1.6" />
-      <circle cx="40" cy="120" r="70" fill="none" stroke={AMBER} strokeOpacity="0.35" />
-      {[150, 240, 340, 470].map((r) => (
-        <circle key={r} cx="40" cy="120" r={r} {...dim} strokeDasharray="2 7" />
-      ))}
-      <circle cx="160" cy="230" r="8" {...line} />
-      <circle cx="210" cy="330" r="11" {...line} />
-      <g transform="translate(300 420)">
-        <circle r="56" {...line} fill={INK} />
-        {[-36, -18, 0, 16, 34].map((y) => {
-          const w = Math.sqrt(56 * 56 - y * y);
+      {/* Mars */}
+      <circle cx="70" cy="110" r="16" {...line} />
+      <path d="M58 104 q10 -4 22 2" fill="none" stroke={AMBER} />
+      {/* Jupiter */}
+      <g transform="translate(370 60)">
+        <circle r="64" {...solid} />
+        {[-40, -20, 0, 18, 38].map((y) => {
+          const w = Math.sqrt(64 * 64 - y * y);
           return <line key={y} x1={-w} y1={y} x2={w} y2={y} stroke={DIM} />;
         })}
-        <ellipse cx="18" cy="18" rx="12" ry="6" fill="none" stroke={AMBER} />
+        <ellipse cx="20" cy="22" rx="13" ry="6" fill="none" stroke={AMBER} />
       </g>
-      <Label x={360} y={490} text="jupiter" />
-      <g transform="translate(450 230) rotate(-16)">
-        <circle r="40" {...line} fill={INK} />
-        <ellipse rx="90" ry="20" {...line} />
-        <ellipse rx="72" ry="15" {...dim} />
-        <path d="M-90 0 A90 20 0 0 0 90 0" fill="none" stroke={LINE} strokeWidth="1.6" />
+      {/* Saturn */}
+      <g transform="translate(70 -140) rotate(-16)">
+        <circle r="36" {...solid} />
+        <ellipse rx="80" ry="18" {...line} />
+        <ellipse rx="64" ry="13" {...dim} />
+        <path d="M-80 0 A80 18 0 0 0 80 0" fill="none" stroke={LINE} strokeWidth="1.6" />
       </g>
-      <Label x={470} y={300} text="saturn" />
-    </g>
-  );
-}
-
-/* ---- 9. Nearby stars ---- */
-function Stars() {
-  const named = [
-    [90, 160, "sun"],
-    [210, 400, "proxima centauri"],
-    [330, 190, "barnard's star"],
-    [420, 360, "sirius"],
-    [500, 130, "wolf 359"],
-  ] as const;
-  return (
-    <g>
-      <path d="M90 160 L210 400 L330 190 L420 360 L500 130" {...dim} strokeDasharray="4 6" />
-      {named.map(([x, y, name], index) => (
-        <g key={name}>
-          <circle cx={x} cy={y} r={index === 0 ? 5 : 3.5} fill={index === 0 ? AMBER : LINE} className={index % 2 ? "twinkle" : undefined} />
-          <circle cx={x} cy={y} r="12" {...dim} />
-          <line x1={x - 18} y1={y} x2={x - 8} y2={y} stroke={DIM} />
-          <line x1={x + 8} y1={y} x2={x + 18} y2={y} stroke={DIM} />
-          <text x={x + 14} y={y - 14} fill={DIM} fontSize="11" className="mono">
-            {name}
-          </text>
-        </g>
+      {Array.from({ length: 26 }, (_, index) => (
+        <circle key={index} cx={rand(index + 40) * WORLD_W} cy={-40 + rand(index + 80) * 60 + index} r="1.4" fill={DIM} />
       ))}
-      <text x="150" y="270" fill={AMBER} fontSize="11" className="mono" transform="rotate(63 150 270)">
-        4.2 ly
-      </text>
     </g>
   );
 }
 
-/* ---- 10. Milky Way ---- */
+/* ---- 10. The Milky Way ---- */
 function Galaxy() {
   const arm = (offset: number) =>
     Array.from({ length: 60 }, (_, index) => {
       const t = index / 60;
       const angle = offset + t * Math.PI * 2.3;
-      const radius = 16 + t * 200;
+      const radius = 14 + t * 190;
       return `${index ? "L" : "M"}${(Math.cos(angle) * radius).toFixed(1)} ${(Math.sin(angle) * radius * 0.5).toFixed(1)}`;
     }).join(" ");
   return (
     <g>
-      <g transform="translate(320 290) rotate(-14)">
+      <g transform="translate(210 -190) rotate(-12)">
         <g className="galaxy-spin">
           <path d={arm(0)} {...line} />
           <path d={arm(Math.PI)} {...line} />
@@ -512,30 +478,24 @@ function Galaxy() {
           {Array.from({ length: 120 }, (_, index) => {
             const t = rand(index);
             const angle = (index % 2 ? 0 : Math.PI) + t * Math.PI * 2.3 + (rand(index + 9) - 0.5) * 0.4;
-            const radius = 16 + t * 200;
+            const radius = 14 + t * 190;
             return <circle key={index} cx={Math.cos(angle) * radius} cy={Math.sin(angle) * radius * 0.5} r="1.2" fill={LINE} opacity="0.6" />;
           })}
         </g>
-        <ellipse rx="28" ry="16" fill="none" stroke={AMBER} strokeWidth="1.6" />
+        <ellipse rx="26" ry="14" fill="none" stroke={AMBER} strokeWidth="1.6" />
       </g>
-      <circle cx="430" cy="370" r="3" fill={AMBER} />
-      <circle cx="430" cy="370" r="10" fill="none" stroke={AMBER} />
-      <Label x={444} y={392} text="you are here" />
-    </g>
-  );
-}
-
-/* ---- 11. Galaxy web ---- */
-function Web() {
-  const nodes = Array.from({ length: 18 }, (_, index) => ({ x: 20 + rand(index + 400) * 500, y: 70 + rand(index + 450) * 420 }));
-  return (
-    <g>
-      {nodes.map((node, index) => {
-        const next = nodes[(index * 5 + 3) % nodes.length]!;
-        return <line key={`l${index}`} x1={node.x} y1={node.y} x2={next.x} y2={next.y} stroke={DIM} />;
-      })}
-      {nodes.map((node, index) => (
-        <ellipse key={index} cx={node.x} cy={node.y} rx={6 + rand(index) * 8} ry={3} fill="none" stroke={index % 4 ? LINE : AMBER} transform={`rotate(${rand(index + 5) * 180} ${node.x} ${node.y})`} />
+      {/* the nearest stars, passed on the way */}
+      {[
+        [60, 170, "proxima centauri"],
+        [330, 120, "sirius"],
+      ].map(([x, y, name]) => (
+        <g key={name as string}>
+          <circle cx={x} cy={y} r="3.5" fill={LINE} />
+          <circle cx={x} cy={y} r="11" {...dim} />
+          <text x={(x as number) + 14} y={(y as number) - 12} fill={DIM} fontSize="11" className="mono">
+            {name}
+          </text>
+        </g>
       ))}
     </g>
   );
@@ -545,19 +505,22 @@ function Web() {
 /* Far layer: a drafting grid that moves at FAR_RATE of the camera.    */
 /* ------------------------------------------------------------------ */
 
-export const FAR_RATE = 0.45;
+export const FAR_RATE = 0.4;
+export const FAR_H = WORLD_H * FAR_RATE + 1400;
 
 export function WorldFar() {
-  const width = WORLD_W * FAR_RATE + 800;
-  const cols = Math.ceil(width / 40);
   return (
     <g>
-      {Array.from({ length: cols }, (_, index) => (
-        <line key={`v${index}`} x1={-400 + index * 40} y1="0" x2={-400 + index * 40} y2={WORLD_H} stroke={LINE} strokeOpacity={index % 5 ? 0.05 : 0.1} />
-      ))}
-      {Array.from({ length: 16 }, (_, index) => (
-        <line key={`h${index}`} x1="-400" y1={index * 40} x2={width} y2={index * 40} stroke={LINE} strokeOpacity={index % 5 ? 0.05 : 0.1} />
-      ))}
+      <defs>
+        <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+          <path d="M40 0 H0 V40" fill="none" stroke={LINE} strokeOpacity="0.06" />
+        </pattern>
+        <pattern id="grid5" width="200" height="200" patternUnits="userSpaceOnUse">
+          <path d="M200 0 H0 V200" fill="none" stroke={LINE} strokeOpacity="0.1" />
+        </pattern>
+      </defs>
+      <rect x={-SIDE} y="0" width={WORLD_W + SIDE * 2} height={FAR_H} fill="url(#grid)" />
+      <rect x={-SIDE} y="0" width={WORLD_W + SIDE * 2} height={FAR_H} fill="url(#grid5)" />
     </g>
   );
 }
@@ -566,20 +529,26 @@ export function WorldFar() {
 /* Front layer: registration marks that move faster than the camera.   */
 /* ------------------------------------------------------------------ */
 
-export const FRONT_RATE = 1.4;
+export const FRONT_RATE = 1.3;
+export const FRONT_H = WORLD_H * FRONT_RATE + 1400;
 
 export function WorldFront() {
   const marks: ReactNode[] = [];
-  const span = WORLD_W * FRONT_RATE;
-  for (let index = 0; index < 70; index += 1) {
-    const x = rand(index + 7000) * span;
-    const y = rand(index + 7100) > 0.5 ? 30 + rand(index + 7200) * 80 : 470 + rand(index + 7300) * 100;
+  for (let index = 0; index < 90; index += 1) {
+    const left = rand(index + 7000) > 0.5;
+    const x = left ? 10 + rand(index + 7200) * 60 : WORLD_W - 70 + rand(index + 7300) * 60;
+    const y = rand(index + 7100) * FRONT_H;
     marks.push(
-      <g key={index} transform={`translate(${x} ${y})`} opacity="0.5">
+      <g key={index} transform={`translate(${x} ${y})`} opacity="0.45">
         <line x1="-7" y1="0" x2="7" y2="0" stroke={LINE} />
         <line x1="0" y1="-7" x2="0" y2="7" stroke={LINE} />
       </g>,
     );
   }
   return <g>{marks}</g>;
+}
+
+/** Index of the stop the climber is standing at. */
+export function stopAt(progress: number): number {
+  return Math.max(0, Math.min(STOPS - 1, Math.round(progress)));
 }

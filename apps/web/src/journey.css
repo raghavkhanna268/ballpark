@@ -44,12 +44,24 @@
 .layer {
   position: absolute;
   left: 0;
-  top: 50%;
+  top: 0;
   display: block;
   will-change: transform;
   pointer-events: none;
 }
 .layer.front { z-index: 4; }
+/* Fades the world out under the heads-up display so the title never fights the art. */
+.scene::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 84px;
+  background: linear-gradient(to bottom, rgba(7, 11, 22, 0.92), rgba(7, 11, 22, 0.6) 55%, rgba(7, 11, 22, 0));
+  pointer-events: none;
+}
 
 .route-trace { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 4 7; stroke-linecap: round; opacity: 0.9; }
 .route-trace.stumble { stroke: #ff7a66; }
@@ -61,33 +73,39 @@
 .ghost.top { color: rgba(255, 179, 71, 0.75); }
 .ghost { opacity: 0.85; }
 
-/* ---------- the probe ---------- */
+/* ---------- the climber ---------- */
 .explorer {
   position: absolute;
   z-index: 3;
   left: 0;
   top: 0;
-  width: 76px;
-  height: 76px;
+  width: 72px;
+  height: 90px;
   will-change: transform;
   pointer-events: none;
 }
-.probe { display: block; overflow: visible; }
-.probe .hull { fill: var(--amber); stroke: #fff2d6; stroke-width: 1; }
-.probe .core { fill: #fff6e0; }
-.probe .ring { fill: none; stroke: var(--amber); stroke-opacity: 0.45; stroke-width: 1.4; }
-.probe .ring.outer { stroke-opacity: 0.18; transform-box: fill-box; transform-origin: center; animation: ping 2.4s ease-out infinite; }
-.probe .thrust line { stroke: var(--amber); stroke-width: 2; stroke-linecap: round; opacity: 0; }
-.explorer.voyage .thrust line, .explorer.replay .thrust line { opacity: 0.9; animation: thrust 0.12s linear infinite alternate; }
-.explorer.stumble .hull { fill: #ff7a66; stroke: #ffd2c8; }
-.explorer.stumble .ring { stroke: #ff7a66; }
-.explorer.stumble .thrust line { stroke: #ff7a66; animation: sputter 0.3s steps(2, end) infinite; }
-.explorer.idle .probe { animation: hover 2.6s ease-in-out infinite; }
+.climber { display: block; overflow: visible; }
+.climber .suit { fill: #0e1830; stroke: #e8f1ff; stroke-width: 1.6; }
+.climber .limb { fill: none; stroke: #e8f1ff; stroke-width: 3.2; stroke-linecap: round; }
+.climber .pack { fill: #0e1830; stroke: var(--line-art); stroke-width: 1.4; }
+.climber .panel { fill: var(--amber); }
+.climber .cap { fill: var(--amber); }
+.climber .goggle { fill: #0e1830; stroke: var(--amber); stroke-width: 1.4; }
+.climber .visor { fill: var(--amber); fill-opacity: 0.85; stroke: #fff2d6; stroke-width: 1; }
+.climber .glint { fill: #fff6e0; }
+.climber .head-astro { display: none; }
+.explorer.suited .head-astro { display: inline; }
+.explorer.suited .head-pilot { display: none; }
+.climber .flame path { fill: var(--amber); transform-box: fill-box; transform-origin: center top; transform: scaleY(0.35); opacity: 0.8; animation: flicker 0.18s ease-in-out infinite alternate; }
+.explorer.voyage .flame path, .explorer.replay .flame path { transform: scaleY(1.25); opacity: 1; animation-name: roar; }
+.explorer.stumble .flame path { fill: #ff7a66; animation: sputter 0.3s steps(2, end) infinite; }
+.explorer.stumble .suit, .explorer.stumble .limb { stroke: #ffb0a2; }
+.explorer.idle .climber { animation: hover 2.6s ease-in-out infinite; }
 
 .smoke i {
   position: absolute;
-  left: 4px;
-  top: 30px;
+  left: 28px;
+  top: 70px;
   width: 16px;
   height: 16px;
   border-radius: 50%;
@@ -100,10 +118,10 @@
 .stage.is-voyage .speedlines { opacity: 1; }
 .speedlines i {
   position: absolute;
-  right: -40%;
-  width: 30%;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(143, 211, 255, 0), rgba(143, 211, 255, 0.7));
+  top: -40%;
+  width: 1px;
+  height: 30%;
+  background: linear-gradient(0deg, rgba(143, 211, 255, 0), rgba(143, 211, 255, 0.7));
   animation: streak 0.42s linear infinite;
 }
 
@@ -136,8 +154,8 @@
 }
 .toast strong { font-size: 0.95rem; letter-spacing: 0.08em; text-transform: uppercase; }
 .toast span { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.75rem; color: var(--line-art); }
-.toast.mission, .toast.pass { border-color: var(--amber); }
-.toast.mission span, .toast.pass span { color: var(--amber); }
+.toast.mission, .toast.pass, .toast.space { border-color: var(--amber); }
+.toast.mission span, .toast.pass span, .toast.space span { color: var(--amber); }
 
 /* ---------- heads-up display ---------- */
 .hud {
@@ -162,66 +180,59 @@
 .mission.done small { color: var(--amber); }
 .mission.done span::before { content: "✓ "; }
 
-.route {
+/* A vertical altimeter on the right edge: ground at the bottom, the Milky Way at the top. */
+.altimeter {
   position: absolute;
   z-index: 7;
-  left: 20px;
-  right: 20px;
-  bottom: 30px;
+  right: 12px;
+  top: 74px;
+  bottom: 40px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
 }
-.route-line { position: relative; height: 1px; background: rgba(143, 211, 255, 0.35); }
-.route-line b { position: absolute; left: 0; top: -1px; height: 3px; background: var(--amber); }
-.route-line i {
+.alt-end { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.58rem; color: rgba(143, 211, 255, 0.7); white-space: nowrap; }
+.alt-line { position: relative; flex: 1; width: 1px; background: rgba(143, 211, 255, 0.35); }
+.alt-line b { position: absolute; left: -1px; bottom: 0; width: 3px; background: var(--amber); }
+.alt-line i { position: absolute; left: -4px; width: 9px; height: 1px; background: rgba(143, 211, 255, 0.55); }
+.alt-line i.passed { background: var(--amber); }
+.alt-line i.space { left: -8px; width: 17px; background: rgba(255, 179, 71, 0.7); }
+.alt-line s { position: absolute; left: -14px; width: 0; height: 0; margin-bottom: -5px; border-right: 9px solid var(--amber); border-top: 5px solid transparent; border-bottom: 5px solid transparent; }
+.alt-line u { position: absolute; left: 5px; width: 0; height: 0; margin-bottom: -4px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid; }
+.alt-line u.best { color: #e8f1ff; }
+.alt-line u.average { color: var(--line-art); }
+.alt-line u.top { color: var(--amber); }
+.alt-line em {
   position: absolute;
-  top: -4px;
-  width: 1px;
-  height: 9px;
-  background: rgba(143, 211, 255, 0.55);
-}
-.route-line i.passed { background: var(--amber); }
-.route-line s {
-  position: absolute;
-  top: -14px;
-  width: 0;
-  height: 0;
-  margin-left: -1px;
-  border-left: 9px solid var(--amber);
-  border-top: 5px solid transparent;
-  border-bottom: 5px solid transparent;
-}
-.route-line s::after { content: ""; position: absolute; left: -9px; top: 0; width: 1px; height: 14px; background: var(--amber); }
-.route-line u { position: absolute; top: 5px; width: 0; height: 0; margin-left: -4px; border-left: 4px solid transparent; border-right: 4px solid transparent; border-bottom: 6px solid; }
-.route-line u.best { color: #e8f1ff; }
-.route-line u.average { color: var(--line-art); }
-.route-line u.top { color: var(--amber); }
-.route-line em {
-  position: absolute;
-  top: -5px;
+  left: -5px;
   width: 11px;
   height: 11px;
-  margin-left: -5px;
+  margin-bottom: -5px;
   border-radius: 50%;
   background: var(--amber);
   box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.25);
 }
-.route-ends { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.62rem; color: rgba(143, 211, 255, 0.7); }
 .sound-toggle {
+  position: absolute;
+  z-index: 7;
+  left: 14px;
+  bottom: 26px;
   border: 1px solid rgba(143, 211, 255, 0.3);
   border-radius: 999px;
-  background: transparent;
+  background: rgba(10, 16, 32, 0.6);
   color: rgba(143, 211, 255, 0.85);
   padding: 2px 10px;
-  font: inherit;
+  font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
   font-size: 0.62rem;
 }
 
 /* ---------- world animation ---------- */
-.orbit { animation: spin 3.2s linear infinite; }
-.orbit.o2 { animation-duration: 4.1s; }
-.orbit.o3 { animation-duration: 2.7s; animation-direction: reverse; }
 .bob-slow { animation: float 4s ease-in-out infinite; }
+.drift { animation: float 6s ease-in-out infinite; }
 .twinkle { animation: twinkle 2.4s ease-in-out infinite; }
-.legs { animation: scuttle 0.3s steps(2, end) infinite; }
 .galaxy-spin { animation: spin 90s linear infinite; }
 
 /* ---------- the question card ---------- */
@@ -280,19 +291,19 @@
 @keyframes twinkle { 50% { opacity: 0.25; } }
 @keyframes hover { 50% { transform: translateY(-5px); } }
 @keyframes ping { 0% { transform: scale(0.7); stroke-opacity: 0.5; } 100% { transform: scale(1.5); stroke-opacity: 0; } }
-@keyframes thrust { to { transform: translateX(-6px); } }
+@keyframes flicker { to { transform: scaleY(0.5); } }
+@keyframes roar { from { transform: scaleY(1.05); } to { transform: scaleY(1.45); } }
 @keyframes sputter { 0% { opacity: 0.9; } 50% { opacity: 0.05; } }
-@keyframes smoke { 0% { opacity: 0.9; transform: translate(0, 0) scale(0.5); } 100% { opacity: 0; transform: translate(-50px, -26px) scale(2); } }
-@keyframes streak { from { transform: translateX(0); } to { transform: translateX(-420%); } }
+@keyframes smoke { 0% { opacity: 0.9; transform: translate(0, 0) scale(0.5); } 100% { opacity: 0; transform: translate(-14px, 46px) scale(2); } }
+@keyframes streak { from { transform: translateY(0); } to { transform: translateY(520%); } }
 @keyframes pulsefade { from { opacity: 1; } to { opacity: 0; } }
 @keyframes shake { 15% { transform: translateX(-6px); } 30% { transform: translateX(6px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
 @keyframes arrive { 0% { opacity: 0.2; transform: translateY(-4px); } 100% { opacity: 1; transform: none; } }
 @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes pop { 40% { transform: scale(1.45); } }
-@keyframes scuttle { 50% { transform: translateX(3px); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .orbit, .bob-slow, .twinkle, .legs, .galaxy-spin, .probe .ring.outer, .explorer .probe, .thrust line, .smoke i, .speedlines i,
+  .bob-slow, .drift, .twinkle, .galaxy-spin, .explorer .climber, .climber .flame path, .smoke i, .speedlines i,
   .miss-flash, .where, .toast, .stage.is-stumble .scene { animation: none; }
   .scene { transition: none; }
 }
@@ -305,7 +316,7 @@
 .log-stats p { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .log-stats .mono { font-size: 1.05rem; color: var(--amber); }
 .log-stats small { font-size: 0.7rem; color: var(--muted); }
-.world-strip { list-style: none; display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; margin: 0; padding: 0; }
+.world-strip { list-style: none; display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin: 0; padding: 0; }
 .world-strip li { height: 6px; border: 1px solid rgba(143, 211, 255, 0.35); }
 .world-strip li.on { background: var(--amber); border-color: var(--amber); }
 .finds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }

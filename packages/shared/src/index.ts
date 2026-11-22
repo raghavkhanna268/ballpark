@@ -43,6 +43,7 @@ export type { FieldStats, ScaleLevel } from "./scale.js";
 export {
   CLASSIC_SCORE_SPAN,
   SCALE_LEVELS,
+  SPACE_STOP,
   journeyProgress,
   classicStep,
   fieldStats,

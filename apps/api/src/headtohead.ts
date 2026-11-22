@@ -397,7 +397,7 @@ async function officialResult(
     beatPercent: beatPercent(score, scores.length === 0 ? [score] : scores),
     players: Math.max(scores.length, 1),
     bestToday: best,
-    shareText: headToHeadShareText(number, marks, score, H2H_LENGTH, shareHost, level.name),
+    shareText: headToHeadShareText(number, marks, score, H2H_LENGTH, shareHost, reachedPhrase(level)),
     cleared,
     marks,
     reached: reachedPhrase(level),
