@@ -6,6 +6,7 @@ import {
   formatFactValue,
   formatFactor,
   NAME_CAP,
+  CLASSIC_QUESTIONS,
   classicStep,
   levelForProgress,
   placement,
@@ -482,7 +483,7 @@ async function dayResult(
     .prepare("SELECT points FROM submissions WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
     .bind(deviceId, date, MODE)
     .all<{ points: number }>();
-  const climbed = (mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP), 0);
+  const climbed = (mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP, CLASSIC_QUESTIONS), 0);
   const reached = levelForProgress(climbed);
   const race = raceCode("classic", number, climbed);
   return {

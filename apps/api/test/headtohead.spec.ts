@@ -112,11 +112,14 @@ describe("head-to-head API", () => {
     expect(ended.result.shareText).toContain("?race=h1-");
 
     const league = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
-    const table = (await league.json()) as { joined: boolean; name: string; you: { rank: number; points: number } | null; standings: unknown[] };
+    const table = (await league.json()) as { joined: boolean; name: string; open: boolean; players: number; you: { rank: number; points: number } | null; standings: unknown[] };
     expect(table.joined).toBe(true);
     expect(table.name).toBe("Cadet league");
     expect(table.you).toMatchObject({ rank: 1, points: 50 });
-    expect(table.standings).toHaveLength(1);
+    // One player is too few to compare: the table stays hidden.
+    expect(table.open).toBe(false);
+    expect(table.players).toBe(1);
+    expect(table.standings).toHaveLength(0);
 
     const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
     expect(again.status).toBe(409);
@@ -186,10 +189,12 @@ async function answerRound(deviceId: string, round: { index: number; kind: strin
 }
 
 describe("weekly league", () => {
-  it("moves last week's top five up a league", async () => {
+  it("moves last week's top five up a league once the group had 20 players", async () => {
     const at = new Date().toISOString();
+    const others = Array.from({ length: 19 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(DEVICE, at),
+      ...others.map((device) => env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(device, at)),
       env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 300, 300, '[]', 1, ?)").bind(DEVICE, at),
       env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 120, 120, '[]', 0, ?)").bind(DEVICE, DAY, at),
     ]);
@@ -202,5 +207,19 @@ describe("weekly league", () => {
     expect(table.name).toBe("Pilot league");
     expect(table.moved).toBe("up");
     expect(table.you.points).toBe(120);
+  });
+
+  it("moves nobody when last week's group was under 20 players", async () => {
+    const at = new Date().toISOString();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 300, 300, '[]', 1, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 120, 120, '[]', 0, ?)").bind(DEVICE, DAY, at),
+    ]);
+    const response = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
+    const table = (await response.json()) as { tier: number; moved: string; open: boolean };
+    expect(table.tier).toBe(0);
+    expect(table.moved).toBe("same");
+    expect(table.open).toBe(false);
   });
 });

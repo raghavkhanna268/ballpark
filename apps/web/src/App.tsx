@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  CLASSIC_QUESTIONS,
   NAME_CAP,
+  PACK_QUESTIONS,
   classicStep,
   journeyProgress,
   type DayResult,
@@ -23,6 +25,12 @@ import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
+
+/**
+ * Head-to-head is switched off for now: no home card, no fetch, no race links into it.
+ * Its screen, its API and their tests stay, so setting this to true brings it back.
+ */
+const HEAD_TO_HEAD_ON = false;
 
 type Phase =
   | { name: "home" }
@@ -82,11 +90,11 @@ export function App() {
     setError(null);
     try {
       const deviceId = loadStats().deviceId;
-      const [next, head] = await Promise.all([getPuzzle(deviceId), getHeadToHead(deviceId)]);
+      const [next, head] = await Promise.all([getPuzzle(deviceId), HEAD_TO_HEAD_ON ? getHeadToHead(deviceId) : Promise.resolve(null)]);
       setPuzzle(next);
       setH2h(head);
       if (next.result) setStats(recordScore(next.date, next.result.score));
-      if (head.result?.official) setH2hStats(recordHeadToHead(head.date, head.result.score));
+      if (head?.result?.official) setH2hStats(recordHeadToHead(head.date, head.result.score));
       void refreshLeague();
       void refreshPlus();
     } catch (caught) {
@@ -114,7 +122,7 @@ export function App() {
       setPuzzle(nextPuzzle);
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
       const max = question.type === "name_one" ? NAME_CAP : 20;
-      const travel = classicStep(response.reveal.points, max);
+      const travel = classicStep(response.reveal.points, max, CLASSIC_QUESTIONS);
       const scored = response.reveal.points > 0;
       const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(response.reveal.points, max) } : undefined;
       const combo = scored ? currentCombo(pointsOf(nextPuzzle)) : currentCombo(pointsOf(puzzle));
@@ -151,7 +159,7 @@ export function App() {
   const showAds = plus !== null && !plus.plus;
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
-  const challenge = classicRace && !puzzle?.result ? classicRace : h2hRace && h2h?.status !== "finished" ? h2hRace : null;
+  const challenge = classicRace && !puzzle?.result ? classicRace : HEAD_TO_HEAD_ON && h2hRace && h2h?.status !== "finished" ? h2hRace : null;
   const inClassic = phase.name === "ask" || phase.name === "reveal" || phase.name === "end";
   const hudScore: HudScore | null = inClassic
     ? { value: puzzle ? classicScore(puzzle) : 0, label: "Score", digits: 3 }
@@ -205,9 +213,15 @@ export function App() {
           puzzle={puzzle}
           stats={stats}
           classicStreak={classicStreak}
-          h2hStreak={h2hStreak}
-          h2hLabel={h2h?.status === "finished" ? `See today’s run · ${h2h.result?.score ?? 0}` : h2h?.status === "in-progress" ? "Continue Head-to-head" : "Play Head-to-head"}
-          onHeadToHead={startHeadToHead}
+          headToHead={
+            HEAD_TO_HEAD_ON
+              ? {
+                  streak: h2hStreak,
+                  label: h2h?.status === "finished" ? `See today’s run · ${h2h.result?.score ?? 0}` : h2h?.status === "in-progress" ? "Continue Head-to-head" : "Play Head-to-head",
+                  onPlay: startHeadToHead,
+                }
+              : null
+          }
           onPlay={startClassic}
           onResult={() => setPhase({ name: "end" })}
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
@@ -324,7 +338,7 @@ export function App() {
             setPackRun({ score, combo });
           }}
           onHop={(points, label) => {
-            const travel = classicStep(points, NAME_CAP);
+            const travel = classicStep(points, NAME_CAP, PACK_QUESTIONS);
             const combo = points > 0 ? packRun.combo + 1 : packRun.combo;
             setPackRun({ score: packRun.score + points, combo: points > 0 ? combo : 0 });
             setPackFlight((current) => current + travel);
@@ -351,7 +365,7 @@ export function App() {
 function flightFor(puzzle: PuzzleResponse): number {
   return puzzle.questions.reduce((sum, question) => {
     if (!question.reveal) return sum;
-    return sum + classicStep(question.reveal.points, question.type === "name_one" ? NAME_CAP : 20);
+    return sum + classicStep(question.reveal.points, question.type === "name_one" ? NAME_CAP : 20, CLASSIC_QUESTIONS);
   }, 0);
 }
 

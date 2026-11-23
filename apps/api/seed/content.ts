@@ -6,11 +6,12 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { COUNTRIES, ELEMENTS, METRIC_COPY, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { CLASSIC_QUESTIONS, COUNTRIES, ELEMENTS, METRIC_COPY, PACK_QUESTIONS, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
 import { funDays, funNameOne, packNameOne, packs, type SeedPack } from "./fun.ts";
 import { nameOneById, type AcceptedSeed, type NameOneSeed } from "./name-one.ts";
+import { moreBase } from "./seven.ts";
 
 export { packs, type SeedPack };
 
@@ -316,18 +317,25 @@ const baseNamed: SeedQuestion[] = baseQuestions.map((item) => {
   };
 });
 
-const basePuzzles: SeedPuzzle[] = [
-  { slot: 0, theme: "Space", blurb: "Planets, moons, constellations, and a couple of maps.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
-  { slot: 1, theme: "Planet Earth", blurb: "High peaks, long rivers, European seas, and some rare gases.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
-  { slot: 2, theme: "The human body", blurb: "Bones, organs, the brain, and a little chemistry.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
-  { slot: 3, theme: "Inventions", blurb: "Old machines, strings, code, and some very small countries.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
-  { slot: 4, theme: "Landmarks", blurb: "Wonders, Olympic cities, tall towers, and the biggest countries.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
-  { slot: 5, theme: "Living world", blurb: "Whales, wild cats, flightless birds, and two maps.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
-  { slot: 6, theme: "Maps", blurb: "Borders, coastlines, the alphabet, and the Security Council.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
-  { slot: 7, theme: "Laboratory", blurb: "Gases, coin metals, and elements named after places.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
-  { slot: 8, theme: "Culture", blurb: "Sports, paintings, plays, and the far north.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
-  { slot: 9, theme: "Measured Earth", blurb: "The equator, deserts, the Caribbean, and the heavy end of the periodic table.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
+const olderPuzzles: SeedPuzzle[] = [
+  { slot: 0, theme: "Space", blurb: "Planets, moons, moonwalkers, bright stars, constellations, and a couple of maps.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
+  { slot: 1, theme: "Planet Earth", blurb: "High peaks, long rivers, five oceans, layers of sky, European seas, and some rare gases.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
+  { slot: 2, theme: "The human body", blurb: "Bones, organs, muscles, hormones, the brain, and a little chemistry.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
+  { slot: 3, theme: "Inventions", blurb: "Old machines, strings, woodwinds, browsers, code, and some very small countries.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
+  { slot: 4, theme: "Landmarks", blurb: "Wonders, Olympic cities, tall towers, pyramids, Disney castles, and the biggest countries.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
+  { slot: 5, theme: "Living world", blurb: "Whales, wild cats, apes, sharks, flightless birds, and two maps.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
+  { slot: 6, theme: "Maps", blurb: "Borders, flags, coastlines, the alphabet, and the Security Council.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
+  { slot: 7, theme: "Laboratory", blurb: "Gases, coin metals, school lab kit, and elements named after places and people.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
+  { slot: 8, theme: "Culture", blurb: "Sports, paintings, plays, Hogwarts, World Cups, and the far north.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
+  { slot: 9, theme: "Measured Earth", blurb: "The equator, the tropics, Greenwich, deserts, the Caribbean, and the heavy end of the periodic table.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
 ];
+
+/** Each older day gets its two extra questions from seven.ts on the end. */
+const basePuzzles: SeedPuzzle[] = olderPuzzles.map((item) => {
+  const more = moreBase[item.theme];
+  if (!more) throw new Error(`No extra questions for ${item.theme}`);
+  return { ...item, questionIds: [...item.questionIds, ...more.map((extra) => extra.id)] };
+});
 
 /** A name-one question that has no older numeric version to replace. */
 function fromNameOne(named: NameOneSeed): SeedQuestion {
@@ -353,7 +361,12 @@ function fromNameOne(named: NameOneSeed): SeedQuestion {
   };
 }
 
-export const questions: SeedQuestion[] = [...baseNamed, ...funNameOne.map(fromNameOne), ...packNameOne.map(fromNameOne)];
+export const questions: SeedQuestion[] = [
+  ...baseNamed,
+  ...Object.values(moreBase).flat().map(fromNameOne),
+  ...funNameOne.map(fromNameOne),
+  ...packNameOne.map(fromNameOne),
+];
 
 /** The fun week opens the rotation. The older themes follow it. */
 export const puzzles: SeedPuzzle[] = [
@@ -375,7 +388,8 @@ export function assertSeed(): void {
   if (factById.size !== facts.length) throw new Error("Duplicate fact id");
   const questionById = new Map(questions.map((item) => [item.id, item]));
   if (questionById.size !== questions.length) throw new Error("Duplicate question id");
-  if (questions.length !== 100) throw new Error(`Expected 100 questions, found ${questions.length}`);
+  const expectedQuestions = SEED_SLOTS * CLASSIC_QUESTIONS + packs.length * PACK_QUESTIONS;
+  if (questions.length !== expectedQuestions) throw new Error(`Expected ${expectedQuestions} questions, found ${questions.length}`);
   if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
   if (packs.length !== 3) throw new Error("Expected 3 packs");
 
@@ -401,12 +415,12 @@ export function assertSeed(): void {
   }
   // Every question plays in exactly one daily puzzle or one pack, so a pack never repeats a daily question.
   const rounds = [
-    ...puzzles.map((item) => ({ theme: item.theme, questionIds: item.questionIds })),
-    ...packs.map((item) => ({ theme: item.title, questionIds: item.questionIds })),
+    ...puzzles.map((item) => ({ theme: item.theme, questionIds: item.questionIds, size: CLASSIC_QUESTIONS })),
+    ...packs.map((item) => ({ theme: item.title, questionIds: item.questionIds, size: PACK_QUESTIONS })),
   ];
   const placed = new Set<string>();
   for (const puzzle of rounds) {
-    if (puzzle.questionIds.length !== 5) throw new Error(`${puzzle.theme} does not have 5 questions`);
+    if (puzzle.questionIds.length !== puzzle.size) throw new Error(`${puzzle.theme} does not have ${puzzle.size} questions`);
     for (const questionId of puzzle.questionIds) {
       if (placed.has(questionId)) throw new Error(`${questionId} is used twice`);
       placed.add(questionId);

@@ -1,4 +1,5 @@
 import type { AcceptedSeed, NameOneSeed } from "./name-one.ts";
+import { moreFun } from "./seven.ts";
 
 /**
  * SAMPLE fun week: seven daily Classic days and three Ballpark+ themed packs, all "name one" questions.
@@ -864,18 +865,28 @@ const desi: NameOneSeed[] = [
   ),
 ];
 
-export const funNameOne: NameOneSeed[] = [...snack, ...creature, ...game, ...word, ...legend, ...lab, ...desi];
+/** The fun week, in rotation order, each day with the two extra questions from seven.ts. Slots are filled in content.ts. */
+const week: { theme: string; blurb: string; items: NameOneSeed[] }[] = [
+  { theme: "Snack Attack", blurb: "Fake berries, fake nuts, cheese with a passport, sour citrus, microbe cooking, and food named after people.", items: snack },
+  { theme: "Creature Feature", blurb: "Joeys, blue blood, no brains, spare body parts, colour changers, and very old animals.", items: creature },
+  { theme: "Game On", blurb: "Olympic hosts, wet sports, ice sports, elevens, Pokémon, and games India invented.", items: game },
+  { theme: "Word Nerd", blurb: "Countries by their letters, their endings and their lonely borders, plus words India lent to English.", items: word },
+  { theme: "Wonders & Legends", blurb: "Ancient wonders, new wonders, Norse gods, round-table knights, brothers, and reindeer.", items: legend },
+  { theme: "Lab Rats", blurb: "Posh gases, rainbows, simple machines, odd units, famous names, cells, and vitamins.", items: lab },
+  { theme: "Desi Masala", blurb: "Borders, union territories, dances, national symbols, avatars, classical languages, and sweets.", items: desi },
+].map((day) => {
+  const more = moreFun[day.theme];
+  if (!more) throw new Error(`No extra questions for ${day.theme}`);
+  return { ...day, items: [...day.items, ...more] };
+});
 
-/** The fun week, in rotation order. Slots are filled in content.ts. */
-export const funDays: { theme: string; blurb: string; questionIds: string[] }[] = [
-  { theme: "Snack Attack", blurb: "Fake berries, fake nuts, cheese with a passport, and food named after people.", questionIds: snack.map((item) => item.id) },
-  { theme: "Creature Feature", blurb: "Joeys, blue blood, no brains, and spare body parts.", questionIds: creature.map((item) => item.id) },
-  { theme: "Game On", blurb: "Olympic hosts, wet sports, Pokémon, and games India invented.", questionIds: game.map((item) => item.id) },
-  { theme: "Word Nerd", blurb: "Countries by their letters, their endings, and their lonely borders.", questionIds: word.map((item) => item.id) },
-  { theme: "Wonders & Legends", blurb: "Ancient wonders, new wonders, gods, brothers, and reindeer.", questionIds: legend.map((item) => item.id) },
-  { theme: "Lab Rats", blurb: "Posh gases, rainbows, simple machines, odd units, and vitamins.", questionIds: lab.map((item) => item.id) },
-  { theme: "Desi Masala", blurb: "Borders, union territories, dances, national symbols, and sweets.", questionIds: desi.map((item) => item.id) },
-];
+export const funNameOne: NameOneSeed[] = week.flatMap((day) => day.items);
+
+export const funDays: { theme: string; blurb: string; questionIds: string[] }[] = week.map((day) => ({
+  theme: day.theme,
+  blurb: day.blurb,
+  questionIds: day.items.map((item) => item.id),
+}));
 
 /* ---------- Ballpark+ themed packs ---------- */
 

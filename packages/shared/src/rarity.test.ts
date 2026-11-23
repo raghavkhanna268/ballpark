@@ -76,7 +76,9 @@ describe("altitude climb", () => {
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {
     expect(levelForClassicScore(0).id).toBe("launch");
-    expect(levelForClassicScore(500).name).toBe("Milky Way");
+    expect(levelForClassicScore(700).name).toBe("Milky Way");
+    // Seven questions at up to 100 each: 500 is no longer a perfect run.
+    expect(levelForClassicScore(500).name).not.toBe("Milky Way");
     expect(zoomShareLine(levelForCorrectCount(10))).toBe("🏁→🎈→🌌 reached the Milky Way");
     expect(zoomShareLine(levelForCorrectCount(6))).toBe("🏁→☁️→🚀 reached the edge of space");
     expect(zoomShareLine(levelForCorrectCount(10))).not.toContain("correct");

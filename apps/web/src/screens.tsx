@@ -3,6 +3,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CountUp, Tally } from "./game";
 import { haptic, shareText } from "./haptic";
 import {
+  COMPARE_MIN_PLAYERS,
+  canCompare,
   formatFactValue,
   formatNumber,
   NAME_TIERS,
@@ -18,7 +20,7 @@ import {
   type Stats,
 } from "@ballpark/shared";
 
-const BUCKETS = ["0–100", "101–200", "201–300", "301–400", "401+"];
+const BUCKETS = ["0–140", "141–280", "281–420", "421–560", "561+"];
 
 export type StreakView = { streak: number; shield: "ready" | "used" | "saved" };
 
@@ -26,11 +28,9 @@ export function HomeScreen({
   puzzle,
   stats,
   classicStreak,
-  h2hStreak,
-  h2hLabel,
+  headToHead,
   onPlay,
   onResult,
-  onHeadToHead,
   challenge,
   league,
   logbook,
@@ -40,11 +40,10 @@ export function HomeScreen({
   puzzle: PuzzleResponse;
   stats: Stats;
   classicStreak: StreakView;
-  h2hStreak: StreakView;
-  h2hLabel: string;
+  /** The Head-to-head card. Null while the mode is switched off. */
+  headToHead?: { streak: StreakView; label: string; onPlay: () => void } | null;
   onPlay: () => void;
   onResult: () => void;
-  onHeadToHead: () => void;
   /** A friend's race link, shown above the modes. */
   challenge?: ReactNode;
   /** This week's league table. */
@@ -87,7 +86,7 @@ export function HomeScreen({
           <h2>Classic</h2>
           <StreakTag view={classicStreak} />
         </div>
-        <p>Five open questions. Name any right answer. The fewer players who think of it, the more it scores.</p>
+        <p>Seven open questions. Name any right answer. The fewer players who think of it, the more it scores.</p>
         {done ? (
           <button className="primary" type="button" onClick={onResult}>
             See today’s result · {puzzle.result?.score} pts
@@ -99,16 +98,18 @@ export function HomeScreen({
         )}
       </section>
 
-      <section className="card mode-card">
-        <div className="mode-top">
-          <h2>Head-to-head</h2>
-          <StreakTag view={h2hStreak} />
-        </div>
-        <p>Ten pairs, easy to hard. A miss does not end it. You answer every one.</p>
-        <button className="primary" type="button" onClick={onHeadToHead}>
-          {h2hLabel}
-        </button>
-      </section>
+      {headToHead ? (
+        <section className="card mode-card">
+          <div className="mode-top">
+            <h2>Head-to-head</h2>
+            <StreakTag view={headToHead.streak} />
+          </div>
+          <p>Ten pairs, easy to hard. A miss does not end it. You answer every one.</p>
+          <button className="primary" type="button" onClick={headToHead.onPlay}>
+            {headToHead.label}
+          </button>
+        </section>
+      ) : null}
 
       {packs}
 
@@ -285,7 +286,7 @@ export function EndScreen({
       <Tally rows={puzzle.questions.map((question) => question.reveal)} />
       {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
       {rivals}
-      <p className="emoji-row" aria-label="Five question bands">
+      <p className="emoji-row" aria-label="Question bands">
         {result.emojis.join("")}
       </p>
       <pre className="share-card">{result.shareText}</pre>
@@ -581,6 +582,21 @@ function placeLog(value: number, window: { start: number; end: number }): number
 }
 
 function Crowd({ crowd, type }: { crowd: CrowdStat; type: PublicQuestion["type"] }) {
+  // Under 20 answers, crowd shares say more about who happened to play first than about the crowd.
+  if (!canCompare(crowd.submissions)) {
+    return (
+      <div className="crowd">
+        <p>
+          {crowd.kind === "named" && !crowd.answer
+            ? "That answer was not accepted."
+            : crowd.kind === "named" && crowd.blendedPercent !== null
+              ? `Early days: rarity uses our estimate until ${COMPARE_MIN_PLAYERS} players answer. We reckon about ${crowd.blendedPercent}% would say ${crowd.answer}.`
+              : `Crowd stats appear once ${COMPARE_MIN_PLAYERS} players answer.`}
+        </p>
+        {crowd.kind === "named" && crowd.rare.length > 0 ? <p>Rare valid answers: {crowd.rare.join(", ")}</p> : null}
+      </div>
+    );
+  }
   if (crowd.kind === "named") {
     return (
       <div className="crowd">

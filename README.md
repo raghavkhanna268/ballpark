@@ -1,6 +1,6 @@
 # Ballpark
 
-Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. Two modes share one fact table: **Classic** (five questions) and **Head-to-head** (ten pairs, and you answer every one). Both are scored on the server. There is no account.
+Ballpark is a daily general-knowledge game. Everyone plays the same puzzle, and the day resets at midnight UTC. **Classic** is seven open questions a day, scored on the server. A second mode, **Head-to-head** (ten pairs from a shared fact table), is built and tested but switched off in the web app for now: `HEAD_TO_HEAD_ON` in `apps/web/src/App.tsx` turns it back on. There is no account.
 
 One test deploy exists, made by hand from the owner's Mac on 2026-11-22 at their request: https://ballpark.raghavkhanna.workers.dev (sample questions, Ballpark+ checkout off). Do not run `wrangler deploy`, `wrangler d1 create`, or any other command that talks to a Cloudflare account unless the owner asks for it. See [Test deploy](#test-deploy).
 
@@ -20,28 +20,30 @@ Open [http://127.0.0.1:5173](http://127.0.0.1:5173). In dev, add `?date=YYYY-MM-
 ## How a round works
 
 1. The Worker picks the puzzle for the UTC date. Puzzle #1 is 2026-01-01. The sample seed has 17 days, and later dates rotate through those days: slot `(puzzleNumber - 1) mod 17` (`SEED_SLOTS`). Slots 0 to 6 are the fun week (Snack Attack, Creature Feature, Game On, Word Nerd, Wonders & Legends, Lab Rats, Desi Masala). Slots 7 to 16 are the older themes, starting with Space.
-2. `GET /api/puzzle` returns five open "name one" prompts. A question about countries or elements also gets the whole group as autocomplete (every country, or every element), which is not the answer key. Free-text questions (whales, Shakespeare plays) get no list, because a list of only the right answers would give them away. Accepted answers, context, and sources never leave the server before a guess.
+2. `GET /api/puzzle` returns seven open "name one" prompts. A question about countries or elements also gets the whole group as autocomplete (every country, or every element), which is not the answer key. Free-text questions (whales, Shakespeare plays) get no list, because a list of only the right answers would give them away. Accepted answers, context, and sources never leave the server before a guess.
 3. The browser sends one guess per question, with an anonymous device id kept in `localStorage`.
 4. The Worker scores it, stores the submission, and returns the answer, one or two lines of context, a source link, and the crowd stat (median guess, or the share who got it fully right).
-5. After the fifth question, the response includes the day's score out of 500, your rank among today's finishers ("You're #3 of 40 today, 15 pts behind #2"), and a race link for the share card. Players on the same score share a rank.
+5. After the seventh question, the response includes the day's score out of 700, your rank among today's finishers ("You're #3 of 40 today, 15 pts behind #2"), and a race link for the share card. Players on the same score share a rank. The app only shows the rank once 20 players have finished that day (see below).
 6. A second submission for the same device, question, and UTC day is rejected. Refreshing shows the reveal you already earned.
 
 Guess traffic is rate-limited per device and per IP (40 and 80 requests a minute). That is basic protection, not a cheat-proof board.
 
-Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–100 through 401+. A missed UTC day breaks the streak. There is no account.
+Streaks and the score histogram stay on the device: played, current streak, best streak, and five buckets from 0–140 through 561+. A missed UTC day breaks the streak. There is no account.
 
 The scene fills most of the screen, with a compact question card below it. It is drawn as a blueprint: thin line art on a dark navy grid, with one amber accent for the climber and its trail. The game is a climb straight up, one stop per right answer: the launch pad, the rooftops, the skyscrapers, the clouds, the mountain peaks, the stratosphere, the edge of space (the Kármán line at 100 km), the space station, the Moon, the planets, and the Milky Way. The light changes as you rise, so every height looks different: a bright blueprint blue at the ground deepens to indigo by the stratosphere, dashed lines mark the tropopause and the stratopause, a thin glow sits under the Kármán line, and from there up the sky is black and full of stars. The climber is a jet-pack pilot in a cap and goggles, and above 100 km it is an astronaut in a helmet. The top corner shows your altitude (`ALT ≈ 9 km`) and the stop's name, and an altimeter on the right edge runs from 0 m to the top. Altitudes are rounded on purpose, so the scene never prints a number that a Head-to-head pair asks about. A correct answer flies the climber up along a dashed amber trail. A wrong answer or a timeout makes it sputter, turn red, and lift only a little. The end screen replays the whole climb. `prefers-reduced-motion` jumps to the new height instead of flying. The art is inline SVG, not image downloads.
 
-The blueprint has a game layer on top, borrowed from arcade and synthwave games but kept to the same navy, cyan and amber. Numbers and call-outs use Orbitron (bundled with `@fontsource/orbitron`, no font CDN). The top corners are a heads-up display: altitude on the left, and on the right a score that counts up after each answer (`SCORE 225`, or `PICKS 07` in Head-to-head). Every scoring answer pops a glowing call-out, with rays behind Deep space and Supernova, and its points fly into the score. A miss flashes "MISS". Two or more scoring answers in a row light a `COMBO x3` meter, and a miss says "combo x3 lost". The combo is only for show: it never changes points, the league or the share text. The timer is ten blocks that go dark every three seconds and turn red for the last ten. Each question is a stage ("STAGE 2/5"), buttons are chunky and press down, the card has amber corner brackets, and the end screen says "Mission complete", tallies the score up from zero, lists each stage's points, and shows the best combo. Reduced motion turns the pop-ups, fly-ins and count-ups off.
+The blueprint has a game layer on top, borrowed from arcade and synthwave games but kept to the same navy, cyan and amber. Numbers and call-outs use Orbitron (bundled with `@fontsource/orbitron`, no font CDN). The top corners are a heads-up display: altitude on the left, and on the right a score that counts up after each answer (`SCORE 225`, or `PICKS 07` in Head-to-head). Every scoring answer pops a glowing call-out, with rays behind Deep space and Supernova, and its points fly into the score. A miss flashes "MISS". Two or more scoring answers in a row light a `COMBO x3` meter, and a miss says "combo x3 lost". The combo is only for show: it never changes points, the league or the share text. The timer is ten blocks that go dark every three seconds and turn red for the last ten. Each question is a stage ("STAGE 2/7"), buttons are chunky and press down, the card has amber corner brackets, and the end screen says "Mission complete", tallies the score up from zero, lists each stage's points, and shows the best combo. Reduced motion turns the pop-ups, fly-ins and count-ups off.
 
 How high you get is the score you carry around. There is no target: a run climbs as far as your answers take it. In Classic, the rarer the answer, the bigger the boost: the tier name flashes in the sky ("SUPERNOVA +100 pts") and the jet flame burns longer and hotter. What keeps people coming back is other people:
 
 - **Ghost climbers.** Faint outline climbers rise with you: your own best on this device, today's average, today's best, and a friend whose race link you opened. The top-right corner always names the next one above you ("Next to beat · Today's best · ≈ 400 km"). Passing one shows a toast ("Passed today's best"). The average and the best come from finished runs today (`field` on `/api/puzzle` and `/api/head-to-head`).
 - **Rank after every game.** The end screen says "You're #3 of 40 today" and how far behind the next rank you are, in points (Classic) or right answers (Head-to-head).
 - **Race a friend.** The share card ends with a link such as `ballpark.local/?race=c326-735` (mode, puzzle number, height climbed). Opening it on the same day shows a challenge card on the home screen, the friend's climb flies beside yours, and the end screen says who climbed higher. The link carries no answers. It is not signed, so it is for fun between friends, not a ranking.
-- **Weekly league.** Finishing any game puts you in this week's league (Monday to Sunday, UTC), in a group of up to 30 players of the same rank: Cadet, Pilot, Navigator, Commander, Captain. League points are your Classic points plus 50 per right Head-to-head pick, so a perfect day in both is 1,000. Next Monday, the top 5 of each group move up a league, and in groups of 15 or more the bottom 5 move down. Players show as stable anonymous callsigns ("Lunar Nova 57"), made from a hash of the device id. `GET /api/league` returns the table.
+- **Weekly league.** Finishing any game puts you in this week's league (Monday to Sunday, UTC), in a group of up to 30 players of the same rank: Cadet, Pilot, Navigator, Commander, Captain. League points are your Classic points, so a perfect day is 700 (a right Head-to-head pick adds 50 when that mode is on). The table only opens once a group has 20 players. From then on, next Monday the top 5 of each group move up a league, and the bottom 5 move down. A group under 20 moves nobody. Players show as stable anonymous callsigns ("Lunar Nova 57"), made from a hash of the device id. `GET /api/league` returns the table.
 - **Streak shield.** One missed day a week doesn't break a streak. The home screen shows "Streak 6 · shield ready", and the end screen says when the shield covered a missed day. Like streaks, it lives on the device.
 - **Logbook.** The home screen keeps your highest altitude, how many of the 11 heights you have reached, and the Moonshot-or-better answers you found, with the question each came from. It lives in `localStorage`.
+
+**Comparing waits for 20 players.** A comparison with three other people means little, so nothing compares you with the crowd until there are 20 of them (`COMPARE_MIN_PLAYERS` in `packages/shared/src/compete.ts`). Below that, a finished Classic or pack shows "Early player #N to finish today" (or "this pack") instead of a rank, the "Today's average" and "Today's best" ghost climbers stay hidden, the reveal says rarity is still our estimate instead of showing crowd shares, and the league card says how many players the group has so far. Rarity points still work from the first answer, because they fall back on the seed's priors until 20 answers exist.
 
 Every question has a 30-second timer, in both modes. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
 
@@ -72,7 +74,7 @@ Race my climb: ballpark.local/?race=h325-1000
 
 ## Scoring
 
-Classic is five open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Supernova. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
+Classic is seven open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Supernova. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
 
 | Tier | Share of other players | Points | Emoji |
 | --- | --- | --- | --- |
@@ -83,7 +85,7 @@ Classic is five open "name one" questions a day, scored by how rare your answer 
 | Liftoff | more than 20% | 10 | 🟤 |
 | Not on the list, or out of time | | 0 | ⬛ |
 
-The ladder shows under every prompt, so the goal is to think past the obvious answer. How high an answer climbs follows its points: 0.6 of a stop for any right answer plus up to 1.4 more, so five Supernova answers reach the Milky Way. A wrong answer lifts 0.28.
+The ladder shows under every prompt, so the goal is to think past the obvious answer. How high an answer climbs follows its points. In a five-question pack, any right answer climbs 0.6 of a stop plus up to 1.4 more, and a wrong answer lifts 0.28. A seven-question Classic day scales every step by 5/7, so seven Supernova answers reach the Milky Way, just as five do in a pack.
 
 The estimate, compare and rank scorers below are still in the code and tested, but no sample day uses them now.
 
@@ -115,7 +117,7 @@ The estimate field accepts `k`, `M`, and `B` for thousand, million, and billion.
 
 ## Ballpark+
 
-The daily Classic, Head-to-head, the league, ranks, race links and streaks are free for everyone. Ballpark+ adds:
+The daily Classic, the league, ranks, race links and streaks are free for everyone. Ballpark+ adds:
 
 - **Themed packs.** A pack is five name-one questions on one theme, played any day, once per device: Cricket Crazy 🏏, Screen Time 🎬 and Space Nerd 🚀 in the sample. Rarity is counted among everyone who has played that pack, and the end screen ranks you among them ("You're #2 of 40 who played this pack"). Pack answers are `submissions` rows with `mode = 'pack'` and `puzzle_date = 'pack:<id>'`. They never reach `daily_results`, so a pass never adds league points.
 - **No ads.** Free players see a labelled ad space on the home screen and the end screen. There is no ad network yet: it is a placeholder (`AdSlot` in `apps/web/src/plus.tsx`) that also links to Ballpark+. Members never see it.
@@ -161,7 +163,7 @@ Schema, in short:
 
 - `facts` — id, label, value, unit, metric, context, source, retrieved date, license, topic, difficulty, `verified`. Head-to-head pairs facts that share a metric.
 - `questions` — prompt, type (`estimate` | `compare` | `rank` | `name_one`), unit, polarity, the fact ids, the display order, and for name-one an accepted-answer list that never leaves the server
-- `puzzles` — a theme and five question ids, all name-one
+- `puzzles` — a theme and seven question ids, all name-one
 - `submissions` and `daily_results` — one row per device, question, and day, keyed with a `mode` column. Head-to-head `score` is correct picks out of 10. `finalized` flips when the UTC day is recomputed
 - `h2h_picks` — one row per pick, so a pair's miss rate can be scored without storing names
 - `league_members` — one row per device per league week: its rank (`tier`), its group, and whether last week moved it up or down
@@ -171,7 +173,7 @@ Schema, in short:
 
 ## Sample content, and what has to change before a public game
 
-`apps/api/seed/content.ts`, `apps/api/seed/fun.ts` and `apps/api/seed/more-facts.ts` are the sample set: 17 Classic days, 3 Ballpark+ packs, 100 questions, and at least 150 facts for Head-to-head pairs (populations, areas, GDP, peaks, rivers, planets, animals, landmarks, inventions). Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from those files. Give a new fact a `metric` that matches one in `METRIC_COPY`, or `unpaired` if nothing should be compared with it.
+`apps/api/seed/content.ts`, `apps/api/seed/fun.ts` and `apps/api/seed/more-facts.ts` are the sample set: 17 Classic days, 3 Ballpark+ packs, 134 questions, and at least 150 facts for Head-to-head pairs (populations, areas, GDP, peaks, rivers, planets, animals, landmarks, inventions). Every row has `verified: false`. The numbers are widely documented figures with a real source URL, and they have not had an editorial pass. `apps/api/seed/seed.sql` is generated from those files. Give a new fact a `metric` that matches one in `METRIC_COPY`, or `unpaired` if nothing should be compared with it.
 
 This repository is public. Anyone can read the seed. That is acceptable for a local sample and a bad idea for official answers. Before a real launch, stop committing puzzle values. Load them with an admin script from a file that is not in git, or from a private content repository, and keep D1 as the only copy the Worker reads. The client should keep receiving prompts only, the way it does now.
 
@@ -179,11 +181,11 @@ The fun week and the packs in `apps/api/seed/fun.ts` set the voice for new quest
 
 To add or edit a sample puzzle:
 
-1. Edit `apps/api/seed/fun.ts`, `apps/api/seed/content.ts`, `apps/api/seed/name-one.ts`, or `apps/api/seed/name-one-more.ts`. Every Classic question is a name-one question. The older days override a base question id. The fun week and the packs are new ids in `fun.ts`, and a pack is an entry in its `packs` list. Every question belongs to exactly one day or one pack. Set `entitySet` to `countries` or `elements` when the answers are all in that list (every accepted name must then be in it), or `null` for free text with no autocomplete. Give each accepted answer a prior (how often you expect players to say it) and the aliases people type, and never give one spelling to two answers. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
+1. Edit `apps/api/seed/fun.ts`, `apps/api/seed/seven.ts`, `apps/api/seed/content.ts`, `apps/api/seed/name-one.ts`, or `apps/api/seed/name-one-more.ts`. Every Classic question is a name-one question. The older days override a base question id. The fun week and the packs are new ids in `fun.ts`, and a pack is an entry in its `packs` list. The sixth and seventh question of every day live in `apps/api/seed/seven.ts`, keyed by the day's theme. Every question belongs to exactly one day or one pack. Set `entitySet` to `countries` or `elements` when the answers are all in that list (every accepted name must then be in it), or `null` for free text with no autocomplete. Give each accepted answer a prior (how often you expect players to say it) and the aliases people type, and never give one spelling to two answers. An estimate uses one positive fact. A compare uses two. A rank uses three or four, and its display order must not already be the correct order. A name-one question carries a complete accepted list with priors, and its prompt must not contain an accepted name. Do not reuse a fact twice in the same day.
 2. Run `npm run seed:emit -w @ballpark/api` and commit the TypeScript and the generated SQL together.
 3. Run `npm run dev` again. The setup step reloads the local database.
 
-`assertSeed()` runs as part of generating the SQL and as part of the API tests, so a day that is not five name-one questions, a spelling shared by two answers, or a prompt that contains its own answer, fails fast.
+`assertSeed()` runs as part of generating the SQL and as part of the API tests, so a day that is not seven name-one questions, a pack that is not five, a spelling shared by two answers, or a prompt that contains its own answer, fails fast.
 
 ## Checks
 
@@ -220,4 +222,4 @@ Only when the owner asks, and from a machine signed in to their Cloudflare accou
 
 ## Ethics
 
-Both daily modes, the league and streaks are free, with no account wall. Ballpark+ sells extra packs and the removal of ads, not an edge: a pass never adds league points, and every free player gets the same daily questions. There is no loot box and no streak-shame copy. The ad space is a placeholder with no ad network or tracking behind it. Archive play is out of scope.
+The daily game, the league and streaks are free, with no account wall. Ballpark+ sells extra packs and the removal of ads, not an edge: a pass never adds league points, and every free player gets the same daily questions. There is no loot box and no streak-shame copy. The ad space is a placeholder with no ad network or tracking behind it. Archive play is out of scope.

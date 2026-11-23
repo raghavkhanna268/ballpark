@@ -6,6 +6,7 @@ import {
   LEAGUE_MOVE_DOWN,
   LEAGUE_MOVE_UP,
   addUtcDays,
+  canCompare,
   callsign,
   leagueName,
   nextTier,
@@ -72,7 +73,7 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     moveUp: LEAGUE_MOVE_UP,
   };
   if (!member) {
-    return { ...base, joined: false, tier: 0, name: leagueName(0), above: leagueName(1), moveDown: 0, moved: null, you: null, standings: [] };
+    return { ...base, joined: false, tier: 0, name: leagueName(0), above: leagueName(1), moveDown: 0, open: false, players: 0, moved: null, you: null, standings: [] };
   }
   const table = await standings(db, week, member.tier, member.grp);
   const rows: LeagueStanding[] = table.map((row) => ({
@@ -81,6 +82,8 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     points: row.points,
     you: row.device_id === deviceId,
   }));
+  // The table stays hidden, and nobody moves, until the group is big enough to compare in.
+  const open = canCompare(table.length);
   const hadPrevious = await db
     .prepare("SELECT 1 AS hit FROM league_members WHERE device_id = ? AND week < ? LIMIT 1")
     .bind(deviceId, week)
@@ -91,10 +94,12 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     tier: member.tier,
     name: leagueName(member.tier),
     above: member.tier < LEAGUES.length - 1 ? leagueName(member.tier + 1) : null,
-    moveDown: member.tier > 0 && table.length >= LEAGUE_DEMOTION_MIN_GROUP ? LEAGUE_MOVE_DOWN : 0,
+    moveDown: open && member.tier > 0 && table.length >= LEAGUE_DEMOTION_MIN_GROUP ? LEAGUE_MOVE_DOWN : 0,
+    open,
+    players: table.length,
     moved: hadPrevious ? (member.moved > 0 ? "up" : member.moved < 0 ? "down" : "same") : null,
     you: rows.find((row) => row.you) ?? null,
-    standings: rows,
+    standings: open ? rows : [],
   };
 }
 

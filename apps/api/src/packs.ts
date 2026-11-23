@@ -1,5 +1,6 @@
 import {
   NAME_CAP,
+  PACK_QUESTIONS,
   classicStep,
   levelForProgress,
   placement,
@@ -131,7 +132,7 @@ async function packResult(db: D1Database, row: PackRow, deviceId: string, shareH
   const score = ordered.reduce((sum, item) => sum + item.points, 0);
   const bands = ordered.map((item) => item.band);
   const emojis = bands.map((band) => BAND_EMOJI[band]);
-  const climbed = ordered.reduce((sum, item) => sum + classicStep(item.points, NAME_CAP), 0);
+  const climbed = ordered.reduce((sum, item) => sum + classicStep(item.points, NAME_CAP, PACK_QUESTIONS), 0);
   const reached = levelForProgress(climbed);
   const scope = scopeFor(row.id);
   const board = await db

@@ -37,6 +37,7 @@ export {
 export { classicShareText, headToHeadShareText } from "./share.js";
 export type { LeagueResponse, LeagueStanding, Placement, Race, RaceMode, StreakState } from "./compete.js";
 export {
+  COMPARE_MIN_PLAYERS,
   H2H_LEAGUE_POINTS,
   LEAGUES,
   LEAGUE_DEMOTION_MIN_GROUP,
@@ -45,6 +46,7 @@ export {
   LEAGUE_MOVE_UP,
   advanceStreak,
   callsign,
+  canCompare,
   leagueName,
   liveStreak,
   nextTier,
@@ -62,7 +64,9 @@ export type { NameTier } from "./rarity.js";
 export { COLD_START_RESPONSES, NAME_BASE, NAME_CAP, NAME_TIERS, blendShare, nameOnePoints, nameTier, rarityMultiplier } from "./rarity.js";
 export type { FieldStats, ScaleLevel } from "./scale.js";
 export {
+  CLASSIC_QUESTIONS,
   CLASSIC_SCORE_SPAN,
+  PACK_QUESTIONS,
   SCALE_LEVELS,
   SPACE_STOP,
   journeyProgress,

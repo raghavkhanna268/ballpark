@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import {
   NAME_CAP,
+  PACK_QUESTIONS,
+  canCompare,
   classicStep,
   type Guess,
   type PackResponse,
@@ -14,6 +16,7 @@ import {
 import { ApiError, errorCopy, getPack, postPackGuess, postPlusOrder, postPlusVerify, postTestUnlock } from "./api";
 import { CountUp, Tally, currentCombo } from "./game";
 import { haptic, shareText } from "./haptic";
+import { EarlyBlock } from "./rivals";
 import { QuestionScreen, RevealScreen } from "./screens";
 
 /*
@@ -394,13 +397,17 @@ function PackEnd({ pack, result, onHome }: { pack: PackResponse; result: PackRes
         <span> pts</span>
       </p>
       <Tally rows={pack.questions.map((question) => question.reveal)} />
-      <div className="rank-block">
-        <h2>
-          You’re #{rank} <span>of {players} who played this pack</span>
-        </h2>
-        <p className="players">{next ? `${next.gap} pts behind #${next.rank}.` : players === 1 ? "You’re the first to finish it." : "Nobody has climbed higher on this pack."}</p>
-      </div>
-      <p className="emoji-row" aria-label="Five question bands">
+      {canCompare(players) ? (
+        <div className="rank-block">
+          <h2>
+            You’re #{rank} <span>of {players} who played this pack</span>
+          </h2>
+          <p className="players">{next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher on this pack."}</p>
+        </div>
+      ) : (
+        <EarlyBlock players={players} what="this pack" />
+      )}
+      <p className="emoji-row" aria-label="Question bands">
         {result.emojis.join("")}
       </p>
       <pre className="share-card">{result.shareText}</pre>
@@ -439,5 +446,5 @@ function asPuzzle(pack: PackResponse): PuzzleResponse {
 }
 
 function flight(pack: PackResponse): number {
-  return pack.questions.reduce((sum, question) => (question.reveal ? sum + classicStep(question.reveal.points, NAME_CAP) : sum), 0);
+  return pack.questions.reduce((sum, question) => (question.reveal ? sum + classicStep(question.reveal.points, NAME_CAP, PACK_QUESTIONS) : sum), 0);
 }

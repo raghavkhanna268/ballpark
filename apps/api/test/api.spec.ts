@@ -42,7 +42,7 @@ describe("today's questions hide the answers", () => {
       questions: Array<{ type: string; reveal: unknown; items: Array<Record<string, unknown>> }>;
     };
     expect(body.theme).toBe("Space");
-    expect(body.questions.map((question) => question.type)).toEqual(["name_one", "name_one", "name_one", "name_one", "name_one"]);
+    expect(body.questions.map((question) => question.type)).toEqual(Array(7).fill("name_one"));
     const raw = JSON.stringify(body);
     expect(raw).not.toContain("384400");
     expect(raw).not.toContain("299792458");
@@ -128,7 +128,7 @@ describe("submissions", () => {
     }
     expect(result).toMatchObject({ beatPercent: 100, players: 1, place: { rank: 1, players: 1, next: null } });
     // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
-    expect(result!.emojis).toHaveLength(5);
+    expect(result!.emojis).toHaveLength(7);
     expect(result!.emojis).not.toContain("⬛");
     expect(result!.score).toBeGreaterThanOrEqual(50);
     expect(result?.shareText).toContain("Ballpark #8 · Classic");

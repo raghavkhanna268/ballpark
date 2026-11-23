@@ -1,4 +1,4 @@
-import { NAME_CAP, classicStep, fieldStats, journeyProgress, type FieldStats } from "@ballpark/shared";
+import { CLASSIC_QUESTIONS, NAME_CAP, classicStep, fieldStats, journeyProgress, type FieldStats } from "@ballpark/shared";
 import type { PlayQuestion } from "./classic-score.js";
 
 /** Finished Classic runs today, as distances along the journey. */
@@ -15,7 +15,7 @@ export async function classicField(db: D1Database, date: string, questions: Play
   const maxFor = new Map(questions.map((question) => [question.id, question.type === "name_one" ? NAME_CAP : 20]));
   const byDevice = new Map<string, number>();
   for (const row of rows.results ?? []) {
-    const step = classicStep(row.points, maxFor.get(row.question_id) ?? 20);
+    const step = classicStep(row.points, maxFor.get(row.question_id) ?? 20, CLASSIC_QUESTIONS);
     byDevice.set(row.device_id, (byDevice.get(row.device_id) ?? 0) + step);
   }
   return fieldStats([...byDevice.values()]);

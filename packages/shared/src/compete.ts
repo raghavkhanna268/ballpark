@@ -2,6 +2,16 @@ import { addUtcDays } from "./dates.js";
 
 /* ---------- rank after every game ---------- */
 
+/**
+ * Ranks, today's average and best, crowd shares and league tables stay hidden until this many
+ * players have finished, so nobody is compared against a handful of early players.
+ */
+export const COMPARE_MIN_PLAYERS = 20;
+
+export function canCompare(players: number): boolean {
+  return players >= COMPARE_MIN_PLAYERS;
+}
+
 export type Placement = {
   /** 1 is the top. Players on the same score share a rank. */
   rank: number;
@@ -75,6 +85,8 @@ export function leagueName(tier: number): string {
 
 /** Next week's tier for someone who finished `rank` of `size` with `points` this week. */
 export function nextTier(tier: number, rank: number, size: number, points: number): number {
+  // A group too small to compare in moves nobody: its table was never shown.
+  if (!canCompare(size)) return tier;
   if (points > 0 && rank <= LEAGUE_MOVE_UP) return Math.min(LEAGUES.length - 1, tier + 1);
   if (size >= LEAGUE_DEMOTION_MIN_GROUP && rank > size - LEAGUE_MOVE_DOWN) return Math.max(0, tier - 1);
   return tier;
@@ -111,6 +123,10 @@ export type LeagueResponse = {
   moveUp: number;
   /** 0 when this group is too small to send anyone down. */
   moveDown: number;
+  /** False until the group has COMPARE_MIN_PLAYERS players. Until then standings are empty and nobody moves. */
+  open: boolean;
+  /** Players in your group this week. */
+  players: number;
   /** Where last week sent you: up a league, down one, or the same. Null on your first week. */
   moved: "up" | "down" | "same" | null;
   you: LeagueStanding | null;

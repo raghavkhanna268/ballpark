@@ -144,9 +144,10 @@ describe("shorthand, share text, and the daily number", () => {
 
   it("buckets a day's score for the local distribution", () => {
     expect(distributionBucket(0)).toBe(0);
-    expect(distributionBucket(100)).toBe(0);
-    expect(distributionBucket(101)).toBe(1);
-    expect(distributionBucket(500)).toBe(4);
+    expect(distributionBucket(140)).toBe(0);
+    expect(distributionBucket(141)).toBe(1);
+    expect(distributionBucket(560)).toBe(3);
+    expect(distributionBucket(700)).toBe(4);
   });
 
   it("describes the factor without putting it on the share card", () => {

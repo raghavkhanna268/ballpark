@@ -1,4 +1,4 @@
-import { parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
+import { COMPARE_MIN_PLAYERS, canCompare, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
 import { formatAltitude } from "./journey";
 import { WORLD_STOPS, stopAt } from "./worlds";
 
@@ -67,6 +67,7 @@ export function FriendResult({ race, mine }: { race: Race; mine: number }) {
 
 /** "You're #2 of 4 today", and what it takes to climb one more place. */
 export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "picks" }) {
+  if (!canCompare(place.players)) return <EarlyBlock players={place.players} what="today" />;
   const gap = place.next ? (unit === "pts" ? `${place.next.gap} pts` : `${place.next.gap} right ${place.next.gap === 1 ? "answer" : "answers"}`) : "";
   return (
     <div className="rank-block">
@@ -74,12 +75,20 @@ export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "pi
         You’re #{place.rank} <span>of {place.players} today</span>
       </h2>
       <p className="players">
-        {place.next
-          ? `${gap} behind #${place.next.rank}.`
-          : place.players === 1
-            ? "You’re the first to finish today. Everyone after you is chasing your climb."
-            : "Nobody climbed higher today."}
+        {place.next ? `${gap} behind #${place.next.rank}.` : "Nobody climbed higher today."}
       </p>
+    </div>
+  );
+}
+
+/** Before 20 players have finished, being early is the news, not a rank among a handful. */
+export function EarlyBlock({ players, what }: { players: number; what: "today" | "this pack" }) {
+  return (
+    <div className="rank-block early">
+      <h2>
+        Early player <span>#{players} {what === "today" ? "to finish today" : "to finish this pack"}</span>
+      </h2>
+      <p className="players">Ranks and averages start once {COMPARE_MIN_PLAYERS} players have finished. Share your climb to get there faster.</p>
     </div>
   );
 }
@@ -99,6 +108,19 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
           <p className="streak">{ends}</p>
         </div>
         <p className="hint">Finish a game this week to join. Every point you score counts, and the top {league.moveUp} move up a league each Monday.</p>
+      </section>
+    );
+  }
+  if (!league.open) {
+    return (
+      <section className="card league" aria-label="Weekly league">
+        <div className="mode-top">
+          <h2>{league.name}</h2>
+          <p className="streak">{ends}</p>
+        </div>
+        <p className="hint">
+          You’re in, with {league.you?.points ?? 0} pts this week. The table opens once {COMPARE_MIN_PLAYERS} players are in your group ({league.players} so far). Until then nobody moves up or down.
+        </p>
       </section>
     );
   }
@@ -125,7 +147,7 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
       </ol>
       <p className="hint">
         {league.above ? `Top ${league.moveUp} move up to the ${league.above}.` : "This is the top league. Stay in the top 5 to keep your rank."}
-        {league.moveDown > 0 ? ` Bottom ${league.moveDown} move down.` : ""} Classic points plus 50 per right Head-to-head pick.
+        {league.moveDown > 0 ? ` Bottom ${league.moveDown} move down.` : ""} Your Classic points count.
       </p>
     </section>
   );
@@ -134,6 +156,13 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
 /** One line on the end screen: where this week stands now. */
 export function LeagueLine({ league }: { league: LeagueResponse | null }) {
   if (!league?.joined || !league.you) return null;
+  if (!league.open) {
+    return (
+      <p className="league-line">
+        {league.name}: {league.you.points} pts this week. The table opens at {COMPARE_MIN_PLAYERS} players ({league.players} so far).
+      </p>
+    );
+  }
   const zone = league.above && league.you.rank <= league.moveUp ? ` · in the top ${league.moveUp}, on course for the ${league.above}` : "";
   return (
     <p className="league-line">

@@ -46,11 +46,11 @@ export function beatPercent(myScore: number, allScores: number[]): number {
   return Math.round((100 * lower) / (allScores.length - 1));
 }
 
-/** Classic scores run 0 to 500 (five answers at up to 100), so each bucket is 100 points wide. */
+/** Classic scores run 0 to 700 (seven answers at up to 100), so each of the five buckets is 140 points wide. */
 export function distributionBucket(score: number): 0 | 1 | 2 | 3 | 4 {
-  if (score <= 100) return 0;
-  if (score <= 200) return 1;
-  if (score <= 300) return 2;
-  if (score <= 400) return 3;
+  if (score <= 140) return 0;
+  if (score <= 280) return 1;
+  if (score <= 420) return 2;
+  if (score <= 560) return 3;
   return 4;
 }

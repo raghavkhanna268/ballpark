@@ -33,6 +33,11 @@ export type Hop = {
 /** The score in the heads-up display. It counts up after each answer, like an arcade score. */
 export type HudScore = { value: number; label: string; digits: number };
 export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number };
+
+/** "your best" or "your friend and your best", for the HUD once every ghost is behind you. */
+function passedLine(ghosts: Ghost[]): string {
+  return ghosts.map((ghost) => ghost.label.charAt(0).toLowerCase() + ghost.label.slice(1)).join(" and ");
+}
 type Motion = "idle" | "voyage" | "stumble" | "replay";
 
 const SOUND_KEY = "ballpark.sound";
@@ -293,6 +298,8 @@ export function Journey({
   const info = WORLD_STOPS[landed]!;
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
+  // "Above everyone" only when the crowd ghosts are in play. Under 20 players only your best and a friend fly.
+  const crowdGhost = ghosts.some((ghost) => ghost.id === "average" || ghost.id === "top");
   /** Liftoff 1 … Supernova 5: the flame grows with the rarity of the answer. */
   const boost = motion === "voyage" && hop.gain ? `boost-${hop.gain.level}` : "";
   const columns = WORLD_W + SIDE * 2;
@@ -354,9 +361,9 @@ export function Journey({
             {score ? <ScoreBox score={score} /> : null}
             {ghosts.length > 0 && !flying ? (
               <p className={rival ? "rival" : "rival done"}>
-                <small>{rival ? "Next to beat" : "Above everyone"}</small>
+                <small>{rival ? "Next to beat" : crowdGhost ? "Above everyone" : "Passed"}</small>
                 <span>
-                  {rival ? rival.label : "you’re out in front"}
+                  {rival ? rival.label : crowdGhost ? "you’re out in front" : passedLine(ghosts)}
                   {rival ? <em> {formatAltitude(rival.progress)}</em> : null}
                 </span>
               </p>

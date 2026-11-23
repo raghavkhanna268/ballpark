@@ -1,3 +1,5 @@
+import { canCompare } from "./compete.js";
+
 export type ScaleLevel = {
   id: string;
   name: string;
@@ -29,8 +31,12 @@ export const SCALE_LEVELS: ScaleLevel[] = [
 /** The first stop where the climber wears a space suit. */
 export const SPACE_STOP = 6;
 
-/** Five name-one questions at up to 100 points each. Keep in step with NAME_CAP in rarity.ts. */
-export const CLASSIC_SCORE_SPAN = 500;
+/** Questions in a Classic day. */
+export const CLASSIC_QUESTIONS = 7;
+/** Questions in a Ballpark+ pack. */
+export const PACK_QUESTIONS = 5;
+/** Seven name-one questions at up to 100 points each. Keep in step with NAME_CAP in rarity.ts. */
+export const CLASSIC_SCORE_SPAN = CLASSIC_QUESTIONS * 100;
 
 const PHRASE: Record<string, string> = {
   launch: "the launch pad",
@@ -59,19 +65,21 @@ export function journeyProgress(correct: number, answered: number): number {
 }
 
 /**
- * Classic: how far one answer flies. A miss hops a little. Any scored answer flies at least 0.6 of a world,
- * and a full-marks answer flies two, so five perfect answers reach the Milky Way.
+ * Classic and packs: how far one answer flies in a run of `questions`. Steps are sized so a perfect run
+ * reaches the Milky Way (10 stops) however long it is. In five questions a miss hops 0.28, any scored
+ * answer flies at least 0.6, and full marks fly 2. A seven-question day scales each of those by 5/7.
  */
-export function classicStep(points: number, max: number): number {
-  if (points <= 0 || max <= 0) return 0.28;
-  return 0.6 + 1.4 * Math.min(1, points / max);
+export function classicStep(points: number, max: number, questions: number): number {
+  const scale = 5 / Math.max(1, questions);
+  if (points <= 0 || max <= 0) return 0.28 * scale;
+  return (0.6 + 1.4 * Math.min(1, points / max)) * scale;
 }
 
 /** Today's field, as distances along the journey, so the client can fly ghosts for the average and the best. */
 export type FieldStats = { players: number; averageProgress: number | null; bestProgress: number | null };
 
 export function fieldStats(progresses: number[]): FieldStats {
-  if (progresses.length === 0) return { players: 0, averageProgress: null, bestProgress: null };
+  if (!canCompare(progresses.length)) return { players: progresses.length, averageProgress: null, bestProgress: null };
   const total = progresses.reduce((sum, value) => sum + value, 0);
   return {
     players: progresses.length,

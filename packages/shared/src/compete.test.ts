@@ -29,12 +29,15 @@ describe("league weeks", () => {
   });
 
   it("moves the top five up and, in a big group, the bottom five down", () => {
-    expect(nextTier(0, 5, 8, 120)).toBe(1);
+    expect(nextTier(0, 5, 20, 120)).toBe(1);
     expect(nextTier(4, 1, 30, 900)).toBe(4);
     expect(nextTier(2, 6, 8, 120)).toBe(2);
     expect(nextTier(2, 26, 30, 10)).toBe(1);
     expect(nextTier(0, 30, 30, 0)).toBe(0);
     expect(nextTier(1, 1, 1, 0)).toBe(1);
+    // Under 20 players the table was never shown, so nobody moves.
+    expect(nextTier(0, 1, 19, 500)).toBe(0);
+    expect(nextTier(2, 19, 19, 0)).toBe(2);
   });
 
   it("gives every device a stable callsign", () => {
