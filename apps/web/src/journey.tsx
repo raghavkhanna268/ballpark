@@ -42,8 +42,13 @@ type Motion = "idle" | "voyage" | "stumble" | "replay";
 
 const SOUND_KEY = "ballpark.sound";
 const STOPS = WORLD_STOPS.length;
-/** The climber sits this far down the scene, so you can see where you are heading. */
-const ANCHOR = 0.62;
+/**
+ * The scene fills the screen and the card sits over its top. The climber rests this far down the open sky
+ * under the card, so you can see where you are heading.
+ */
+const ANCHOR = 0.55;
+/** The open sky under the card never gets smaller than this, so the climber always has room. */
+const MIN_WINDOW = 180;
 const VOYAGE_MS = 2300;
 const STUMBLE_MS = 1700;
 const REPLAY_MS = 3600;
@@ -93,7 +98,9 @@ export function Journey({
   const altRef = useRef<HTMLSpanElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
   const route = useRef<Array<[number, number]>>([]);
-  const size = useRef({ w: 390, h: 520, k: 1 });
+  /** Scene size, world scale, and `top`: where the card over the scene ends, in pixels from the top. */
+  const size = useRef({ w: 390, h: 520, k: 1, top: 0 });
+  const motionRef = useRef<Motion>("idle");
   const pose = useRef<Pose>({ v: progress, cam: progress, ...REST });
   const landedRef = useRef(-1);
   const ghostsRef = useRef(ghosts);
@@ -106,24 +113,42 @@ export function Journey({
   const [sound, setSound] = useState(() => readSound());
 
   ghostsRef.current = ghosts;
+  motionRef.current = motion;
 
   useEffect(() => {
     const stage = stageRef.current;
     const scene = sceneRef.current;
-    if (!stage || !scene) return;
+    const sheet = sheetRef.current;
+    if (!stage || !scene || !sheet) return;
+    let settle = 0;
     const measure = () => {
       const w = scene.clientWidth || 390;
+      const h = scene.clientHeight || 520;
       // Fit the drawn column to the width on a phone. On a wide screen, fit to height and show more sky.
       const nextK = Math.max(0.5, Math.min((stage.clientHeight * 0.8) / 700, w / 400));
-      size.current = { w, h: scene.clientHeight || 520, k: nextK };
+      const card = sheet.getBoundingClientRect();
+      const top = Math.max(0, Math.min(h - MIN_WINDOW, Math.round(card.bottom - stage.getBoundingClientRect().top)));
+      const moved = Math.abs(top - size.current.top) > 1;
+      size.current = { w, h, k: nextK, top };
+      stage.style.setProperty("--sheet-bottom", `${top}px`);
       setK(nextK);
+      // A new card height moves the open sky. Glide the world there instead of jumping, unless a flight is drawing it.
+      if (moved && motionRef.current === "idle") {
+        stage.classList.add("settling");
+        window.clearTimeout(settle);
+        settle = window.setTimeout(() => stage.classList.remove("settling"), 450);
+      }
       draw();
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     observer.observe(scene);
-    return () => observer.disconnect();
+    observer.observe(sheet);
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(settle);
+    };
   }, []);
 
   useEffect(() => {
@@ -138,10 +163,15 @@ export function Journey({
     return () => window.clearTimeout(id);
   }, [fly]);
 
-  /** World y at the top of the scene, so the camera's stop sits at ANCHOR of the scene height. */
+  /** Where the climber rests on screen: ANCHOR of the way down the open sky under the card. */
+  function anchorPx(): number {
+    const { h, top } = size.current;
+    return top + (h - top) * ANCHOR;
+  }
+
+  /** World y at the top of the scene, so the camera's stop sits at the anchor. */
   function cameraTop(cam: number): number {
-    const { h, k: scale } = size.current;
-    return climberY(cam) - (h * ANCHOR) / scale;
+    return climberY(cam) - anchorPx() / size.current.k;
   }
 
   /** Puts every layer and the climber where the current pose says. Runs every frame while flying. */
@@ -234,11 +264,11 @@ export function Journey({
 
   /** The camera lags so the climber visibly rises up the screen, but it never leaves the frame. */
   function keepInFrame() {
-    const { h, k: scale } = size.current;
+    const { h, k: scale, top } = size.current;
     const p = pose.current;
-    const anchor = (h * ANCHOR) / scale;
-    const maxAbove = anchor - 90 / scale;
-    const maxBelow = h / scale - anchor - 60 / scale;
+    const anchor = anchorPx();
+    const maxAbove = (anchor - top - 70) / scale;
+    const maxBelow = (h - anchor - 60) / scale;
     const lead = (p.v - p.cam) * STEP - p.dy;
     if (lead > maxAbove) p.cam = p.v - (maxAbove + p.dy) / STEP;
     if (-lead > maxBelow) p.cam = p.v + (maxBelow - p.dy) / STEP;
@@ -294,7 +324,7 @@ export function Journey({
   }, [page]);
 
   const flying = motion !== "idle";
-  const stageClass = ["stage", `is-${motion}`, flying && motion !== "replay" ? "is-focus" : "", reduced ? "quiet" : "", overview ? "is-overview" : ""].join(" ");
+  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : ""].join(" ");
   const info = WORLD_STOPS[landed]!;
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
@@ -351,14 +381,19 @@ export function Journey({
                 {info.label}
               </span>
             </p>
+          </div>
+          <div className="hud-side end">{score ? <ScoreBox score={score} /> : null}</div>
+        </div>
+        {/* Under the card, at the top of the open sky: the combo meter and who to beat next. */}
+        <div className="sky-tags">
+          <div>
             {combo >= 2 ? (
               <p className="combo" key={`combo-${combo}`}>
                 Combo <b>x{combo}</b>
               </p>
             ) : null}
           </div>
-          <div className="hud-side end">
-            {score ? <ScoreBox score={score} /> : null}
+          <div>
             {ghosts.length > 0 && !flying ? (
               <p className={rival ? "rival" : "rival done"}>
                 <small>{rival ? "Next to beat" : crowdGhost ? "Above everyone" : "Passed"}</small>

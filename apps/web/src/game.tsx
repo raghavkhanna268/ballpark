@@ -49,7 +49,7 @@ export function CountUp({ value, delay = 250, duration = 900, pad = 0 }: { value
   );
 }
 
-/** Stage by stage points, counted in one after another, then the best combo. Shared with the Classic end screen. */
+/** Stage by stage points as one row of tiles that pop in one after another, then the best combo. Shared with the pack end screen. */
 export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; points: number } | null> }) {
   const combo = bestCombo(rows.map((row) => row?.points ?? null));
   return (
@@ -57,14 +57,23 @@ export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; po
       <ol className="tally">
         {rows.map((row, index) =>
           row ? (
-            <li key={index} style={{ animationDelay: `${300 + index * 140}ms` }}>
-              <span className="tally-stage">Stage {index + 1}</span>
-              <span className="tally-label">
-                <span aria-hidden="true">{row.emoji}</span> {row.label}
+            <li key={index} style={{ animationDelay: `${300 + index * 120}ms` }}>
+              <span className="tally-stage" aria-hidden="true">
+                {index + 1}
               </span>
-              <b>{row.points > 0 ? `+${row.points}` : "0"}</b>
+              <span className="tally-emoji" aria-hidden="true">
+                {row.emoji}
+              </span>
+              <b aria-hidden="true">{row.points > 0 ? `+${row.points}` : "0"}</b>
+              <span className="sr">
+                Stage {index + 1}: {row.label}, {row.points} points
+              </span>
             </li>
-          ) : null,
+          ) : (
+            <li key={index} className="empty" aria-hidden="true">
+              <span className="tally-stage">{index + 1}</span>
+            </li>
+          ),
         )}
       </ol>
       {combo >= 2 ? <p className="best-combo">Best combo x{combo}</p> : null}

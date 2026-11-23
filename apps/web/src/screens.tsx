@@ -24,104 +24,126 @@ const BUCKETS = ["0–140", "141–280", "281–420", "421–560", "561+"];
 
 export type StreakView = { streak: number; shield: "ready" | "used" | "saved" };
 
+/** One small tile on the home screen that opens a panel in the card: the league, packs, logbook or stats. */
+export type HomePanel = { id: string; icon: string; title: string; note: string; content: ReactNode };
+
 export function HomeScreen({
   puzzle,
-  stats,
   classicStreak,
   headToHead,
   onPlay,
   onResult,
   challenge,
-  league,
-  logbook,
-  packs,
+  panels,
   ad,
 }: {
   puzzle: PuzzleResponse;
-  stats: Stats;
   classicStreak: StreakView;
   /** The Head-to-head card. Null while the mode is switched off. */
   headToHead?: { streak: StreakView; label: string; onPlay: () => void } | null;
   onPlay: () => void;
   onResult: () => void;
-  /** A friend's race link, shown above the modes. */
+  /** A friend's race link, shown above the play button. */
   challenge?: ReactNode;
-  /** This week's league table. */
-  league?: ReactNode;
-  /** The player's logbook card. */
-  logbook?: ReactNode;
-  /** Ballpark+ themed packs. */
-  packs?: ReactNode;
-  /** An ad space, for free players only. */
+  /** The league, packs, logbook and stats. Each is a tile that opens in the card, so the home screen never scrolls. */
+  panels: HomePanel[];
+  /** An ad space, for free players only. It sits at the bottom of the screen, outside the card. */
   ad?: ReactNode;
 }) {
+  const [open, setOpen] = useState<string | null>(null);
   const done = puzzle.result !== null;
   const started = puzzle.questions.some((question) => question.reveal);
+  const panel = panels.find((item) => item.id === open);
+
+  if (panel) {
+    return (
+      <div className="stack home-panel">
+        <button className="text-button back" type="button" onClick={() => setOpen(null)}>
+          ← Back
+        </button>
+        {panel.content}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="stack home">
+        <header className="home-head">
+          <h1 className="wordmark">
+            Ballpark<span>.</span>
+          </h1>
+          <Countdown />
+        </header>
+
+        <section className="day-card">
+          <p className="kicker">#{puzzle.puzzleNumber} · Today’s climb</p>
+          <p className="theme">{puzzle.theme}</p>
+          <p className="blurb">{puzzle.blurb}</p>
+          <p className="tomorrow">Tomorrow · {puzzle.nextTheme}</p>
+          {puzzle.devDate ? <p className="dev-flag">Dev date {puzzle.date}. This does not change the real UTC day.</p> : null}
+        </section>
+
+        {challenge}
+
+        <section className="mode-card">
+          <div className="mode-top">
+            <h2>Classic</h2>
+            <StreakTag view={classicStreak} />
+          </div>
+          <p>Seven questions. Name any right answer: the fewer players who think of it, the higher you climb.</p>
+          {done ? (
+            <button className="primary" type="button" onClick={onResult}>
+              See today’s result · {puzzle.result?.score} pts
+            </button>
+          ) : (
+            <button className="primary" type="button" onClick={onPlay}>
+              {started ? "Continue Classic" : "Play today’s Classic"}
+            </button>
+          )}
+        </section>
+
+        {headToHead ? (
+          <section className="mode-card">
+            <div className="mode-top">
+              <h2>Head-to-head</h2>
+              <StreakTag view={headToHead.streak} />
+            </div>
+            <button className="primary" type="button" onClick={headToHead.onPlay}>
+              {headToHead.label}
+            </button>
+          </section>
+        ) : null}
+
+        <nav className="tiles" aria-label="More">
+          {panels.map((item) => (
+            <button key={item.id} className="tile" type="button" onClick={() => setOpen(item.id)}>
+              <span className="tile-icon" aria-hidden="true">
+                {item.icon}
+              </span>
+              <strong>{item.title}</strong>
+              <small>{item.note}</small>
+            </button>
+          ))}
+        </nav>
+      </div>
+      {ad}
+    </>
+  );
+}
+
+/** Games played, streaks and the score spread, on this device. Opens from the home screen's Stats tile. */
+export function StatsPanel({ stats, streak }: { stats: Stats; streak: StreakView }) {
   const maxBar = Math.max(1, ...stats.distribution);
   return (
-    <div className="stack">
-      <header className="mast">
-        <p className="kicker">Daily general knowledge</p>
-        <h1 className="wordmark">
-          Ballpark<span>.</span>
-        </h1>
-        <p className="lede">How high can what you know take you? Every right answer climbs.</p>
-      </header>
-
-      <section className="card day-card">
-        <div className="day-row">
-          <p className="puzzle-no">#{puzzle.puzzleNumber}</p>
-          <Countdown />
-        </div>
-        <p className="theme">{puzzle.theme}</p>
-        <p className="blurb">{puzzle.blurb}</p>
-        <p className="tomorrow">Tomorrow · {puzzle.nextTheme}</p>
-        {puzzle.devDate ? <p className="dev-flag">Dev date {puzzle.date}. This does not change the real UTC day.</p> : null}
-      </section>
-
-      {challenge}
-
-      <section className="card mode-card">
-        <div className="mode-top">
-          <h2>Classic</h2>
-          <StreakTag view={classicStreak} />
-        </div>
-        <p>Seven open questions. Name any right answer. The fewer players who think of it, the more it scores.</p>
-        {done ? (
-          <button className="primary" type="button" onClick={onResult}>
-            See today’s result · {puzzle.result?.score} pts
-          </button>
-        ) : (
-          <button className="primary" type="button" onClick={onPlay}>
-            {started ? "Continue Classic" : "Play today’s Classic"}
-          </button>
-        )}
-      </section>
-
-      {headToHead ? (
-        <section className="card mode-card">
-          <div className="mode-top">
-            <h2>Head-to-head</h2>
-            <StreakTag view={headToHead.streak} />
-          </div>
-          <p>Ten pairs, easy to hard. A miss does not end it. You answer every one.</p>
-          <button className="primary" type="button" onClick={headToHead.onPlay}>
-            {headToHead.label}
-          </button>
-        </section>
-      ) : null}
-
-      {packs}
-
-      {ad}
-
-      {league}
-
-      {logbook}
-
-      <section className="stats" aria-label="Your stats on this device">
+    <section className="card stats-panel" aria-label="Your stats on this device">
+      <div className="mode-top">
+        <h2>Stats</h2>
+        <p className="streak">On this device</p>
+      </div>
+      <div className="stats">
         <Stat label="Played" value={String(stats.played)} />
-        <Stat label="Streak" value={String(classicStreak.streak)} />
+        <Stat label="Streak" value={String(streak.streak)} />
         <Stat label="Best" value={String(stats.maxStreak)} />
         <div className="dist">
           <p>Score distribution</p>
@@ -136,8 +158,8 @@ export function HomeScreen({
             ))}
           </div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   );
 }
 
@@ -209,23 +231,29 @@ export function RevealScreen({
     <div className="stack">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <section className={`reveal band-${reveal.band}`} aria-live="polite">
-        <p className="emoji" aria-hidden="true">
-          {reveal.emoji}
-        </p>
-        <h2>{reveal.label}</h2>
-        <p className="points">
-          {reveal.points > 0 ? "+" : ""}
-          <CountUp value={reveal.points} delay={150} duration={700} />
-          <span> pts</span>
-        </p>
+        <div className="reveal-top">
+          <p className="emoji" aria-hidden="true">
+            {reveal.emoji}
+          </p>
+          <div className="reveal-what">
+            <h2>{reveal.label}</h2>
+            {reveal.answerText && reveal.answerText !== reveal.label ? <p className="answer">{reveal.answerText}</p> : null}
+          </div>
+          <p className="points">
+            <b className="pts-line">
+              {reveal.points > 0 ? "+" : ""}
+              <CountUp value={reveal.points} delay={150} duration={700} />
+              <span> pts</span>
+            </b>
+            {reveal.provisional ? <small>final at reset</small> : null}
+          </p>
+        </div>
         {reveal.bonusPoints > 0 ? <p className="delta">Crowd bonus +{reveal.bonusPoints}</p> : null}
-        {reveal.provisional ? <p className="delta">Points so far, final at reset.</p> : null}
         {reveal.confidenceDelta !== 0 ? (
           <p className="delta">
             {reveal.confidence} confidence {reveal.confidenceDelta > 0 ? "added" : "cost"} {Math.abs(reveal.confidenceDelta)}
           </p>
         ) : null}
-        <p className="answer">{reveal.answerText}</p>
         {question.type !== "name_one" && reveal.detail ? <p className="detail">{reveal.detail}</p> : null}
         {reveal.track ? <Track track={reveal.track} /> : null}
         {question.type !== "estimate" && question.type !== "name_one" ? (
@@ -240,10 +268,10 @@ export function RevealScreen({
           </ol>
         ) : null}
         <p className="context">{reveal.context}</p>
+        <Crowd crowd={reveal.crowd} type={question.type} />
         <a className="source" href={reveal.sourceUrl} target="_blank" rel="noreferrer">
           {reveal.sourceName}
         </a>
-        <Crowd crowd={reveal.crowd} type={question.type} />
       </section>
       <button className="primary" type="button" onClick={onNext}>
         {last ? lastLabel : "Next question"}
@@ -273,44 +301,46 @@ export function EndScreen({
 }) {
   const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
   return (
-    <div className="stack end">
-      <p className="kicker">
-        Classic · #{puzzle.puzzleNumber}
-      </p>
-      <p className="mission">Mission complete</p>
-      <h2>You reached {result.reached}</h2>
-      <p className="score">
-        <CountUp value={result.score} pad={3} />
-        <span> pts</span>
-      </p>
-      <Tally rows={puzzle.questions.map((question) => question.reveal)} />
-      {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
-      {rivals}
-      <p className="emoji-row" aria-label="Question bands">
-        {result.emojis.join("")}
-      </p>
-      <pre className="share-card">{result.shareText}</pre>
-      <button
-        className="primary"
-        type="button"
-        onClick={() => {
-          haptic("tap");
-          void shareText(result.shareText).then((outcome) => {
-            setShareState(outcome === "cancelled" ? "idle" : outcome === "shared" ? "shared" : outcome === "copied" ? "copied" : "failed");
-          });
-        }}
-      >
-        {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "failed" ? "Copy didn’t work" : "Share"}
-      </button>
-      {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
-      <p className="streak-line">
-        Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
-      </p>
+    <>
+      <div className="stack end">
+        <div className="end-head">
+          <p className="mission">Mission complete</p>
+          <p className="kicker">Classic · #{puzzle.puzzleNumber}</p>
+        </div>
+        <div className="end-score">
+          <h2>You reached {result.reached}</h2>
+          <p className="score">
+            <CountUp value={result.score} pad={3} />
+            <span> pts</span>
+          </p>
+        </div>
+        <Tally rows={puzzle.questions.map((question) => question.reveal)} />
+        {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
+        {rivals}
+        <button
+          className="primary"
+          type="button"
+          onClick={() => {
+            haptic("tap");
+            void shareText(result.shareText).then((outcome) => {
+              setShareState(outcome === "cancelled" ? "idle" : outcome === "shared" ? "shared" : outcome === "copied" ? "copied" : "failed");
+            });
+          }}
+        >
+          {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "failed" ? "Copy didn’t work" : "Share"}
+        </button>
+        {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
+        <div className="end-foot">
+          <p className="streak-line">
+            Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
+          </p>
+          <button className="text-button" type="button" onClick={onHome}>
+            Back home
+          </button>
+        </div>
+      </div>
       {ad}
-      <button className="text-button" type="button" onClick={onHome}>
-        Back home
-      </button>
-    </div>
+    </>
   );
 }
 
@@ -590,10 +620,10 @@ function Crowd({ crowd, type }: { crowd: CrowdStat; type: PublicQuestion["type"]
           {crowd.kind === "named" && !crowd.answer
             ? "That answer was not accepted."
             : crowd.kind === "named" && crowd.blendedPercent !== null
-              ? `Early days: rarity uses our estimate until ${COMPARE_MIN_PLAYERS} players answer. We reckon about ${crowd.blendedPercent}% would say ${crowd.answer}.`
-              : `Crowd stats appear once ${COMPARE_MIN_PLAYERS} players answer.`}
+              ? `Our estimate: about ${crowd.blendedPercent}% would say ${crowd.answer}. Real crowd shares start at ${COMPARE_MIN_PLAYERS} players.`
+              : `Crowd stats start at ${COMPARE_MIN_PLAYERS} players.`}
         </p>
-        {crowd.kind === "named" && crowd.rare.length > 0 ? <p>Rare valid answers: {crowd.rare.join(", ")}</p> : null}
+        {crowd.kind === "named" && crowd.rare.length > 0 ? <p>Rare right answers: {crowd.rare.join(", ")}</p> : null}
       </div>
     );
   }

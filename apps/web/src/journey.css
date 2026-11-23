@@ -36,16 +36,16 @@
 .mono, .stage .mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace; }
 
 /* ---------- the scene ---------- */
+/* The climb fills the whole screen, behind everything. The card floats over its top, and the climber flies in the
+   open sky under the card. --sheet-bottom is where the card ends, set by Journey as the card changes size. */
 .scene {
-  position: relative;
-  flex: none;
-  height: 60%;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
   background: #0a1020;
-  transition: height 0.45s cubic-bezier(0.3, 0.7, 0.2, 1);
 }
-.stage.is-focus .scene { height: 78%; }
-.stage.is-overview .scene { height: 56%; }
+/* When the card changes height, the world glides to its new place instead of jumping. */
+.stage.settling .layer, .stage.settling .explorer { transition: transform 0.42s cubic-bezier(0.3, 0.7, 0.2, 1); }
 .layer {
   position: absolute;
   left: 0;
@@ -159,7 +159,7 @@
   position: absolute;
   z-index: 7;
   left: 50%;
-  top: 106px;
+  top: calc(var(--sheet-bottom, 120px) + max(52px, (100% - var(--sheet-bottom, 120px)) * 0.14));
   isolation: isolate;
   transform: translateX(-50%);
   display: flex;
@@ -208,9 +208,9 @@
 /* The points lift off the pop-up and fly into the score, top right. */
 .fly {
   position: absolute;
-  z-index: 8;
+  z-index: 9;
   right: 18px;
-  top: 30px;
+  top: 16px;
   font-family: var(--display);
   font-weight: 900;
   font-size: 1.1rem;
@@ -224,7 +224,7 @@
 .hud {
   position: absolute;
   z-index: 7;
-  top: 12px;
+  top: 8px;
   left: 16px;
   right: 16px;
   display: flex;
@@ -238,10 +238,10 @@
 .where, .rival, .scorebox, .combo { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .where { animation: arrive 0.5s ease; }
 .where .power { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
-.where .place { font-size: 1.15rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
+.where .place { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
 .scorebox { align-items: flex-end; }
 .scorebox small, .rival small { font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
-.scorebox strong { font-family: var(--display); font-weight: 900; font-size: 1.55rem; line-height: 1; letter-spacing: 0.06em; color: var(--amber); text-shadow: var(--glow-amber); font-variant-numeric: tabular-nums; }
+.scorebox strong { font-family: var(--display); font-weight: 900; font-size: 1.45rem; line-height: 1; letter-spacing: 0.06em; color: var(--amber); text-shadow: var(--glow-amber); font-variant-numeric: tabular-nums; }
 .scorebox.counting strong { color: #fff4dc; animation: score-pulse 0.3s ease-in-out infinite alternate; }
 .combo {
   flex-direction: row;
@@ -261,7 +261,21 @@
   animation: combo-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 .combo b { font-size: 0.85rem; font-weight: 900; color: #e8f6ff; }
-.rival { align-items: flex-end; animation: arrive 0.5s ease; }
+/* The combo meter and "Next to beat" sit at the top of the open sky, just under the card. */
+.sky-tags {
+  position: absolute;
+  z-index: 7;
+  top: calc(var(--sheet-bottom, 120px) + 10px);
+  left: 14px;
+  right: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.sky-tags > div:last-child { display: flex; justify-content: flex-end; min-width: 0; }
+.rival { align-items: flex-end; text-align: right; padding: 4px 8px; border-radius: 6px; background: rgba(7, 11, 22, 0.55); animation: arrive 0.5s ease; }
 .rival span { font-size: 0.74rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
 .rival em { font-style: normal; font-family: var(--display); font-weight: 700; font-size: 0.64rem; color: var(--line-art); }
 .rival.done small { color: var(--amber); }
@@ -271,8 +285,8 @@
   position: absolute;
   z-index: 7;
   right: 12px;
-  top: 104px;
-  bottom: 40px;
+  top: calc(var(--sheet-bottom, 120px) + 14px);
+  bottom: 66px;
   width: 30px;
   display: flex;
   flex-direction: column;
@@ -305,7 +319,7 @@
   position: absolute;
   z-index: 7;
   left: 14px;
-  bottom: 26px;
+  bottom: 18px;
   border: 1px solid rgba(143, 211, 255, 0.3);
   border-radius: 999px;
   background: rgba(10, 16, 32, 0.6);
@@ -322,15 +336,23 @@
 .galaxy-spin { animation: spin 90s linear infinite; }
 
 /* ---------- the question card ---------- */
+/* The card floats over the top of the scene, under the heads-up strip. It is sized to fit a phone screen without
+   scrolling. Only a very short window (a landscape phone, an open keyboard on Android) lets it scroll inside. */
 .sheet {
-  position: relative;
+  position: absolute;
   z-index: 8;
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  margin-top: -14px;
-  padding: 0 10px 10px;
+  top: 50px;
+  left: 0;
+  right: 0;
+  max-height: calc(100% - 58px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 0 10px;
+  pointer-events: none;
 }
+.sheet::-webkit-scrollbar { display: none; }
+.sheet main { pointer-events: auto; }
 .stage main { width: min(520px, 100%); margin: 0 auto; padding: 0; background: transparent; }
 .sheet footer { display: none; }
 .sheet .stack, .sheet .end {
@@ -399,9 +421,9 @@
   100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(1); }
 }
 @keyframes fly {
-  0%, 24% { opacity: 0; transform: translate(calc(-50vw + 46px), 190px) scale(0.8); }
-  34% { opacity: 1; transform: translate(calc(-50vw + 46px), 172px) scale(1.6); }
-  44% { opacity: 1; transform: translate(calc(-50vw + 46px), 168px) scale(1.6); }
+  0%, 24% { opacity: 0; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 140px)) scale(0.8); }
+  34% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 122px)) scale(1.6); }
+  44% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 118px)) scale(1.6); }
   82% { opacity: 1; transform: translate(0, 0) scale(0.9); }
   100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
 }
@@ -622,3 +644,150 @@
 @media (prefers-reduced-motion: reduce) {
   .sheet .mode-card .primary, .mission, .tally li, .sheet .primary { animation: none; transition: none; }
 }
+
+/* ---------- one screen, no scrolling ---------- */
+/* The card is glass over the climb, so the scene stays visible through it. Everything below is sized so a phone
+   (375 × 667 and up) shows the whole card without scrolling and still has open sky for the climber underneath. */
+.sheet .stack, .sheet .end {
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) top left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 2px 16px no-repeat,
+    rgba(12, 19, 35, 0.86);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 30px rgba(143, 211, 255, 0.05);
+}
+.sheet .text-button { min-height: 32px; }
+.sheet .play-head { align-items: center; gap: 8px; }
+.sheet .play-head .text-button { min-height: 28px; font-size: 0.85rem; }
+.sheet .prompt { font-size: 1.12rem; line-height: 1.25; }
+.sheet .guess-form { gap: 6px; }
+.sheet .guess-form .hint { font-size: 0.72rem; line-height: 1.3; }
+.sheet .primary { min-height: 44px; padding: 8px 14px; }
+
+/* The reveal: tier, answer and points in one row, then the fact, the crowd and the source. */
+.sheet .reveal { gap: 6px; padding: 10px 12px; border-radius: 10px; }
+.reveal-top { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; width: 100%; }
+.sheet .reveal .emoji { width: 40px; height: 40px; border-radius: 10px; font-size: 1.35rem; }
+.reveal-what { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sheet .reveal-what h2 { margin: 0; font-size: 1.15rem; line-height: 1.15; }
+.sheet .reveal-what .answer { margin: 0; font-size: 1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet .reveal .points { margin: 0; display: flex; flex-direction: column; align-items: flex-end; font-size: 1.6rem; line-height: 1; white-space: nowrap; }
+.sheet .reveal .points small { font-family: Outfit, sans-serif; font-weight: 400; font-size: 0.62rem; letter-spacing: 0.04em; color: var(--muted); text-shadow: none; }
+.sheet .reveal .context { margin: 0; font-size: 0.86rem; line-height: 1.4; }
+.sheet .reveal .crowd { margin: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; line-height: 1.35; opacity: 0.9; }
+.sheet .reveal .crowd p { margin: 0; }
+.sheet .reveal .name-list { margin: 0; padding-left: 16px; font-size: 0.78rem; }
+.sheet .reveal .source { font-size: 0.72rem; font-weight: 500; opacity: 0.85; }
+.sheet .reveal .delta { margin: 0; font-size: 0.78rem; }
+
+/* The end screen: banner, score, the stages as one row of tiles, your place, then share. */
+.end-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sheet .end .mission { font-size: 1.1rem; }
+.sheet .end .kicker { font-size: 0.7rem; }
+.end-score { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.sheet .end h2 { font-size: 1.2rem; line-height: 1.15; }
+.sheet .end .score { font-size: 2.5rem; flex: none; }
+.sheet .end .score span:not(.count) { font-size: 0.7rem; }
+.tally-block { gap: 6px; }
+.tally { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; border-top: 0; }
+.tally li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 0 5px;
+  border: 1px solid rgba(143, 211, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.8rem;
+  animation: tally-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.tally li.empty { opacity: 0.4; animation: none; }
+.tally-stage { font-size: 0.55rem; }
+.tally-emoji { font-size: 1rem; line-height: 1.1; }
+.tally b { font-size: 0.7rem; }
+.sheet .end .players, .sheet .end .streak-line { font-size: 0.78rem; }
+.sheet .rank-block { gap: 2px; }
+.sheet .rank-block h2 { font-size: 1.1rem; }
+.sheet .rank-block h2 span { font-size: 0.9rem; }
+.sheet .rank-block .players { font-size: 0.78rem; line-height: 1.35; }
+.sheet .friend-line, .sheet .league-line { padding: 6px 9px; font-size: 0.8rem; line-height: 1.35; }
+.end-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.end-foot .streak-line { margin: 0; }
+
+/* Home: the day and the play button up top, the rest as tiles that open in the card. */
+.home-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sheet .home-head .wordmark { margin: 0; font-size: 1.9rem; line-height: 1; }
+.sheet .home-head .countdown { font-size: 0.7rem; text-align: right; }
+.sheet .day-card { display: flex; flex-direction: column; gap: 2px; padding: 0; }
+.sheet .day-card .kicker { font-size: 0.68rem; }
+.sheet .day-card .theme { margin: 0; font-size: 1.5rem; line-height: 1.15; }
+.sheet .day-card .blurb { font-size: 0.82rem; line-height: 1.35; }
+.sheet .day-card .tomorrow { margin: 0; font-size: 0.72rem; }
+.sheet .mode-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; border-top: 1px solid rgba(143, 211, 255, 0.14); }
+.sheet .mode-card h2 { margin: 0; font-size: 1.05rem; }
+.sheet .mode-card p { font-size: 0.8rem; line-height: 1.35; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 6px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 6px 4px;
+  border: 1px solid rgba(143, 211, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.tile:hover, .tile:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.25); }
+.tile-icon { font-size: 1.1rem; line-height: 1.2; }
+.tile strong { font-size: 0.78rem; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile small { font-size: 0.62rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-panel .back { align-self: flex-start; min-height: 28px; font-size: 0.85rem; }
+.sheet .home-panel .card { padding: 0; }
+.sheet .stats-panel { display: flex; flex-direction: column; gap: 10px; }
+.sheet .stats-panel .stat { padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
+.sheet .stats-panel .bar-track { height: 60px; }
+.sheet .packs-card .pack-row { padding: 8px 10px; }
+.sheet .league-table li { padding: 4px 0; }
+
+/* Ads sit in a slim strip at the bottom of the screen, like a mobile game banner, never inside the card. */
+.sheet .ad-slot {
+  position: fixed;
+  z-index: 9;
+  left: 104px;
+  right: 12px;
+  bottom: 10px;
+  flex-wrap: nowrap;
+  padding: 6px 10px;
+  background: rgba(10, 16, 32, 0.88);
+}
+.sheet .ad-slot p { font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet .ad-slot .text-button { min-height: 28px; font-size: 0.72rem; white-space: nowrap; }
+@media (min-width: 640px) {
+  .sheet .ad-slot { left: calc(50% - 200px); right: auto; width: 400px; }
+}
+/* A wider screen gets a narrower card, so there is sky on both sides. */
+@media (min-width: 640px) {
+  .stage main { width: min(460px, 100%); }
+}
+
+@keyframes tally-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .tally li { animation: none; }
+  .stage.settling .layer, .stage.settling .explorer { transition: none; }
+}
+.sheet .reveal .pts-line { font-weight: inherit; }

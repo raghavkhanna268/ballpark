@@ -19,11 +19,11 @@ import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPu
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
 import { currentCombo, gainLevel } from "./game";
-import { Journey, type Ghost, type Hop, type HudScore } from "./journey";
+import { Journey, formatAltitude, type Ghost, type Hop, type HudScore } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
 import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
-import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen } from "./screens";
+import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel } from "./screens";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
 
 /**
@@ -211,7 +211,6 @@ export function App() {
       {puzzle && phase.name === "home" ? (
         <HomeScreen
           puzzle={puzzle}
-          stats={stats}
           classicStreak={classicStreak}
           headToHead={
             HEAD_TO_HEAD_ON
@@ -225,9 +224,34 @@ export function App() {
           onPlay={startClassic}
           onResult={() => setPhase({ name: "end" })}
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
-          league={league ? <LeagueCard league={league} today={today} /> : null}
-          logbook={<LogbookCard logbook={logbook} />}
-          packs={<PacksCard packs={packs} status={plus} onPack={openPack} onPlus={() => setPhase({ name: "plus" })} />}
+          panels={[
+            {
+              id: "league",
+              icon: "🏆",
+              title: "League",
+              note: league?.joined && league.you ? `${league.name} · ${league.you.points} pts` : (league?.name ?? "Weekly"),
+              content: league ? <LeagueCard league={league} today={today} /> : <p className="hint">Loading the league…</p>,
+            },
+            ...(packs.length > 0
+              ? [
+                  {
+                    id: "packs",
+                    icon: "🎁",
+                    title: "Packs",
+                    note: plus?.plus ? "Ballpark+" : `${packs.length} themed packs`,
+                    content: <PacksCard packs={packs} status={plus} onPack={openPack} onPlus={() => setPhase({ name: "plus" })} />,
+                  },
+                ]
+              : []),
+            {
+              id: "logbook",
+              icon: "📓",
+              title: "Logbook",
+              note: logbook.farthest > 0 ? `Best ${formatAltitude(logbook.farthest)}` : "Not started",
+              content: <LogbookCard logbook={logbook} />,
+            },
+            { id: "stats", icon: "📊", title: "Stats", note: `Played ${stats.played}`, content: <StatsPanel stats={stats} streak={classicStreak} /> },
+          ]}
           ad={showAds ? <AdSlot onPlus={() => setPhase({ name: "plus" })} /> : null}
         />
       ) : null}
