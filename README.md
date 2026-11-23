@@ -218,6 +218,8 @@ Only when the owner asks, and from a machine signed in to their Cloudflare accou
 3. From the repo root, `npm run build:deploy`. Then, from `apps/api`, `npx wrangler deploy --config wrangler.deploy.jsonc`.
 4. Set `SHARE_HOST` to the printed workers.dev host, then build and deploy again, so share links point at the deploy.
 
+To redeploy to a database people have already played on, skip the seed. Pull the branch, run `npm run seed:update -w @ballpark/api` to write `seed/update.sql` (gitignored), apply any new migrations, then `npx wrangler d1 execute ballpark --remote --config wrangler.deploy.jsonc --file=./seed/update.sql`, and build and deploy as in step 3. The update replaces facts, questions, days and packs in place and keeps every submission, result, league row and pass.
+
 `PLUS_TEST_UNLOCK` stays `"false"` in that config, so packs stay locked there until Razorpay keys are added as Worker secrets.
 
 ## Ethics

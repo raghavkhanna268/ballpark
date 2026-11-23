@@ -8,6 +8,7 @@
     "db:setup": "tsx scripts/emit-seed.ts && wrangler d1 migrations apply ballpark --local && wrangler d1 execute ballpark --local --file=./seed/seed.sql",
     "seed:emit": "tsx scripts/emit-seed.ts",
     "seed:check": "tsx scripts/emit-seed.ts --check",
+    "seed:update": "tsx scripts/emit-seed.ts --update",
     "types": "wrangler types",
     "test": "vitest run",
     "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json && tsc --noEmit -p test/tsconfig.json",
