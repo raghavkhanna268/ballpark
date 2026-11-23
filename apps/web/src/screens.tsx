@@ -1,13 +1,14 @@
 import { QuestionTimer } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { CountUp, Tally } from "./game";
+import { createPortal } from "react-dom";
+import { CountUp, Tally, resultIcon } from "./game";
+import { useFocusMode, useJourney } from "./journey";
 import { haptic, shareText } from "./haptic";
 import {
   COMPARE_MIN_PLAYERS,
   canCompare,
   formatFactValue,
   formatNumber,
-  NAME_TIERS,
   parseShorthand,
   roundSig,
   type Confidence,
@@ -181,16 +182,16 @@ export function QuestionScreen({
   onHome: () => void;
 }) {
   return (
-    <div className="stack">
+    <div className="stack ask">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <QuestionTimer
         questionKey={question.id}
         running={!busy}
         onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
       />
-      <p className="type-kicker">{typeLabel(question.type)}</p>
+      {question.type !== "name_one" ? <p className="type-kicker">{typeLabel(question.type)}</p> : null}
       <h2 className="prompt">{question.prompt}</h2>
-      {question.type === "name_one" ? <TierLadder /> : null}
+      {question.type === "name_one" ? <p className="rarer">▲ Rarer answers climb higher ▲</p> : null}
       {question.type === "estimate" && question.slider && question.unit ? (
         <EstimateForm unit={question.unit} slider={question.slider} busy={busy} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
       ) : null}
@@ -227,36 +228,38 @@ export function RevealScreen({
   onNext: () => void;
   onHome: () => void;
 }) {
+  // The card clears away: the climb plays on the whole screen, then this result appears over the scene.
+  useFocusMode();
+  const { holding } = useJourney();
+  const named = question.type === "name_one";
+  const scored = reveal.points > 0;
   return (
-    <div className="stack">
+    <div className="stack result">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <section className={`reveal band-${reveal.band}`} aria-live="polite">
-        <div className="reveal-top">
-          <p className="emoji" aria-hidden="true">
-            {reveal.emoji}
-          </p>
-          <div className="reveal-what">
-            <h2>{reveal.label}</h2>
-            {reveal.answerText && reveal.answerText !== reveal.label ? <p className="answer">{reveal.answerText}</p> : null}
-          </div>
-          <p className="points">
-            <b className="pts-line">
-              {reveal.points > 0 ? "+" : ""}
-              <CountUp value={reveal.points} delay={150} duration={700} />
-              <span> pts</span>
-            </b>
-            {reveal.provisional ? <small>final at reset</small> : null}
-          </p>
-        </div>
+        <p className="result-icon" aria-hidden="true">
+          {named ? resultIcon(reveal.label, reveal.emoji) : reveal.emoji}
+        </p>
+        <h2 className="result-tier">{reveal.label}</h2>
+        {named && scored && reveal.answerText ? <p className="result-answer">“{reveal.answerText}”</p> : null}
+        {!named && reveal.answerText && reveal.answerText !== reveal.label ? <p className="result-answer">{reveal.answerText}</p> : null}
+        <p className="points">
+          <b className="pts-line">
+            {reveal.points > 0 ? "+" : ""}
+            {holding ? reveal.points : <CountUp value={reveal.points} delay={250} duration={600} />}
+            <span> pts</span>
+          </b>
+          {reveal.provisional && scored ? <small>final at reset</small> : null}
+        </p>
         {reveal.bonusPoints > 0 ? <p className="delta">Crowd bonus +{reveal.bonusPoints}</p> : null}
         {reveal.confidenceDelta !== 0 ? (
           <p className="delta">
             {reveal.confidence} confidence {reveal.confidenceDelta > 0 ? "added" : "cost"} {Math.abs(reveal.confidenceDelta)}
           </p>
         ) : null}
-        {question.type !== "name_one" && reveal.detail ? <p className="detail">{reveal.detail}</p> : null}
+        {!named && reveal.detail ? <p className="detail">{reveal.detail}</p> : null}
         {reveal.track ? <Track track={reveal.track} /> : null}
-        {question.type !== "estimate" && question.type !== "name_one" ? (
+        {question.type !== "estimate" && !named ? (
           <ol className="rows">
             {reveal.rows.map((row, rowIndex) => (
               <li key={row.id} className={row.chosen ? "chosen" : undefined}>
@@ -267,14 +270,14 @@ export function RevealScreen({
             ))}
           </ol>
         ) : null}
+        <Crowd crowd={reveal.crowd} type={question.type} compact />
         <p className="context">{reveal.context}</p>
-        <Crowd crowd={reveal.crowd} type={question.type} />
         <a className="source" href={reveal.sourceUrl} target="_blank" rel="noreferrer">
           {reveal.sourceName}
         </a>
       </section>
-      <button className="primary" type="button" onClick={onNext}>
-        {last ? lastLabel : "Next question"}
+      <button className="primary next-stage" type="button" onClick={onNext}>
+        {last ? lastLabel : "Next stage"} <span aria-hidden="true">▲</span>
       </button>
     </div>
   );
@@ -381,22 +384,30 @@ export function DevDate() {
 }
 
 function PlayHeader({ puzzle, index, onHome }: { puzzle: PuzzleResponse; index: number; onHome: () => void }) {
+  const { hudSlot } = useJourney();
+  const total = puzzle.questions.length;
+  // The stage strip lives in the heads-up display, so it stays in view when the card clears away for the climb.
+  const strip = (
+    <div className="stage-strip">
+      <div className="dots" aria-hidden="true">
+        {puzzle.questions.map((question, dot) => (
+          <i key={question.id} className={dot === index ? "on" : question.reveal ? `done band-${question.reveal.band}` : ""} />
+        ))}
+      </div>
+      <b className="stage-no">
+        Stage {index + 1}/{total}
+      </b>
+    </div>
+  );
   return (
     <div className="play-head">
       <button className="text-button" type="button" onClick={onHome}>
         Home
       </button>
       <p>
-        <b className="stage-no">
-          Stage {index + 1}/{puzzle.questions.length}
-        </b>
-        <span> · {puzzle.theme}</span>
+        <span>{puzzle.theme}</span>
       </p>
-      <div className="dots" aria-hidden="true">
-        {puzzle.questions.map((question, dot) => (
-          <i key={question.id} className={dot === index ? "on" : question.reveal ? "done" : ""} />
-        ))}
-      </div>
+      {hudSlot ? createPortal(strip, hudSlot) : strip}
     </div>
   );
 }
@@ -611,7 +622,26 @@ function placeLog(value: number, window: { start: number; end: number }): number
   return Math.min(1, Math.max(0, t));
 }
 
-function Crowd({ crowd, type }: { crowd: CrowdStat; type: PublicQuestion["type"] }) {
+function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: PublicQuestion["type"]; compact?: boolean }) {
+  // Over the scene after a climb there is room for one line about the crowd and the rare answers, no tables.
+  if (compact && crowd.kind === "named") {
+    const early = !canCompare(crowd.submissions);
+    const line = !crowd.answer
+      ? null
+      : early
+        ? crowd.blendedPercent !== null
+          ? `About ${crowd.blendedPercent}% would say ${crowd.answer}. That is our estimate until ${COMPARE_MIN_PLAYERS} players.`
+          : null
+        : crowd.percent < 50
+          ? `Only ${crowd.percent}% of players said ${crowd.answer}.`
+          : `${crowd.percent}% of players said ${crowd.answer}.`;
+    return (
+      <div className="crowd">
+        {line ? <p>{line}</p> : null}
+        {crowd.rare.length > 0 ? <p>Rare right answers: {crowd.rare.join(", ")}</p> : null}
+      </div>
+    );
+  }
   // Under 20 answers, crowd shares say more about who happened to play first than about the crowd.
   if (!canCompare(crowd.submissions)) {
     return (
@@ -690,19 +720,6 @@ function countdownLabel(now: Date): string {
 }
 
 /** The scoring ladder, shown before the player answers, so the goal is to think past the obvious. */
-function TierLadder() {
-  return (
-    <ol className="tier-ladder" aria-label="Points by how rare your answer is">
-      {[...NAME_TIERS].reverse().map((tier) => (
-        <li key={tier.name} className={`tier-${tier.band}`}>
-          <b>{tier.points}</b>
-          <span>{tier.name}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 function NameForm({
   suggestions,
   busy,

@@ -791,3 +791,157 @@
   .stage.settling .layer, .stage.settling .explorer { transition: none; }
 }
 .sheet .reveal .pts-line { font-weight: inherit; }
+
+/* ---------- the climb takes the screen (like a dive in Krillion) ---------- */
+/* One thing on screen at a time. While a question is open the card asks it. Once you lock in, the card clears away,
+   your answer rises through the tier lines in the sky with the camera following it, and the result floats over the
+   scene. A Next button brings the card back. */
+
+/* The heads-up strip: where you are on the left, the stage strip in the middle, the score on the right. */
+.hud { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.hud-side { max-width: none; }
+.hud-side.end { max-width: none; justify-self: end; }
+.hud .where .place { font-size: 0.82rem; letter-spacing: 0.1em; overflow-wrap: anywhere; }
+.hud-mid { display: flex; justify-content: center; }
+.stage-strip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }
+.hud .dots { display: flex; gap: 3px; }
+.hud .dots i { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(143, 211, 255, 0.4); background: rgba(10, 16, 32, 0.7); }
+.hud .dots i.on { border-color: var(--amber); background: rgba(255, 179, 71, 0.3); box-shadow: 0 0 6px rgba(255, 179, 71, 0.7); }
+.hud .dots i.done { border-color: transparent; }
+.hud .dots i.band-green { background: var(--good-ink); box-shadow: 0 0 5px rgba(142, 240, 196, 0.6); }
+.hud .dots i.band-yellow { background: var(--close-ink); box-shadow: 0 0 5px rgba(255, 211, 106, 0.6); }
+.hud .dots i.band-blue { background: var(--off-ink); box-shadow: 0 0 5px rgba(143, 211, 255, 0.6); }
+.hud .dots i.band-brown { background: var(--far-ink); box-shadow: 0 0 5px rgba(255, 176, 138, 0.5); }
+.hud .dots i.band-black { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 122, 102, 0.5); }
+.hud .stage-no { font-size: 0.56rem; letter-spacing: 0.16em; color: var(--line-art); text-shadow: 0 0 6px rgba(143, 211, 255, 0.5); }
+
+/* The question card: just the question. The tiers are drawn in the sky during the climb instead. */
+.sheet .stack.ask { animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet .play-head p span { color: var(--muted); font-size: 0.8rem; }
+.sheet .rarer { margin: -2px 0 0; font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; text-align: center; color: var(--line-art); opacity: 0.8; }
+
+/* Tier lines across the sky, at the height each tier would carry your answer. They light up as the answer passes. */
+.ladder { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.45s ease; }
+.ladder.on { opacity: 1; transition: opacity 0.2s ease; }
+.rung { --rung: var(--line-art); position: absolute; left: 10px; right: 48px; top: 0; height: 0; background: none; border-top: 1.5px dashed rgba(143, 211, 255, 0.3); will-change: transform; transition: border-color 0.2s, box-shadow 0.2s; }
+.rung span { position: absolute; right: 0; bottom: 4px; font-family: var(--display); font-weight: 700; font-size: 0.58rem; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; color: rgba(232, 241, 255, 0.5); transition: color 0.2s; }
+.rung.band-green { --rung: var(--good-ink); }
+.rung.band-yellow { --rung: var(--close-ink); }
+.rung.band-blue { --rung: var(--off-ink); }
+.rung.band-brown { --rung: var(--far-ink); }
+.rung.passed { border-top-color: var(--rung); box-shadow: 0 0 8px var(--rung); }
+.rung.passed span { color: var(--rung); text-shadow: 0 0 8px var(--rung); }
+.rung.earned.passed { border-top-style: solid; border-top-width: 2px; }
+.rung.earned.passed span { font-size: 0.7rem; }
+
+/* Your answer, rising through the sky with the climber under it. */
+.answer-tag {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  max-width: 78vw;
+  padding: 6px 14px;
+  border: 1.5px solid var(--amber);
+  border-radius: 6px;
+  background: rgba(10, 16, 32, 0.84);
+  box-shadow: var(--glow-amber);
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition: opacity 0.35s ease;
+}
+.answer-tag.on { opacity: 1; transition: opacity 0.12s ease; }
+.answer-tag.stumble { border-color: var(--miss-red); color: #ffd0c8; text-decoration: line-through; text-shadow: 0 0 8px rgba(255, 122, 102, 0.7); box-shadow: 0 0 6px rgba(255, 122, 102, 0.7), 0 0 18px rgba(255, 122, 102, 0.3); }
+
+/* With the card cleared away, the sheet covers the screen but only its buttons and links take taps. */
+.stage.is-focus .sheet { top: 0; bottom: 0; max-height: none; overflow: hidden; padding: 0 16px; transition: opacity 0.35s ease 0.15s; }
+.stage.is-focus .sheet.holding { opacity: 0; visibility: hidden; transition: none; }
+.stage.is-focus .sheet main { height: 100%; pointer-events: none; }
+.stage.is-focus .sheet main a, .stage.is-focus .sheet main button { pointer-events: auto; }
+.stage.is-focus .sky-tags { display: none; }
+/* Passing your best or reaching space shows as one slim line under the heads-up strip, above the result. */
+.stage.is-focus .toast { top: 54px; flex-flow: row wrap; justify-content: center; align-items: baseline; gap: 2px 8px; padding: 5px 12px; width: max-content; max-width: calc(100% - 32px); white-space: normal; text-align: center; }
+.stage.is-focus .toast strong { font-size: 0.78rem; }
+.stage.is-focus .toast span { font-size: 0.62rem; }
+.stage.is-focus .sound-toggle { left: auto; right: 14px; }
+
+/* The result, over the scene: the tier's picture, the tier, your answer, the points, one line on the crowd, the fact. */
+.stage.is-focus .sheet .stack.result {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 88px 0 16px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Only the stage strip of the header shows, up in the heads-up display. Home is on the next question's card. */
+.stage.is-focus .sheet .result .play-head { display: none; }
+.stage.is-focus .sheet .result .reveal {
+  --tier: #e8f6ff;
+  --tier-glow: rgba(143, 211, 255, 0.55);
+  width: 100%;
+  max-width: 380px;
+  margin: 0;
+  padding: 18px 18px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  border-radius: 24px;
+  background: radial-gradient(closest-side, rgba(7, 11, 22, 0.9), rgba(7, 11, 22, 0.72) 62%, rgba(7, 11, 22, 0));
+  color: var(--ink);
+  animation: none;
+}
+.stage.is-focus .sheet .result .reveal.band-green { --tier: #c2ffe4; --tier-glow: rgba(142, 240, 196, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-yellow { --tier: #ffe6a0; --tier-glow: rgba(255, 211, 106, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-blue { --tier: #d4efff; --tier-glow: rgba(143, 211, 255, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-brown { --tier: #ffd8c2; --tier-glow: rgba(255, 176, 138, 0.5); }
+.stage.is-focus .sheet .result .reveal.band-black { --tier: #ffc2b8; --tier-glow: rgba(255, 122, 102, 0.45); }
+.result-icon { margin: 0; font-size: 2.7rem; line-height: 1; filter: drop-shadow(0 0 14px var(--tier-glow)); transition: transform 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) 0.05s, opacity 0.25s ease; }
+.stage.is-focus .sheet.holding .result-icon { transform: scale(0.3) translateY(30px); opacity: 0; }
+.stage.is-focus .sheet .result .result-tier {
+  margin: 4px 0 0;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.85rem;
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tier);
+  text-shadow: 0 0 10px var(--tier-glow), 0 0 30px var(--tier-glow);
+}
+.stage.is-focus .sheet .result .result-answer { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
+.stage.is-focus .sheet .result .points { margin: 2px 0 0; display: flex; flex-direction: column; align-items: center; font-size: 1.4rem; line-height: 1.1; }
+.stage.is-focus .sheet .result.band-black .points, .stage.is-focus .sheet .result .reveal.band-black .points { color: var(--muted); text-shadow: none; }
+.stage.is-focus .sheet .result .crowd { margin: 4px 0 0; font-size: 0.82rem; line-height: 1.4; color: var(--ink); opacity: 0.92; }
+.stage.is-focus .sheet .result .context { margin: 2px 0 0; max-width: 36ch; font-size: 0.8rem; line-height: 1.4; color: #b9c6dc; }
+.stage.is-focus .sheet .result .source { font-size: 0.68rem; color: var(--line-art); opacity: 0.8; }
+.stage.is-focus .sheet .result .next-stage { margin-top: auto; align-self: center; width: min(200px, 56%); }
+.next-stage span { margin-left: 4px; }
+
+@keyframes card-in { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet .stack.ask, .result-icon { animation: none; transition: none; }
+}
+/* On a wide screen the tier lines span the column the climb happens in, not the whole window. */
+@media (min-width: 640px) {
+  .rung { left: calc(50% - 250px); right: calc(50% - 250px); }
+}

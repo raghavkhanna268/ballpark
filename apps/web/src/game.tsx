@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { NAME_CAP, NAME_TIERS, classicStep } from "@ballpark/shared";
 
 /**
  * Counts a number up to `value` like an arcade score tally. It starts at `from` (or at `value`, so a first render
@@ -106,6 +107,31 @@ export function currentCombo(points: Array<number | null>): number {
 /** 1 for the smallest win up to 5 for the rarest, which sets the flame size and the pop-up glow. */
 export function gainLevel(points: number, max: number): number {
   return Math.max(1, Math.min(5, Math.round((points / Math.max(1, max)) * 4) + 1));
+}
+
+/** One tier as a line across the sky: its name, its points, its band colour, and how far an answer in it climbs. */
+export type Rung = { label: string; points: number; band: string; travel: number };
+
+/** The tier lines for a run of `questions`, lowest first, so the sky shows where each tier would take you. */
+export function tierLadder(questions: number): Rung[] {
+  return [...NAME_TIERS]
+    .reverse()
+    .map((tier) => ({ label: tier.name, points: tier.points, band: tier.band, travel: classicStep(tier.points, NAME_CAP, questions) }));
+}
+
+/** A picture for each result, shown big over the scene once the climb lands. */
+const RESULT_ICON: Record<string, string> = {
+  Liftoff: "🎈",
+  Orbit: "🛰️",
+  Moonshot: "🌙",
+  "Deep space": "🪐",
+  Supernova: "🌟",
+  "Not on the list": "💨",
+  "Out of time": "⏱️",
+};
+
+export function resultIcon(label: string, fallback: string): string {
+  return RESULT_ICON[label] ?? fallback;
 }
 
 function prefersReducedMotion(): boolean {

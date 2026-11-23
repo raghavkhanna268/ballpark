@@ -278,8 +278,8 @@ export function PackRun({
   onHome: () => void;
   /** How high the climber already is when the pack opens, the points so far, and the right answers in a row. */
   onFlight: (progress: number, score: number, combo: number) => void;
-  /** One answer scored: its points, and its tier label when it scored any. */
-  onHop: (points: number, label: string | null) => void;
+  /** One answer scored: its points, its tier label when it scored any, and what the player typed. */
+  onHop: (points: number, label: string | null, answer: string) => void;
   onEnd: () => void;
 }) {
   const [pack, setPack] = useState<PackResponse | null>(null);
@@ -334,7 +334,7 @@ export function PackRun({
       const response = await postPackGuess(deviceId, packId, question.id, guess);
       const questions = pack!.questions.map((item, itemIndex) => (itemIndex === index ? { ...item, reveal: response.reveal } : item));
       setPack({ ...pack!, questions, result: response.result });
-      onHop(response.reveal.points, response.reveal.points > 0 ? response.reveal.label : null);
+      onHop(response.reveal.points, response.reveal.points > 0 ? response.reveal.label : null, guess.type === "name_one" ? guess.text : "");
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal });
     } catch (caught) {

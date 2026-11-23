@@ -18,7 +18,7 @@ import {
 import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
-import { currentCombo, gainLevel } from "./game";
+import { currentCombo, gainLevel, tierLadder } from "./game";
 import { Journey, formatAltitude, type Ghost, type Hop, type HudScore } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
 import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
@@ -126,7 +126,15 @@ export function App() {
       const scored = response.reveal.points > 0;
       const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(response.reveal.points, max) } : undefined;
       const combo = scored ? currentCombo(pointsOf(nextPuzzle)) : currentCombo(pointsOf(puzzle));
-      setHop((current) => ({ id: current.id + 1, kind: scored ? "voyage" : "stumble", travel, gain, combo }));
+      setHop((current) => ({
+        id: current.id + 1,
+        kind: scored ? "voyage" : "stumble",
+        travel,
+        gain,
+        combo,
+        answer: guess.type === "name_one" ? guess.text : undefined,
+        ladder: question.type === "name_one" ? tierLadder(CLASSIC_QUESTIONS) : undefined,
+      }));
       if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
         setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
       }
@@ -361,7 +369,7 @@ export function App() {
             setPackFlight(progress);
             setPackRun({ score, combo });
           }}
-          onHop={(points, label) => {
+          onHop={(points, label, answer) => {
             const travel = classicStep(points, NAME_CAP, PACK_QUESTIONS);
             const combo = points > 0 ? packRun.combo + 1 : packRun.combo;
             setPackRun({ score: packRun.score + points, combo: points > 0 ? combo : 0 });
@@ -372,6 +380,8 @@ export function App() {
               travel,
               gain: label ? { label, points, level: gainLevel(points, NAME_CAP) } : undefined,
               combo,
+              answer,
+              ladder: tierLadder(PACK_QUESTIONS),
             }));
           }}
           onEnd={() => setPhase((current) => (current.name === "pack" ? { ...current, done: true } : current))}

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import {
   CLIMBER_X,
   FAR_H,
@@ -17,7 +17,7 @@ import {
   climberY,
   stopAt,
 } from "./worlds";
-import { useCountUp } from "./game";
+import { useCountUp, type Rung } from "./game";
 import "./journey.css";
 
 /** One answer's flight. */
@@ -29,6 +29,10 @@ export type Hop = {
   gain?: { label: string; points: number; level: number; unit?: string };
   /** Right answers in a row after this one, or the run that a miss just broke. Cosmetic: it never changes the score. */
   combo?: number;
+  /** What the player typed. It rises through the sky as a tag while the climb plays. Empty when the clock ran out. */
+  answer?: string;
+  /** The tier lines to draw across the sky for this climb, lowest first. */
+  ladder?: Rung[];
 };
 /** The score in the heads-up display. It counts up after each answer, like an arcade score. */
 export type HudScore = { value: number; label: string; digits: number };
@@ -40,6 +44,29 @@ function passedLine(ghosts: Ghost[]): string {
 }
 type Motion = "idle" | "voyage" | "stumble" | "replay";
 
+/**
+ * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, whether a climb is
+ * still playing (so a result waits for it), and a switch that clears the card away so the climb has the whole screen.
+ */
+type JourneyContextValue = { hudSlot: HTMLElement | null; holding: boolean; setFocus: (on: boolean) => void };
+const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, holding: false, setFocus: () => {} });
+
+export function useJourney(): JourneyContextValue {
+  return useContext(JourneyContext);
+}
+
+/**
+ * Clears the card off the scene while the calling screen is shown. The climb plays on the whole screen, and the
+ * screen's own content appears over the scene once the climb lands. A result screen calls this.
+ */
+export function useFocusMode() {
+  const { setFocus } = useContext(JourneyContext);
+  useLayoutEffect(() => {
+    setFocus(true);
+    return () => setFocus(false);
+  }, [setFocus]);
+}
+
 const SOUND_KEY = "ballpark.sound";
 const STOPS = WORLD_STOPS.length;
 /**
@@ -49,7 +76,16 @@ const STOPS = WORLD_STOPS.length;
 const ANCHOR = 0.55;
 /** The open sky under the card never gets smaller than this, so the climber always has room. */
 const MIN_WINDOW = 180;
+/** With the card cleared away, the climber starts low on the screen so the tier lines above are in view. */
+const FOCUS_ANCHOR = 0.78;
+/** The heads-up strip at the top. With the card cleared away, the open sky starts under it. */
+const HUD_H = 46;
+/** The answer tag floats this far above the climber, in pixels. The tier lines are drawn at the tag's height. */
+const TAG_LIFT = 62;
 const VOYAGE_MS = 2300;
+/** With the card cleared away, the climb plays for about 2 seconds for the commonest answer up to 3 for the rarest. */
+const RISE_MIN_MS = 1500;
+const RISE_MAX_MS = 3000;
 const STUMBLE_MS = 1700;
 const REPLAY_MS = 3600;
 const ROUTE_POINTS = 1600;
@@ -98,10 +134,15 @@ export function Journey({
   const altRef = useRef<HTMLSpanElement>(null);
   const labelRef = useRef<HTMLSpanElement>(null);
   const route = useRef<Array<[number, number]>>([]);
+  const tagRef = useRef<HTMLDivElement>(null);
+  const rungRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const measureRef = useRef<() => void>(() => {});
   /** Scene size, world scale, and `top`: where the card over the scene ends, in pixels from the top. */
   const size = useRef({ w: 390, h: 520, k: 1, top: 0 });
   const motionRef = useRef<Motion>("idle");
   const pose = useRef<Pose>({ v: progress, cam: progress, ...REST });
+  const hopRef = useRef(hop.id);
+  hopRef.current = hop.id;
   const landedRef = useRef(-1);
   const ghostsRef = useRef(ghosts);
   const [k, setK] = useState(1);
@@ -111,9 +152,18 @@ export function Journey({
   const [toast, setToast] = useState<Toast | null>(null);
   const [fly, setFly] = useState<{ id: number; text: string } | null>(null);
   const [sound, setSound] = useState(() => readSound());
+  const [focus, setFocus] = useState(false);
+  const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
+  /** The last answer whose climb has finished. Until the current one lands, a result waits off screen. */
+  const [settledHop, setSettledHop] = useState(hop.id);
+  const focusRef = useRef(focus);
+  /** Where the current climb started, so the tier lines stay put in the sky while the camera follows the tag. */
+  const ladderFrom = useRef({ id: hop.id, v: progress });
 
   ghostsRef.current = ghosts;
   motionRef.current = motion;
+  focusRef.current = focus;
+  if (ladderFrom.current.id !== hop.id) ladderFrom.current = { id: hop.id, v: pose.current.v };
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -127,7 +177,8 @@ export function Journey({
       // Fit the drawn column to the width on a phone. On a wide screen, fit to height and show more sky.
       const nextK = Math.max(0.5, Math.min((stage.clientHeight * 0.8) / 700, w / 400));
       const card = sheet.getBoundingClientRect();
-      const top = Math.max(0, Math.min(h - MIN_WINDOW, Math.round(card.bottom - stage.getBoundingClientRect().top)));
+      // With the card cleared away the open sky starts right under the heads-up strip.
+      const top = focusRef.current ? HUD_H : Math.max(0, Math.min(h - MIN_WINDOW, Math.round(card.bottom - stage.getBoundingClientRect().top)));
       const moved = Math.abs(top - size.current.top) > 1;
       size.current = { w, h, k: nextK, top };
       stage.style.setProperty("--sheet-bottom", `${top}px`);
@@ -140,6 +191,7 @@ export function Journey({
       }
       draw();
     };
+    measureRef.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
@@ -150,6 +202,10 @@ export function Journey({
       window.clearTimeout(settle);
     };
   }, []);
+
+  useLayoutEffect(() => {
+    measureRef.current();
+  }, [focus]);
 
   useEffect(() => {
     if (!toast) return;
@@ -166,7 +222,7 @@ export function Journey({
   /** Where the climber rests on screen: ANCHOR of the way down the open sky under the card. */
   function anchorPx(): number {
     const { h, top } = size.current;
-    return top + (h - top) * ANCHOR;
+    return focusRef.current ? h * FOCUS_ANCHOR : top + (h - top) * ANCHOR;
   }
 
   /** World y at the top of the scene, so the camera's stop sits at the anchor. */
@@ -186,10 +242,23 @@ export function Journey({
     const ex = w / 2 + p.dx * scale;
     const ey = (climberY(p.v) + p.dy - top) * scale;
     const explorer = explorerRef.current;
+    // With the card cleared away the answer is the star, so the climber rides along a little smaller.
+    const small = focusRef.current ? 0.8 : 1;
     if (explorer) {
-      explorer.style.transform = `translate3d(${ex}px, ${ey}px, 0) translate(-50%, -50%) rotate(${p.rot}deg) scale(${p.sx}, ${p.sy})`;
+      explorer.style.transform = `translate3d(${ex}px, ${ey}px, 0) translate(-50%, -50%) rotate(${p.rot}deg) scale(${p.sx * small}, ${p.sy * small})`;
       explorer.classList.toggle("suited", p.v >= SPACE_STOP - 0.5);
     }
+    const tag = tagRef.current;
+    if (tag) tag.style.transform = `translate3d(${ex}px, ${ey - TAG_LIFT}px, 0) translate(-50%, -50%) rotate(${p.rot * 0.5}deg)`;
+    // Each tier line sits where an answer in that tier would carry the tag. It lights up once the tag passes it.
+    const from = ladderFrom.current.v;
+    rungRefs.current.forEach((rung, index) => {
+      const step = hop.ladder?.[index];
+      if (!rung || !step) return;
+      const y = (climberY(from + step.travel) - top) * scale - TAG_LIFT;
+      rung.style.transform = `translate3d(0, ${y}px, 0)`;
+      rung.classList.toggle("passed", p.v >= from + step.travel - 0.002);
+    });
     const share = Math.max(0, Math.min(1, p.v / (STOPS - 1)));
     if (markerRef.current) markerRef.current.style.bottom = `${share * 100}%`;
     if (fillRef.current) fillRef.current.style.height = `${share * 100}%`;
@@ -231,19 +300,28 @@ export function Journey({
     }
     const before = stopAt(from);
     const after = stopAt(to);
-    if (after > before) {
+    // With the card cleared away, the heads-up display already names the new place as the climb reaches it.
+    if (after > before && !focusRef.current) {
       const info = WORLD_STOPS[after]!;
       setToast({ id: Date.now(), title: info.label, detail: `Altitude ${info.altitude}`, tone: "world" });
     }
   }
 
-  function run(kind: Motion, from: number, to: number, duration: number) {
+  /** `rise`: the card has cleared away, so the climber rises steadily under the answer tag instead of flipping. */
+  function run(kind: Motion, from: number, to: number, duration: number, rise = false) {
     const start = performance.now();
     const d = to - from;
     let frame = 0;
     const tick = (now: number) => {
       const t = Math.min(1, (now - start) / duration);
-      pose.current = kind === "stumble" ? stumblePose(t, from, d) : kind === "replay" ? replayPose(t, from, d) : voyagePose(t, from, d);
+      pose.current =
+        kind === "stumble"
+          ? stumblePose(t, from, d)
+          : kind === "replay"
+            ? replayPose(t, from, d)
+            : rise
+              ? risePose(t, from, d)
+              : voyagePose(t, from, d);
       keepInFrame();
       draw();
       pushRoute();
@@ -255,6 +333,7 @@ export function Journey({
         setMotion("idle");
         setLanded(stopAt(to));
         setArrived((value) => value + 1);
+        setSettledHop(hopRef.current);
         if (kind !== "replay") announce(from, to);
       }
     };
@@ -283,19 +362,24 @@ export function Journey({
       resetRoute(to);
       draw();
       setLanded(stopAt(to));
+      setSettledHop(hop.id);
       return;
     }
     const kind = hop.kind === "stumble" ? "stumble" : "voyage";
     setMotion(kind);
     const streak = hop.combo ?? 0;
+    if (sound) playHop(kind);
+    // A climb with tier lines is one the card clears away for: the lines and the result over the scene tell the story,
+    // so there are no pop-ups. The result screen turns focus on in the same commit, after this render, so the hop
+    // itself says which kind of climb this is.
+    if (hop.ladder) return run(kind, from, to, flightMs(kind, to - from, true), true);
     if (hop.gain && kind === "voyage") {
       const { label, points, level, unit = "pts" } = hop.gain;
       setToast({ id: Date.now(), title: label, detail: `+${points} ${unit}${streak >= 2 ? ` · combo x${streak}` : ""}`, tone: "tier", level });
       if (score && points > 0) setFly({ id: hop.id, text: `+${points}` });
     }
     if (kind === "stumble") setToast({ id: Date.now(), title: "Miss", detail: streak >= 2 ? `combo x${streak} lost` : "+0 · still climbing", tone: "miss" });
-    if (sound) playHop(kind);
-    return run(kind, from, to, kind === "stumble" ? STUMBLE_MS : VOYAGE_MS);
+    return run(kind, from, to, flightMs(kind, to - from, false));
   }, [progress, hop.id]);
 
   /** The end screen replays the whole climb from the launch pad to where the run landed. */
@@ -323,8 +407,12 @@ export function Journey({
     sheetRef.current?.scrollTo({ top: 0 });
   }, [page]);
 
-  const flying = motion !== "idle";
-  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : ""].join(" ");
+  /** A new answer whose climb has not started or not finished yet. Its result waits until the climb lands. */
+  const pending = settledHop !== hop.id;
+  const flying = motion !== "idle" || pending;
+  const holding = focus && pending;
+  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : ""].join(" ");
+  const earned = hop.gain?.points ?? 0;
   const info = WORLD_STOPS[landed]!;
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
@@ -354,6 +442,28 @@ export function Journey({
         <svg ref={frontRef} className="layer front" style={{ width: columns * k, height: FRONT_H * k }} viewBox={`${-SIDE} 0 ${columns} ${FRONT_H}`} aria-hidden="true">
           <WorldFront />
         </svg>
+        {focus && hop.ladder ? (
+          <div className={holding ? "ladder on" : "ladder"} aria-hidden="true">
+            {hop.ladder.map((rung, index) => (
+              <div
+                key={rung.label}
+                className={`rung band-${rung.band}${rung.points === earned ? " earned" : ""}`}
+                ref={(element) => {
+                  rungRefs.current[index] = element;
+                }}
+              >
+                <span>
+                  {rung.label} · {rung.points}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {focus && hop.answer !== undefined ? (
+          <div className={`answer-tag ${hop.kind}${holding ? " on" : ""}`} ref={tagRef} aria-hidden="true">
+            {hop.answer ? `“${hop.answer}”` : "Out of time"}
+          </div>
+        ) : null}
         <div className="speedlines" aria-hidden="true">
           {Array.from({ length: 8 }, (_, index) => (
             <i key={index} style={{ left: `${10 + index * 11}%`, animationDelay: `${(index * 73) % 400}ms` }} />
@@ -382,7 +492,8 @@ export function Journey({
               </span>
             </p>
           </div>
-          <div className="hud-side end">{score ? <ScoreBox score={score} /> : null}</div>
+          <div className="hud-mid" ref={setHudSlot} />
+          <div className="hud-side end">{score ? <ScoreBox score={score} hold={pending} /> : null}</div>
         </div>
         {/* Under the card, at the top of the open sky: the combo meter and who to beat next. */}
         <div className="sky-tags">
@@ -437,16 +548,18 @@ export function Journey({
           {sound ? "Sound on" : "Sound off"}
         </button>
       </div>
-      <div className="sheet" ref={sheetRef}>
-        {children}
+      <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef}>
+        <JourneyContext.Provider value={{ hudSlot, holding, setFocus }}>{children}</JourneyContext.Provider>
       </div>
     </div>
   );
 }
 
-/** The run's score, top right. It waits for the points to fly over, then counts up. */
-function ScoreBox({ score }: { score: HudScore }) {
-  const shown = useCountUp(score.value, { delay: 950, duration: 600 });
+/** The run's score, top right. It holds still while a climb plays, then counts up as the climb lands. */
+function ScoreBox({ score, hold }: { score: HudScore; hold: boolean }) {
+  const settled = useRef(score.value);
+  if (!hold) settled.current = score.value;
+  const shown = useCountUp(hold ? settled.current : score.value, { delay: 120, duration: 600 });
   return (
     <p className={shown < score.value ? "scorebox counting" : "scorebox"}>
       <small>{score.label}</small>
@@ -498,6 +611,32 @@ function voyagePose(t: number, from: number, d: number): Pose {
     rot: -360 * flip + 10 * Math.sin(u * Math.PI),
     sx: 1 - stretch * 0.4,
     sy: 1 + stretch,
+  };
+}
+
+/** How long one answer's climb plays. With the card cleared away, a rarer answer climbs for longer, like a deeper dive. */
+function flightMs(kind: "voyage" | "stumble", distance: number, focus: boolean): number {
+  if (kind === "stumble") return STUMBLE_MS;
+  if (!focus) return VOYAGE_MS;
+  return Math.round(RISE_MIN_MS + (RISE_MAX_MS - RISE_MIN_MS) * clamp01(distance / 1.45));
+}
+
+/** Card cleared away: a short crouch, then a steady rise with a gentle sway. No flips. The camera follows a beat later. */
+function risePose(t: number, from: number, d: number): Pose {
+  if (t < 0.08) {
+    const c = Math.sin((t / 0.08) * Math.PI);
+    return { v: from, cam: from, dx: 0, dy: 8 * c, rot: 0, sx: 1 + 0.08 * c, sy: 1 - 0.1 * c };
+  }
+  const u = clamp01((t - 0.08) / 0.92);
+  const e = 1 - (1 - u) ** 3;
+  return {
+    v: from + d * e,
+    cam: from + d * ease(clamp01((t - 0.18) / 0.82)),
+    dx: Math.sin(u * Math.PI * 2) * 10 * (1 - u),
+    dy: 0,
+    rot: Math.sin(u * Math.PI * 3) * 5 * (1 - u),
+    sx: 1,
+    sy: 1,
   };
 }
 
