@@ -1,5 +1,7 @@
 export type {
   Band,
+  BoardRow,
+  ClimbCurve,
   CompareGuess,
   Confidence,
   CrowdStat,
@@ -20,6 +22,7 @@ export type {
   ServerQuestion,
   SliderScale,
   Stats,
+  TodayStats,
 } from "./types.js";
 
 export {
@@ -69,7 +72,9 @@ export type { FieldStats, Milestone, ScaleLevel } from "./scale.js";
 export {
   CLASSIC_QUESTIONS,
   CLASSIC_SCORE_SPAN,
+  MAX_PROGRESS,
   MILESTONES,
+  AFTERBURNER,
   PACK_QUESTIONS,
   SCALE_LEVELS,
   SPACE_STOP,

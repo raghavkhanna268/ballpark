@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { nextDayStart, playToday } from "./dates.js";
 import {
+  AFTERBURNER,
+  MAX_PROGRESS,
   MILESTONES,
   altitudeKm,
   classicStep,
@@ -20,20 +22,30 @@ describe("classicStep", () => {
     expect(classicStep(0, 100, 7)).toBe(0);
   });
 
-  it("takes a perfect run to the top whatever its length", () => {
+  it("takes a perfect run to the Milky Way whatever its length", () => {
     expect(7 * classicStep(100, 100, 7)).toBeCloseTo(10);
     expect(5 * classicStep(100, 100, 5)).toBeCloseTo(10);
+  });
+
+  it("doubles one Afterburner stage's climb, and only up to double the top step", () => {
+    expect(classicStep(50 * AFTERBURNER, 100, 7, AFTERBURNER)).toBeCloseTo(2 * classicStep(50, 100, 7));
+    expect(classicStep(100 * AFTERBURNER, 100, 7, AFTERBURNER)).toBeCloseTo(20 / 7);
+    expect(classicStep(500, 100, 7, AFTERBURNER)).toBeCloseTo(20 / 7);
+    expect(6 * classicStep(100, 100, 7) + classicStep(200, 100, 7, AFTERBURNER)).toBeCloseTo(MAX_PROGRESS);
   });
 });
 
 describe("altitude", () => {
   it("hits each landmark's real height at its place on the climb", () => {
-    for (const milestone of MILESTONES) expect(altitudeKm(milestone.at)).toBeCloseTo(milestone.km, 3);
+    for (const milestone of MILESTONES) {
+      if (milestone.km === 0) expect(altitudeKm(milestone.at)).toBe(0);
+      else expect(altitudeKm(milestone.at) / milestone.km).toBeCloseTo(1, 9);
+    }
   });
 
   it("only ever goes up", () => {
     let last = -1;
-    for (let progress = 0; progress <= 10; progress += 0.05) {
+    for (let progress = 0; progress <= MAX_PROGRESS; progress += 0.05) {
       const km = altitudeKm(progress);
       expect(km).toBeGreaterThan(last);
       last = km;
@@ -52,9 +64,11 @@ describe("altitude", () => {
   it("names the landmark passed and the next one", () => {
     expect(milestoneAt(1.4).name).toBe("Everest summit");
     expect(nextMilestone(1.4)?.name).toBe("Where jets cruise");
-    expect(nextMilestone(10)).toBeNull();
+    expect(nextMilestone(10)?.name).toBe("Andromeda");
+    expect(nextMilestone(MAX_PROGRESS)).toBeNull();
     expect(milestonesReached(0)).toBe(0);
-    expect(milestonesReached(10)).toBe(MILESTONES.length - 1);
+    expect(milestonesReached(10)).toBe(MILESTONES.length - 2);
+    expect(milestonesReached(MAX_PROGRESS)).toBe(MILESTONES.length - 1);
   });
 
   it("puts the height and landmark on the share card without answers", () => {
