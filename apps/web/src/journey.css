@@ -36,190 +36,87 @@
 .mono, .stage .mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace; }
 
 /* ---------- the scene ---------- */
-/* The climb fills the whole screen, behind everything. The card floats over its top, and the climber flies in the
-   open sky under the card. --sheet-bottom is where the card ends, set by Journey as the card changes size. */
+/* The climb fills the whole screen, behind everything: a canvas with the sky, the scenery and the rocket. The card
+   floats over its top. --sheet-bottom is where the card ends, set by Journey as the card changes size. */
 .scene {
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #0a1020;
+  background: #0b1030;
 }
-/* When the card changes height, the world glides to its new place instead of jumping. */
-.stage.settling .layer, .stage.settling .explorer { transition: transform 0.42s cubic-bezier(0.3, 0.7, 0.2, 1); }
-.layer {
-  position: absolute;
-  left: 0;
-  top: 0;
-  display: block;
-  will-change: transform;
-  pointer-events: none;
-}
-.layer.front { z-index: 4; }
-/* Fades the world out under the heads-up display so the title never fights the art. */
+.sky-canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+/* Darkens the sky under the heads-up display so the numbers stay easy to read. */
 .scene::after {
   content: "";
   position: absolute;
-  z-index: 6;
+  z-index: 1;
   left: 0;
   right: 0;
   top: 0;
-  height: 100px;
-  background: linear-gradient(to bottom, rgba(7, 11, 22, 0.97), rgba(7, 11, 22, 0.85) 55%, rgba(7, 11, 22, 0));
-  pointer-events: none;
-}
-/* Faint scanlines over the sky, like an old arcade screen. */
-.scene::before {
-  content: "";
-  position: absolute;
-  z-index: 5;
-  inset: 0;
-  background: repeating-linear-gradient(to bottom, rgba(143, 211, 255, 0) 0 3px, rgba(143, 211, 255, 0.035) 3px 4px);
+  height: 96px;
+  background: linear-gradient(to bottom, rgba(5, 7, 20, 0.72), rgba(5, 7, 20, 0));
   pointer-events: none;
 }
 
-.route-trace { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 4 7; stroke-linecap: round; opacity: 0.95; filter: drop-shadow(0 0 3px rgba(255, 179, 71, 0.9)); }
-.route-trace.stumble { stroke: #ff7a66; filter: drop-shadow(0 0 3px rgba(255, 122, 102, 0.9)); }
-
-.ghost path, .ghost circle { stroke: currentColor; }
-.ghost text { fill: currentColor; letter-spacing: 1px; }
-.ghost.best { color: rgba(232, 241, 255, 0.75); }
-.ghost.average { color: rgba(143, 211, 255, 0.7); }
-.ghost.top { color: rgba(255, 179, 71, 0.75); }
-.ghost.friend { color: #ff9ad5; }
-.ghost { opacity: 0.85; }
-
-/* ---------- the climber ---------- */
-.explorer {
+/* How far this answer has carried the rocket, beside it in its tier's colour. */
+.gain {
+  --c: #ffd04a;
   position: absolute;
   z-index: 3;
   left: 0;
   top: 0;
-  width: 72px;
-  height: 90px;
-  will-change: transform;
-  pointer-events: none;
-}
-.climber { display: block; overflow: visible; filter: drop-shadow(0 0 3px rgba(143, 211, 255, 0.55)); }
-.climber .suit { fill: #0e1830; stroke: #e8f1ff; stroke-width: 1.6; }
-.climber .limb { fill: none; stroke: #e8f1ff; stroke-width: 3.2; stroke-linecap: round; }
-.climber .pack { fill: #0e1830; stroke: var(--line-art); stroke-width: 1.4; }
-.climber .panel { fill: var(--amber); }
-.climber .cap { fill: var(--amber); }
-.climber .goggle { fill: #0e1830; stroke: var(--amber); stroke-width: 1.4; }
-.climber .visor { fill: var(--amber); fill-opacity: 0.85; stroke: #fff2d6; stroke-width: 1; }
-.climber .glint { fill: #fff6e0; }
-.climber .head-astro { display: none; }
-.explorer.suited .head-astro { display: inline; }
-.explorer.suited .head-pilot { display: none; }
-.climber .flame path { fill: var(--amber); transform-box: fill-box; transform-origin: center top; transform: scaleY(0.35); opacity: 0.8; animation: flicker 0.18s ease-in-out infinite alternate; }
-.explorer.voyage .flame path, .explorer.replay .flame path { transform: scaleY(1.25); opacity: 1; animation-name: roar; }
-.explorer.stumble .flame path { fill: #ff7a66; animation: sputter 0.3s steps(2, end) infinite; }
-/* Rarer answers burn hotter: a Liftoff is a normal flame, a Supernova a long white-hot one. */
-.explorer.boost-3 .flame path { animation-name: roar-3; }
-.explorer.boost-4 .flame path { animation-name: roar-4; fill: #ffd27a; }
-.explorer.boost-5 .flame path { animation-name: roar-5; fill: #fff1c9; filter: drop-shadow(0 0 6px #ffb347); }
-.explorer.stumble .suit, .explorer.stumble .limb { stroke: #ffb0a2; }
-.explorer.idle .climber { animation: hover 2.6s ease-in-out infinite; }
-
-.smoke i {
-  position: absolute;
-  left: 28px;
-  top: 70px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 1.5px solid rgba(196, 204, 218, 0.8);
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1rem;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--c);
+  text-shadow: 0 0 12px color-mix(in srgb, var(--c) 70%, transparent), 0 1px 2px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
   opacity: 0;
-  animation: smoke 0.9s ease-out forwards;
-}
-
-.speedlines { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
-.stage.is-voyage .speedlines { opacity: 1; }
-.speedlines i {
-  position: absolute;
-  top: -40%;
-  width: 1px;
-  height: 30%;
-  background: linear-gradient(0deg, rgba(143, 211, 255, 0), rgba(143, 211, 255, 0.7));
-  animation: streak 0.42s linear infinite;
-}
-
-.miss-flash {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
+  transition: opacity 0.3s;
   pointer-events: none;
-  box-shadow: inset 0 0 0 2px rgba(255, 122, 102, 0.9), inset 0 0 70px rgba(255, 122, 102, 0.35);
-  animation: pulsefade 0.9s ease-out forwards;
+  will-change: transform;
 }
-.stage.is-stumble .scene { animation: shake 0.5s linear; }
+.gain.on { opacity: 1; }
+.gain.big { font-size: 1.4rem; }
 
-/* Pop-ups: a glowing call-out for each answer, with a punch-in like a game. */
-.toast {
+/* "Passed Everest summit · 8.8 km": landmarks and rivals passed on the way up, stacked at the bottom of the sky. */
+.toasts {
   position: absolute;
   z-index: 7;
-  left: 50%;
-  top: calc(var(--sheet-bottom, 120px) + max(52px, (100% - var(--sheet-bottom, 120px)) * 0.14));
-  isolation: isolate;
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  bottom: 64px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 18px;
-  border: 1px solid rgba(143, 211, 255, 0.6);
-  background: rgba(10, 16, 32, 0.86);
-  box-shadow: var(--glow-cyan);
-  color: var(--ink);
-  white-space: nowrap;
-  animation: toast 2.2s ease forwards;
-}
-.toast strong { font-family: var(--display); font-weight: 900; font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase; }
-.toast span { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--line-art); }
-.toast.pass, .toast.space { border-color: var(--amber); box-shadow: var(--glow-amber); }
-.toast.pass span, .toast.space span { color: var(--amber); }
-/* An answer's tier: big glowing type and no box, with rays behind the rare ones. */
-.toast.tier { border: none; background: none; box-shadow: none; padding: 6px 10px; animation-name: toast-punch; }
-.toast.tier strong { font-size: 1.75rem; letter-spacing: 0.1em; color: #fff4dc; text-shadow: var(--glow-amber), 0 0 34px rgba(255, 179, 71, 0.35); }
-.toast.tier span { font-size: 0.82rem; color: var(--amber); text-shadow: 0 0 8px rgba(255, 179, 71, 0.6); }
-.toast.tier.level-1 strong, .toast.tier.level-2 strong { font-size: 1.45rem; color: #e8f6ff; text-shadow: var(--glow-cyan); }
-.toast.tier.level-1 span, .toast.tier.level-2 span { color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
-.toast.tier.level-5 strong { font-size: 2rem; color: #ffffff; text-shadow: 0 0 6px #fff1c9, 0 0 16px var(--amber), 0 0 40px rgba(255, 179, 71, 0.7); }
-.toast.tier.level-4::before, .toast.tier.level-5::before {
-  content: "";
-  position: absolute;
-  z-index: -1;
-  left: 50%;
-  top: 50%;
-  width: 240px;
-  height: 240px;
-  margin: -120px 0 0 -120px;
-  border-radius: 50%;
-  background: repeating-conic-gradient(rgba(255, 179, 71, 0.22) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg);
-  -webkit-mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
-  mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
-  animation: spin 8s linear infinite;
-}
-.toast.tier.level-5::before { background: repeating-conic-gradient(rgba(255, 241, 201, 0.32) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg); }
-.toast.miss { border-color: rgba(255, 122, 102, 0.7); box-shadow: 0 0 6px rgba(255, 122, 102, 0.7), 0 0 18px rgba(255, 122, 102, 0.3); }
-.toast.miss strong { color: var(--miss-red); font-size: 1.3rem; text-shadow: 0 0 8px rgba(255, 122, 102, 0.7); }
-.toast.miss span { color: #ffb0a2; }
-
-/* The points lift off the pop-up and fly into the score, top right. */
-.fly {
-  position: absolute;
-  z-index: 9;
-  right: 18px;
-  top: 16px;
-  font-family: var(--display);
-  font-weight: 900;
-  font-size: 1.1rem;
-  color: #fff4dc;
-  text-shadow: var(--glow-amber);
+  gap: 6px;
   pointer-events: none;
-  animation: fly 1.35s cubic-bezier(0.55, 0, 0.35, 1) forwards;
 }
-
+.toast {
+  margin: 0;
+  max-width: calc(100% - 32px);
+  padding: 7px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(6, 9, 24, 0.74);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 0.8rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #fff;
+  text-align: center;
+  animation: toast-life 2.6s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.toast b { color: #ffd88a; font-weight: 700; }
+@keyframes toast-life {
+  0% { opacity: 0; transform: translateY(10px) scale(0.96); }
+  12% { opacity: 1; transform: none; }
+  84% { opacity: 1; transform: none; }
+  100% { opacity: 0; transform: translateY(6px); }
+}
 /* ---------- heads-up display ---------- */
 .hud {
   position: absolute;
@@ -236,9 +133,10 @@
 .hud-side { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 58%; }
 .hud-side.end { align-items: flex-end; text-align: right; max-width: 46%; }
 .where, .rival, .scorebox, .combo { margin: 0; display: flex; flex-direction: column; gap: 2px; }
-.where { animation: arrive 0.5s ease; }
-.where .power { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
-.where .place { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
+.where small { font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: rgba(235, 240, 255, 0.65); }
+.where .alt-v { display: flex; align-items: baseline; gap: 5px; font-family: var(--display); font-weight: 900; font-size: 1.2rem; line-height: 1; letter-spacing: 0.02em; color: #fff; text-shadow: 0 0 10px rgba(143, 211, 255, 0.45); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.where .alt-v small { font-size: 0.6rem; letter-spacing: 0.06em; color: rgba(235, 240, 255, 0.8); }
+.where .alt-v.long span { font-size: 0.95rem; }
 .scorebox { align-items: flex-end; }
 .scorebox small, .rival small { font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
 .scorebox strong { font-family: var(--display); font-weight: 900; font-size: 1.45rem; line-height: 1; letter-spacing: 0.06em; color: var(--amber); text-shadow: var(--glow-amber); font-variant-numeric: tabular-nums; }
@@ -261,7 +159,7 @@
   animation: combo-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 .combo b { font-size: 0.85rem; font-weight: 900; color: #e8f6ff; }
-/* The combo meter and "Next to beat" sit at the top of the open sky, just under the card. */
+/* The next landmark, the combo meter and "Next to beat" sit at the top of the open sky, just under the card. */
 .sky-tags {
   position: absolute;
   z-index: 7;
@@ -269,12 +167,30 @@
   left: 14px;
   right: 52px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
   pointer-events: none;
 }
-.sky-tags > div:last-child { display: flex; justify-content: flex-end; min-width: 0; }
+.sky-row { align-self: stretch; display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.sky-row > div:last-child { display: flex; justify-content: flex-end; min-width: 0; }
+.next-mile {
+  margin: 0;
+  max-width: 100%;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(6, 9, 24, 0.62);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 0.76rem;
+  font-weight: 600;
+  line-height: 1.2;
+  color: #dfe4f5;
+  text-align: center;
+  animation: arrive 0.5s ease;
+}
+.next-mile b { color: #ffd88a; font-weight: 700; white-space: nowrap; }
 .rival { align-items: flex-end; text-align: right; padding: 4px 8px; border-radius: 6px; background: rgba(7, 11, 22, 0.55); animation: arrive 0.5s ease; }
 .rival span { font-size: 0.74rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
 .rival em { font-style: normal; font-family: var(--display); font-weight: 700; font-size: 0.64rem; color: var(--line-art); }
@@ -328,12 +244,6 @@
   font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
   font-size: 0.62rem;
 }
-
-/* ---------- world animation ---------- */
-.bob-slow { animation: float 4s ease-in-out infinite; }
-.drift { animation: float 6s ease-in-out infinite; }
-.twinkle { animation: twinkle 2.4s ease-in-out infinite; }
-.galaxy-spin { animation: spin 90s linear infinite; }
 
 /* ---------- the question card ---------- */
 /* The card floats over the top of the scene, under the heads-up strip. It is sized to fit a phone screen without
@@ -394,39 +304,8 @@
 .tier-ladder li:nth-child(4), .tier-ladder li:nth-child(5) { border-color: rgba(255, 179, 71, 0.55); }
 .tier-ladder li:nth-child(5) b { color: var(--tide); }
 
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes float { 50% { transform: translateY(-8px); } }
-@keyframes twinkle { 50% { opacity: 0.25; } }
-@keyframes hover { 50% { transform: translateY(-5px); } }
-@keyframes ping { 0% { transform: scale(0.7); stroke-opacity: 0.5; } 100% { transform: scale(1.5); stroke-opacity: 0; } }
-@keyframes flicker { to { transform: scaleY(0.5); } }
-@keyframes roar { from { transform: scaleY(1.05); } to { transform: scaleY(1.45); } }
-@keyframes roar-3 { from { transform: scaleY(1.35); } to { transform: scaleY(1.8); } }
-@keyframes roar-4 { from { transform: scaleX(1.15) scaleY(1.7); } to { transform: scaleX(1.2) scaleY(2.2); } }
-@keyframes roar-5 { from { transform: scaleX(1.3) scaleY(2.1); } to { transform: scaleX(1.4) scaleY(2.8); } }
-@keyframes sputter { 0% { opacity: 0.9; } 50% { opacity: 0.05; } }
-@keyframes smoke { 0% { opacity: 0.9; transform: translate(0, 0) scale(0.5); } 100% { opacity: 0; transform: translate(-14px, 46px) scale(2); } }
-@keyframes streak { from { transform: translateY(0); } to { transform: translateY(520%); } }
-@keyframes pulsefade { from { opacity: 1; } to { opacity: 0; } }
-@keyframes shake { 15% { transform: translateX(-6px); } 30% { transform: translateX(6px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
 @keyframes arrive { 0% { opacity: 0.2; transform: translateY(-4px); } 100% { opacity: 1; transform: none; } }
-@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes pop { 40% { transform: scale(1.45); } }
-@keyframes toast-punch {
-  0% { opacity: 0; transform: translateX(-50%) scale(0.3); }
-  9% { opacity: 1; transform: translateX(-50%) scale(1.22); }
-  16% { transform: translateX(-50%) scale(0.94); }
-  22% { transform: translateX(-50%) scale(1); }
-  80% { opacity: 1; transform: translateX(-50%) scale(1); }
-  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(1); }
-}
-@keyframes fly {
-  0%, 24% { opacity: 0; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 140px)) scale(0.8); }
-  34% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 122px)) scale(1.6); }
-  44% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 118px)) scale(1.6); }
-  82% { opacity: 1; transform: translate(0, 0) scale(0.9); }
-  100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
-}
 @keyframes score-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
 @keyframes combo-in { 0% { opacity: 0; transform: scale(0.4); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes blink { 50% { opacity: 0.25; } }
@@ -434,8 +313,7 @@
 @keyframes ready { 50% { box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 26px rgba(255, 179, 71, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .bob-slow, .drift, .twinkle, .galaxy-spin, .explorer .climber, .climber .flame path, .smoke i, .speedlines i,
-  .miss-flash, .where, .toast, .stage.is-stumble .scene, .toast.tier::before, .combo, .scorebox strong, .timer-track i,
+  .toast, .combo, .scorebox strong, .timer-track i, .retry-note,
   .tally li, .mission, .sheet .mode-card .primary { animation: none; }
   .scene { transition: none; }
 }
@@ -448,7 +326,7 @@
 .log-stats p { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .log-stats .mono { font-size: 1.05rem; color: var(--amber); }
 .log-stats small { font-size: 0.7rem; color: var(--muted); }
-.world-strip { list-style: none; display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin: 0; padding: 0; }
+.world-strip { list-style: none; display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; margin: 0; padding: 0; }
 .world-strip li { height: 6px; border: 1px solid rgba(143, 211, 255, 0.35); }
 .world-strip li.on { background: var(--amber); border-color: var(--amber); }
 .finds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -788,20 +666,18 @@
 @keyframes tally-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) {
   .tally li { animation: none; }
-  .stage.settling .layer, .stage.settling .explorer { transition: none; }
 }
 .sheet .reveal .pts-line { font-weight: inherit; }
 
 /* ---------- the climb takes the screen (like a dive in Krillion) ---------- */
 /* One thing on screen at a time. While a question is open the card asks it. Once you lock in, the card clears away,
-   your answer rises through the tier lines in the sky with the camera following it, and the result floats over the
-   scene. A Next button brings the card back. */
+   the rocket climbs with your answer riding above it and the camera following, and the result floats over the scene.
+   A Next button brings the card back. */
 
 /* The heads-up strip: where you are on the left, the stage strip in the middle, the score on the right. */
 .hud { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
 .hud-side { max-width: none; }
 .hud-side.end { max-width: none; justify-self: end; }
-.hud .where .place { font-size: 0.82rem; letter-spacing: 0.1em; overflow-wrap: anywhere; }
 .hud-mid { display: flex; justify-content: center; }
 .stage-strip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }
 .hud .dots { display: flex; gap: 3px; }
@@ -815,24 +691,10 @@
 .hud .dots i.band-black { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 122, 102, 0.5); }
 .hud .stage-no { font-size: 0.56rem; letter-spacing: 0.16em; color: var(--line-art); text-shadow: 0 0 6px rgba(143, 211, 255, 0.5); }
 
-/* The question card: just the question. The tiers are drawn in the sky during the climb instead. */
+/* The question card: just the question. */
 .sheet .stack.ask { animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .sheet .play-head p span { color: var(--muted); font-size: 0.8rem; }
 .sheet .rarer { margin: -2px 0 0; font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; text-align: center; color: var(--line-art); opacity: 0.8; }
-
-/* Tier lines across the sky, at the height each tier would carry your answer. They light up as the answer passes. */
-.ladder { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.45s ease; }
-.ladder.on { opacity: 1; transition: opacity 0.2s ease; }
-.rung { --rung: var(--line-art); position: absolute; left: 10px; right: 48px; top: 0; height: 0; background: none; border-top: 1.5px dashed rgba(143, 211, 255, 0.3); will-change: transform; transition: border-color 0.2s, box-shadow 0.2s; }
-.rung span { position: absolute; right: 0; bottom: 4px; font-family: var(--display); font-weight: 700; font-size: 0.58rem; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; color: rgba(232, 241, 255, 0.5); transition: color 0.2s; }
-.rung.band-green { --rung: var(--good-ink); }
-.rung.band-yellow { --rung: var(--close-ink); }
-.rung.band-blue { --rung: var(--off-ink); }
-.rung.band-brown { --rung: var(--far-ink); }
-.rung.passed { border-top-color: var(--rung); box-shadow: 0 0 8px var(--rung); }
-.rung.passed span { color: var(--rung); text-shadow: 0 0 8px var(--rung); }
-.rung.earned.passed { border-top-style: solid; border-top-width: 2px; }
-.rung.earned.passed span { font-size: 0.7rem; }
 
 /* Your answer, rising through the sky with the climber under it. */
 .answer-tag {
@@ -870,10 +732,6 @@
 .stage.is-focus .sheet main { height: 100%; pointer-events: none; }
 .stage.is-focus .sheet main a, .stage.is-focus .sheet main button { pointer-events: auto; }
 .stage.is-focus .sky-tags { display: none; }
-/* Passing your best or reaching space shows as one slim line under the heads-up strip, above the result. */
-.stage.is-focus .toast { top: 54px; flex-flow: row wrap; justify-content: center; align-items: baseline; gap: 2px 8px; padding: 5px 12px; width: max-content; max-width: calc(100% - 32px); white-space: normal; text-align: center; }
-.stage.is-focus .toast strong { font-size: 0.78rem; }
-.stage.is-focus .toast span { font-size: 0.62rem; }
 .stage.is-focus .sound-toggle { left: auto; right: 14px; }
 
 /* The result, over the scene: the tier's picture, the tier, your answer, the points, one line on the crowd, the fact. */
@@ -905,8 +763,12 @@
   align-items: center;
   gap: 6px;
   text-align: center;
-  border-radius: 24px;
-  background: radial-gradient(closest-side, rgba(7, 11, 22, 0.9), rgba(7, 11, 22, 0.72) 62%, rgba(7, 11, 22, 0));
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(10, 14, 34, 0.78);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  -webkit-backdrop-filter: blur(16px) saturate(140%);
+  backdrop-filter: blur(16px) saturate(140%);
   color: var(--ink);
   animation: none;
 }
@@ -941,7 +803,60 @@
 @media (prefers-reduced-motion: reduce) {
   .sheet .stack.ask, .result-icon { animation: none; transition: none; }
 }
-/* On a wide screen the tier lines span the column the climb happens in, not the whole window. */
-@media (min-width: 640px) {
-  .rung { left: calc(50% - 250px); right: calc(50% - 250px); }
+
+/* ---------- the canvas climb ---------- */
+/* Over a result, the landmark call-outs sit above the Next button. */
+.stage.is-focus .toasts { bottom: 100px; }
+/* The answer rides above the rocket. Journey moves it every frame. */
+.answer-tag { max-width: min(78vw, 320px); }
+
+/* The 3-second read: the question shows, the clock waits. */
+.timer.waiting .timer-track i { background: rgba(143, 211, 255, 0.28); box-shadow: none; animation: read-pulse 1s ease-in-out infinite; }
+.timer.waiting .mono { min-width: 0; color: #ffd88a; text-shadow: 0 0 8px rgba(255, 179, 71, 0.5); white-space: nowrap; }
+.sheet .number-field:has(input:disabled) { opacity: 0.6; }
+@keyframes read-pulse { 50% { opacity: 0.45; } }
+
+/* A name that is not on the list: the box shakes and clears, and this line says why. */
+.retry-note {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 122, 102, 0.55);
+  background: rgba(255, 122, 102, 0.1);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #ffd0c8;
+  text-align: center;
+  animation: retry-in 0.4s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.retry-note b { color: var(--miss-red); font-family: var(--display); font-weight: 900; }
+@keyframes retry-in { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: none; } }
+
+/* The result glows in its tier's colour. Deep space and Supernova get a ring of light. */
+.stage.is-focus .sheet .result .reveal[class*="tier-"] { --tier: var(--tier-c); --tier-glow: color-mix(in srgb, var(--tier-c) 60%, transparent); }
+.stage.is-focus .sheet .result .reveal.tier-miss { --tier: #d6dbe8; --tier-glow: rgba(139, 147, 168, 0.4); }
+.stage.is-focus .sheet .result .reveal.tier-3,
+.stage.is-focus .sheet .result .reveal.tier-4 {
+  border-color: color-mix(in srgb, var(--tier-c) 70%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tier-c) 40%, transparent), 0 0 46px color-mix(in srgb, var(--tier-c) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.15);
+}
+.stage.is-focus .sheet .result .reveal .flavour { margin: 2px 0 0; font-size: 0.9rem; font-weight: 600; line-height: 1.35; color: #e6eaf7; }
+.sheet .reveal .flavour { margin: 4px 0 0; font-size: 0.9rem; font-weight: 600; }
+
+/* ---------- wide screens ---------- */
+/* The card sits on the left and the rocket climbs on the right, at 62% of the width. */
+@media (min-width: 900px) {
+  .hud { left: 36px; right: 36px; top: 12px; }
+  .sheet { top: 64px; padding: 0 0 0 56px; }
+  .stage main { width: 440px; margin: 0; }
+  .stage.is-focus .sheet { padding: 0 0 0 56px; }
+  .stage.is-focus .sheet .stack.result { padding-top: 104px; }
+  .sky-tags { left: 56px; right: auto; width: 440px; }
+  .toasts { left: 24%; }
+  .gain { font-size: 1.25rem; }
+  .gain.big { font-size: 1.75rem; }
+  .where .alt-v, .where .alt-v.long span { font-size: 1.6rem; }
+  .where .alt-v small { font-size: 0.8rem; }
+  .sheet .ad-slot { left: 56px; width: 440px; }
+  .altimeter { top: 64px; }
 }

@@ -1,14 +1,15 @@
 import { QuestionTimer } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CountUp, Tally, resultIcon } from "./game";
-import { useFocusMode, useJourney } from "./journey";
+import { CountUp, Tally, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
+import { tierStyle, useFocusMode, useJourney } from "./journey";
 import { haptic, shareText } from "./haptic";
 import {
   COMPARE_MIN_PLAYERS,
   canCompare,
   formatFactValue,
   formatNumber,
+  nextDayStart,
   parseShorthand,
   roundSig,
   type Confidence,
@@ -170,6 +171,7 @@ export function QuestionScreen({
   index,
   busy,
   error,
+  rejections = 0,
   onSubmit,
   onHome,
 }: {
@@ -178,31 +180,48 @@ export function QuestionScreen({
   index: number;
   busy: boolean;
   error: string | null;
+  /** Names the server said are not on the list for this question. Each one costs 2 seconds. */
+  rejections?: number;
   onSubmit: (guess: Guess) => void;
   onHome: () => void;
 }) {
+  const reading = useReadTime(question.id);
+  const locked = busy || reading > 0;
   return (
     <div className="stack ask">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <QuestionTimer
         questionKey={question.id}
-        running={!busy}
+        running={!busy && reading === 0}
+        penaltyMs={rejections * RETRY_PENALTY_MS}
+        waitLabel={`Clock starts in ${reading}`}
         onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
       />
       {question.type !== "name_one" ? <p className="type-kicker">{typeLabel(question.type)}</p> : null}
       <h2 className="prompt">{question.prompt}</h2>
       {question.type === "name_one" ? <p className="rarer">▲ Rarer answers climb higher ▲</p> : null}
       {question.type === "estimate" && question.slider && question.unit ? (
-        <EstimateForm unit={question.unit} slider={question.slider} busy={busy} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
+        <EstimateForm unit={question.unit} slider={question.slider} busy={locked} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
       ) : null}
       {question.type === "compare" ? (
-        <CompareForm items={question.items} busy={busy} onSubmit={(choiceId) => onSubmit({ type: "compare", choiceId })} />
+        <CompareForm items={question.items} busy={locked} onSubmit={(choiceId) => onSubmit({ type: "compare", choiceId })} />
       ) : null}
       {question.type === "rank" ? (
-        <RankForm items={question.items} busy={busy} onSubmit={(order) => onSubmit({ type: "rank", order })} />
+        <RankForm items={question.items} busy={locked} onSubmit={(order) => onSubmit({ type: "rank", order })} />
       ) : null}
       {question.type === "name_one" ? (
-        <NameForm suggestions={question.suggestions} busy={busy} onSubmit={(text) => onSubmit({ type: "name_one", text })} />
+        <NameForm
+          suggestions={question.suggestions}
+          busy={busy}
+          locked={reading > 0}
+          rejections={rejections}
+          onSubmit={(text) => onSubmit({ type: "name_one", text })}
+        />
+      ) : null}
+      {rejections > 0 ? (
+        <p className="retry-note" key={rejections} role="alert">
+          Not on our list. Try another. <b>−2 s</b>
+        </p>
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
     </div>
@@ -233,16 +252,18 @@ export function RevealScreen({
   const { holding } = useJourney();
   const named = question.type === "name_one";
   const scored = reveal.points > 0;
+  const tier = tierOf(reveal.points, maxPoints(question.type));
   return (
     <div className="stack result">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
-      <section className={`reveal band-${reveal.band}`} aria-live="polite">
+      <section className={`reveal band-${reveal.band} tier-${tier < 0 ? "miss" : tier}`} style={tierStyle(tier)} aria-live="polite">
         <p className="result-icon" aria-hidden="true">
           {named ? resultIcon(reveal.label, reveal.emoji) : reveal.emoji}
         </p>
         <h2 className="result-tier">{reveal.label}</h2>
         {named && scored && reveal.answerText ? <p className="result-answer">“{reveal.answerText}”</p> : null}
         {!named && reveal.answerText && reveal.answerText !== reveal.label ? <p className="result-answer">{reveal.answerText}</p> : null}
+        <p className="flavour">{flavourLine(reveal.label, tier, named)}</p>
         <p className="points">
           <b className="pts-line">
             {reveal.points > 0 ? "+" : ""}
@@ -311,7 +332,7 @@ export function EndScreen({
           <p className="kicker">Classic · #{puzzle.puzzleNumber}</p>
         </div>
         <div className="end-score">
-          <h2>You reached {result.reached}</h2>
+          <h2>You climbed {result.reached}</h2>
           <p className="score">
             <CountUp value={result.score} pad={3} />
             <span> pts</span>
@@ -622,6 +643,11 @@ function placeLog(value: number, window: { start: number; end: number }): number
   return Math.min(1, Math.max(0, t));
 }
 
+/** "About 7%", or "Fewer than 1 in 100" for the rarest answers, where a rounded 0% would read as nobody. */
+function estimateShare(percent: number): string {
+  return percent < 1 ? "Fewer than 1 in 100" : `About ${percent}%`;
+}
+
 function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: PublicQuestion["type"]; compact?: boolean }) {
   // Over the scene after a climb there is room for one line about the crowd and the rare answers, no tables.
   if (compact && crowd.kind === "named") {
@@ -630,11 +656,13 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
       ? null
       : early
         ? crowd.blendedPercent !== null
-          ? `About ${crowd.blendedPercent}% would say ${crowd.answer}. That is our estimate until ${COMPARE_MIN_PLAYERS} players.`
+          ? `${estimateShare(crowd.blendedPercent)} would say ${crowd.answer}. That is our estimate until ${COMPARE_MIN_PLAYERS} players.`
           : null
-        : crowd.percent < 50
-          ? `Only ${crowd.percent}% of players said ${crowd.answer}.`
-          : `${crowd.percent}% of players said ${crowd.answer}.`;
+        : crowd.percent < 1
+          ? `Under 1% of players said ${crowd.answer}.`
+          : crowd.percent < 50
+            ? `Only ${crowd.percent}% of players said ${crowd.answer}.`
+            : `${crowd.percent}% of players said ${crowd.answer}.`;
     return (
       <div className="crowd">
         {line ? <p>{line}</p> : null}
@@ -650,7 +678,7 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
           {crowd.kind === "named" && !crowd.answer
             ? "That answer was not accepted."
             : crowd.kind === "named" && crowd.blendedPercent !== null
-              ? `Our estimate: about ${crowd.blendedPercent}% would say ${crowd.answer}. Real crowd shares start at ${COMPARE_MIN_PLAYERS} players.`
+              ? `Our estimate: ${estimateShare(crowd.blendedPercent).toLowerCase()} would say ${crowd.answer}. Real crowd shares start at ${COMPARE_MIN_PLAYERS} players.`
               : `Crowd stats start at ${COMPARE_MIN_PLAYERS} players.`}
         </p>
         {crowd.kind === "named" && crowd.rare.length > 0 ? <p>Rare right answers: {crowd.rare.join(", ")}</p> : null}
@@ -700,6 +728,27 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
   );
 }
 
+/** Each name that is not on the list costs this much of the clock. */
+const RETRY_PENALTY_MS = 2000;
+/** The question shows for this long before its clock starts, so reading it is free. */
+const READ_SECONDS = 3;
+
+/** Seconds of reading time left for a question: 3, 2, 1, then 0 once its clock is running. */
+function useReadTime(questionKey: string): number {
+  const [left, setLeft] = useState(READ_SECONDS);
+  useEffect(() => {
+    setLeft(READ_SECONDS);
+    const started = performance.now();
+    const id = window.setInterval(() => {
+      const next = Math.max(0, READ_SECONDS - Math.floor((performance.now() - started) / 1000));
+      setLeft(next);
+      if (next === 0) window.clearInterval(id);
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [questionKey]);
+  return left;
+}
+
 function Countdown() {
   const [label, setLabel] = useState(() => countdownLabel(new Date()));
   useEffect(() => {
@@ -709,8 +758,9 @@ function Countdown() {
   return <p className="countdown">{label}</p>;
 }
 
+/** Time to the next puzzle. A new day starts at midnight India time for everyone. */
 function countdownLabel(now: Date): string {
-  const next = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1);
+  const next = nextDayStart(now).getTime();
   const ms = Math.max(0, next - now.getTime());
   const hours = Math.floor(ms / 3_600_000);
   const minutes = Math.floor((ms % 3_600_000) / 60_000);
@@ -723,14 +773,41 @@ function countdownLabel(now: Date): string {
 function NameForm({
   suggestions,
   busy,
+  locked = false,
+  rejections = 0,
   onSubmit,
 }: {
   suggestions: string[];
   busy: boolean;
+  /** True during the 3-second read: the question shows, the box waits. */
+  locked?: boolean;
+  /** Goes up each time a name is not on the list. The box clears for the next try. */
+  rejections?: number;
   onSubmit: (text: string) => void;
 }) {
   const [text, setText] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (rejections === 0) return;
+    setText("");
+    setLocalError(null);
+    const input = inputRef.current;
+    if (!input) return;
+    input.focus({ preventScroll: true });
+    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      input.closest(".number-field")?.animate(
+        [{ transform: "translateX(0)" }, { transform: "translateX(-8px)" }, { transform: "translateX(7px)" }, { transform: "translateX(-4px)" }, { transform: "translateX(0)" }],
+        { duration: 380, easing: "ease-out" },
+      );
+    }
+  }, [rejections]);
+
+  useEffect(() => {
+    // Once the read is over, put the cursor in the box on a computer. A phone waits for a tap, so no keyboard jumps up.
+    if (!locked && window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus({ preventScroll: true });
+  }, [locked]);
   return (
     <form
       className="guess-form"
@@ -746,6 +823,8 @@ function NameForm({
       <label className="number-field">
         <span className="sr">Your answer</span>
         <input
+          ref={inputRef}
+          disabled={locked}
           list={suggestions.length > 0 ? "name-suggestions" : undefined}
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -768,7 +847,7 @@ function NameForm({
           : "No list for this one. Small spelling slips are fine."}
       </p>
       {localError ? <p className="form-error">{localError}</p> : null}
-      <button className="primary" type="submit" disabled={busy}>
+      <button className="primary" type="submit" disabled={busy || locked}>
         {busy ? "Checking…" : "Lock in answer"}
       </button>
     </form>

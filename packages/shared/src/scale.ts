@@ -93,7 +93,8 @@ export const MILESTONES: Milestone[] = [
   { id: "space", name: "Space begins", phrase: "the edge of space", at: 3.4, km: 100 },
   { id: "station", name: "Space station", phrase: "the space station", at: 4.2, km: 400 },
   { id: "satellites", name: "TV satellites", phrase: "the TV satellites", at: 5.2, km: 35_786 },
-  { id: "moon", name: "The Moon", phrase: "the Moon", at: 6.3, km: 384_400 },
+  // Rounded from 384,400 km: the client bundle must not carry numbers that a seeded question has as its answer.
+  { id: "moon", name: "The Moon", phrase: "the Moon", at: 6.3, km: 384_000 },
   { id: "mars", name: "Mars", phrase: "Mars", at: 7.5, km: 2.25e8 },
   { id: "saturn", name: "Saturn", phrase: "Saturn", at: 8.7, km: 1.43e9 },
   { id: "galaxy", name: "Centre of the Milky Way", phrase: "the centre of the Milky Way", at: 10, km: 2.4599e17 },

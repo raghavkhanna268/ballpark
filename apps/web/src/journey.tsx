@@ -1,48 +1,34 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import {
-  CLIMBER_X,
-  FAR_H,
-  FAR_RATE,
-  FRONT_H,
-  FRONT_RATE,
-  SIDE,
-  SPACE_STOP,
-  STEP,
-  WORLD_H,
-  WORLD_STOPS,
-  WORLD_W,
-  WorldFar,
-  WorldFront,
-  WorldMain,
-  climberY,
-  stopAt,
-} from "./worlds";
-import { useCountUp, type Rung } from "./game";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { MILESTONES, altitudeKm, formatAltitude, formatDistance, nextMilestone } from "@ballpark/shared";
+import { useCountUp } from "./game";
+import { IGNITION_MS, climbMs, createSky, replayMs, tierColor, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
+import { playBurner, playChime, playSparkle, playSputter, readSound, setSound, unlockAudio } from "./sound";
 import "./journey.css";
 
-/** One answer's flight. */
+/** One answer's climb. */
 export type Hop = {
   id: number;
   kind: "idle" | "voyage" | "stumble";
   travel: number;
-  /** What a scoring answer earned: the pop-up's label and points, and a level from 1 to 5 that sizes the flame and the glow. */
+  /** What a scoring answer earned: its tier label and points, and a level from 1 (Liftoff) to 5 (Supernova) that sets the burner. */
   gain?: { label: string; points: number; level: number; unit?: string };
-  /** Right answers in a row after this one, or the run that a miss just broke. Cosmetic: it never changes the score. */
+  /** Right answers in a row after this one. Cosmetic: it never changes the score. */
   combo?: number;
-  /** What the player typed. It rises through the sky as a tag while the climb plays. Empty when the clock ran out. */
+  /** What the player typed. It rides above the rocket while the climb plays. Empty when the clock ran out. */
   answer?: string;
-  /** The tier lines to draw across the sky for this climb, lowest first. */
-  ladder?: Rung[];
 };
 /** The score in the heads-up display. It counts up after each answer, like an arcade score. */
 export type HudScore = { value: number; label: string; digits: number };
 export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number };
+/** One answer's stretch of the climb, coloured by its tier (0 Liftoff to 4 Supernova, -1 a miss). */
+export type TrailSegment = SkyTrail;
 
 /** "your best" or "your friend and your best", for the HUD once every ghost is behind you. */
 function passedLine(ghosts: Ghost[]): string {
   return ghosts.map((ghost) => ghost.label.charAt(0).toLowerCase() + ghost.label.slice(1)).join(" and ");
 }
-type Motion = "idle" | "voyage" | "stumble" | "replay";
+type Motion = "idle" | "climb" | "replay";
+type Toast = { id: number; born: number; title: string; detail: string };
 
 /**
  * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, whether a climb is
@@ -67,52 +53,49 @@ export function useFocusMode() {
   }, [setFocus]);
 }
 
-const SOUND_KEY = "ballpark.sound";
-const STOPS = WORLD_STOPS.length;
-/**
- * The scene fills the screen and the card sits over its top. The climber rests this far down the open sky
- * under the card, so you can see where you are heading.
- */
-const ANCHOR = 0.55;
-/** The open sky under the card never gets smaller than this, so the climber always has room. */
-const MIN_WINDOW = 180;
-/** With the card cleared away, the climber starts low on the screen so the tier lines above are in view. */
-const FOCUS_ANCHOR = 0.78;
+/** At this width and up, the card sits on the left and the rocket climbs on the right. */
+const WIDE_MIN = 900;
+/** Where the rocket rests, as a share of the screen height from the top. */
+const ANCHOR = 0.84;
+/** The rocket never rests lower than this, even under a tall card. */
+const ANCHOR_MAX = 0.92;
+/** The rocket's nose and a little air need this much room under the card, in pixels. */
+const ROCKET_ROOM = 76;
 /** The heads-up strip at the top. With the card cleared away, the open sky starts under it. */
 const HUD_H = 46;
-/** The answer tag floats this far above the climber, in pixels. The tier lines are drawn at the tag's height. */
-const TAG_LIFT = 62;
-const VOYAGE_MS = 2300;
-/** With the card cleared away, the climb plays for about 2 seconds for the commonest answer up to 3 for the rarest. */
-const RISE_MIN_MS = 1500;
-const RISE_MAX_MS = 3000;
-const STUMBLE_MS = 1700;
-const REPLAY_MS = 3600;
-const ROUTE_POINTS = 1600;
-const TRAIL_OFFSET = 34;
-
-type Pose = { v: number; cam: number; dx: number; dy: number; rot: number; sx: number; sy: number };
-type Toast = { id: number; title: string; detail: string; tone: "world" | "pass" | "tier" | "space" | "miss"; level?: number };
-
-const REST: Omit<Pose, "v" | "cam"> = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1 };
+const TOAST_MS = 2600;
+const GHOST_COLORS: Record<Ghost["id"], string> = {
+  best: "rgba(232,241,255,0.8)",
+  average: "#8fd3ff",
+  top: "#ffb347",
+  friend: "#ff9ad5",
+};
+const TOP = MILESTONES[MILESTONES.length - 1].at;
 
 export function Journey({
   progress,
   hop,
   overview,
   page,
+  scenery,
+  trail = [],
   ghosts = [],
   score = null,
   combo = 0,
   children,
 }: {
-  /** 0 is the launch pad. Each correct answer climbs 1. A miss climbs about a third. */
+  /** 0 is the launch pad and 10 the centre of the Milky Way. Height follows points. */
   progress: number;
   hop: Hop;
+  /** The end screen: the whole climb replays from the launch pad. */
   overview: boolean;
-  /** Changes whenever the card below the scene shows a new screen, so it starts scrolled to the top. */
+  /** Changes whenever the card shows a new screen, so it starts scrolled to the top. */
   page: string;
-  /** Faint climbers for your best run, today's average and best players, and a friend you are racing. */
+  /** Today's scenery. */
+  scenery: Scenery;
+  /** The climb so far, one stretch per answer. Drawn as a coloured trail under the rocket. */
+  trail?: TrailSegment[];
+  /** Faint rockets for your best run, today's average and best players, and a friend you are racing. */
   ghosts?: Ghost[];
   /** The run's score, shown top right while a run is on screen. */
   score?: HudScore | null;
@@ -122,85 +105,128 @@ export function Journey({
 }) {
   const reduced = useReducedMotion();
   const stageRef = useRef<HTMLDivElement>(null);
-  const sceneRef = useRef<HTMLDivElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
-  const farRef = useRef<SVGSVGElement>(null);
-  const mainRef = useRef<SVGSVGElement>(null);
-  const frontRef = useRef<SVGSVGElement>(null);
-  const explorerRef = useRef<HTMLDivElement>(null);
-  const routeRef = useRef<SVGPolylineElement>(null);
+  const skyRef = useRef<Sky | null>(null);
+  const altRef = useRef<HTMLSpanElement>(null);
+  const altUnitRef = useRef<HTMLElement>(null);
   const markerRef = useRef<HTMLElement>(null);
   const fillRef = useRef<HTMLElement>(null);
-  const altRef = useRef<HTMLSpanElement>(null);
-  const labelRef = useRef<HTMLSpanElement>(null);
-  const route = useRef<Array<[number, number]>>([]);
+  const gainRef = useRef<HTMLDivElement>(null);
   const tagRef = useRef<HTMLDivElement>(null);
-  const rungRefs = useRef<Array<HTMLDivElement | null>>([]);
   const measureRef = useRef<() => void>(() => {});
-  /** Scene size, world scale, and `top`: where the card over the scene ends, in pixels from the top. */
-  const size = useRef({ w: 390, h: 520, k: 1, top: 0 });
-  const motionRef = useRef<Motion>("idle");
-  const pose = useRef<Pose>({ v: progress, cam: progress, ...REST });
   const hopRef = useRef(hop.id);
   hopRef.current = hop.id;
-  const landedRef = useRef(-1);
+  const lastHop = useRef(hop.id);
   const ghostsRef = useRef(ghosts);
-  const [k, setK] = useState(1);
+  ghostsRef.current = ghosts;
+  /** The tier of the climb playing now, so each frame can write the right gain label. */
+  const climbTier = useRef(-1);
+  const gainWidth = useRef(0);
+  const lastProgress = useRef(progress);
+  const toastId = useRef(0);
   const [motion, setMotion] = useState<Motion>("idle");
-  const [landed, setLanded] = useState(() => stopAt(progress));
-  const [arrived, setArrived] = useState(0);
-  const [toast, setToast] = useState<Toast | null>(null);
-  const [fly, setFly] = useState<{ id: number; text: string } | null>(null);
-  const [sound, setSound] = useState(() => readSound());
+  const [landed, setLanded] = useState(progress);
+  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [sound, setSoundOn] = useState(() => readSound());
   const [focus, setFocus] = useState(false);
   const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
   /** The last answer whose climb has finished. Until the current one lands, a result waits off screen. */
   const [settledHop, setSettledHop] = useState(hop.id);
   const focusRef = useRef(focus);
-  /** Where the current climb started, so the tier lines stay put in the sky while the camera follows the tag. */
-  const ladderFrom = useRef({ id: hop.id, v: progress });
-
-  ghostsRef.current = ghosts;
-  motionRef.current = motion;
   focusRef.current = focus;
-  if (ladderFrom.current.id !== hop.id) ladderFrom.current = { id: hop.id, v: pose.current.v };
+
+  function pushToast(title: string, detail: string) {
+    toastId.current += 1;
+    const toast = { id: toastId.current, born: Date.now(), title, detail };
+    setToasts((list) => [...list, toast].slice(-3));
+  }
 
   useEffect(() => {
     const stage = stageRef.current;
-    const scene = sceneRef.current;
+    const canvas = canvasRef.current;
     const sheet = sheetRef.current;
-    if (!stage || !scene || !sheet) return;
-    let settle = 0;
+    if (!stage || !canvas || !sheet) return;
+    const sky = createSky(canvas, reduced);
+    skyRef.current = sky;
+    sky.setScene(scenery);
+    sky.setTrail(trail);
+    sky.setGhosts(skyGhosts(ghostsRef.current));
+    sky.jump(progress);
+    let size = { w: 0, h: 0, wide: false };
+
     const measure = () => {
-      const w = scene.clientWidth || 390;
-      const h = scene.clientHeight || 520;
-      // Fit the drawn column to the width on a phone. On a wide screen, fit to height and show more sky.
-      const nextK = Math.max(0.5, Math.min((stage.clientHeight * 0.8) / 700, w / 400));
-      const card = sheet.getBoundingClientRect();
-      // With the card cleared away the open sky starts right under the heads-up strip.
-      const top = focusRef.current ? HUD_H : Math.max(0, Math.min(h - MIN_WINDOW, Math.round(card.bottom - stage.getBoundingClientRect().top)));
-      const moved = Math.abs(top - size.current.top) > 1;
-      size.current = { w, h, k: nextK, top };
-      stage.style.setProperty("--sheet-bottom", `${top}px`);
-      setK(nextK);
-      // A new card height moves the open sky. Glide the world there instead of jumping, unless a flight is drawing it.
-      if (moved && motionRef.current === "idle") {
-        stage.classList.add("settling");
-        window.clearTimeout(settle);
-        settle = window.setTimeout(() => stage.classList.remove("settling"), 450);
+      const w = stage.clientWidth || 390;
+      const h = stage.clientHeight || 760;
+      const wide = w >= WIDE_MIN;
+      if (w !== size.w || h !== size.h || wide !== size.wide) {
+        size = { w, h, wide };
+        sky.resize(w, h, wide);
       }
-      draw();
+      const card = sheet.getBoundingClientRect();
+      const top = focusRef.current ? HUD_H : Math.max(0, Math.round(card.bottom - stage.getBoundingClientRect().top));
+      stage.style.setProperty("--sheet-bottom", `${top}px`);
+      const under = focusRef.current || wide ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
+      sky.setAnchor(under);
     };
     measureRef.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
-    observer.observe(scene);
     observer.observe(sheet);
+
+    sky.onFrame = (frame) => {
+      const km = altitudeKm(frame.progress);
+      const [value, unit] = splitDistance(formatDistance(km));
+      const alt = altRef.current;
+      if (alt && alt.textContent !== value) {
+        alt.textContent = value;
+        alt.parentElement?.classList.toggle("long", value.length > 5);
+      }
+      if (altUnitRef.current && altUnitRef.current.textContent !== unit) altUnitRef.current.textContent = unit;
+      const share = Math.max(0, Math.min(1, frame.progress / TOP));
+      if (markerRef.current) markerRef.current.style.bottom = `${share * 100}%`;
+      if (fillRef.current) fillRef.current.style.height = `${share * 100}%`;
+      const gain = gainRef.current;
+      if (gain) {
+        if (frame.climbing && climbTier.current >= 0) {
+          const text = `+${formatDistance(Math.max(0, km - altitudeKm(frame.from)))}`;
+          if (gain.textContent !== text) {
+            gain.textContent = text;
+            gainWidth.current = gain.offsetWidth;
+          }
+        }
+        // Beside the rocket on the right, or on its left when a long number would run off the screen.
+        const right = frame.x + 24;
+        const x = right + gainWidth.current > (stageRef.current?.clientWidth ?? 390) - 8 ? frame.x - 24 - gainWidth.current : right;
+        gain.style.transform = `translate3d(${Math.round(x)}px, ${Math.round(Math.max(66, frame.y - 64))}px, 0)`;
+      }
+      const tag = tagRef.current;
+      if (tag) tag.style.transform = `translate3d(${Math.round(frame.x)}px, ${Math.round(Math.max(60, frame.y - 104))}px, 0) translateX(-50%)`;
+      if (frame.climbing) {
+        const before = lastProgress.current;
+        const passed = ghostsRef.current.filter((ghost) => before < ghost.progress && frame.progress >= ghost.progress);
+        for (const ghost of passed) pushToast(`Passed ${ghost.label.toLowerCase()}`, formatAltitude(ghost.progress));
+      }
+      lastProgress.current = frame.progress;
+    };
+    sky.onMilestone = (index) => {
+      const milestone = MILESTONES[index];
+      pushToast(`Passed ${milestone.phrase}`, formatDistance(milestone.km));
+      playChime(index);
+    };
+
+    const unlock = () => unlockAudio();
+    window.addEventListener("pointerdown", unlock, true);
+    window.addEventListener("keydown", unlock, true);
     return () => {
       observer.disconnect();
-      window.clearTimeout(settle);
+      window.removeEventListener("pointerdown", unlock, true);
+      window.removeEventListener("keydown", unlock, true);
+      sky.destroy();
+      skyRef.current = null;
     };
+    // The sky is made once. Its scenery, trail and ghosts follow the props in the effects below.
   }, []);
 
   useLayoutEffect(() => {
@@ -208,200 +234,92 @@ export function Journey({
   }, [focus]);
 
   useEffect(() => {
-    if (!toast) return;
-    const id = window.setTimeout(() => setToast(null), 2200);
-    return () => window.clearTimeout(id);
-  }, [toast]);
+    skyRef.current?.setScene(scenery);
+  }, [scenery]);
 
   useEffect(() => {
-    if (!fly) return;
-    const id = window.setTimeout(() => setFly(null), 1500);
-    return () => window.clearTimeout(id);
-  }, [fly]);
-
-  /** Where the climber rests on screen: ANCHOR of the way down the open sky under the card. */
-  function anchorPx(): number {
-    const { h, top } = size.current;
-    return focusRef.current ? h * FOCUS_ANCHOR : top + (h - top) * ANCHOR;
-  }
-
-  /** World y at the top of the scene, so the camera's stop sits at the anchor. */
-  function cameraTop(cam: number): number {
-    return climberY(cam) - anchorPx() / size.current.k;
-  }
-
-  /** Puts every layer and the climber where the current pose says. Runs every frame while flying. */
-  function draw() {
-    const { w, k: scale } = size.current;
-    const p = pose.current;
-    const top = cameraTop(p.cam);
-    const left = w / 2 - (WORLD_W / 2 + SIDE) * scale;
-    if (farRef.current) farRef.current.style.transform = `translate3d(${left}px, ${-top * FAR_RATE * scale - 700 * scale}px, 0)`;
-    if (mainRef.current) mainRef.current.style.transform = `translate3d(${left}px, ${-top * scale}px, 0)`;
-    if (frontRef.current) frontRef.current.style.transform = `translate3d(${left}px, ${-top * FRONT_RATE * scale - 700 * scale}px, 0)`;
-    const ex = w / 2 + p.dx * scale;
-    const ey = (climberY(p.v) + p.dy - top) * scale;
-    const explorer = explorerRef.current;
-    // With the card cleared away the answer is the star, so the climber rides along a little smaller.
-    const small = focusRef.current ? 0.8 : 1;
-    if (explorer) {
-      explorer.style.transform = `translate3d(${ex}px, ${ey}px, 0) translate(-50%, -50%) rotate(${p.rot}deg) scale(${p.sx * small}, ${p.sy * small})`;
-      explorer.classList.toggle("suited", p.v >= SPACE_STOP - 0.5);
-    }
-    const tag = tagRef.current;
-    if (tag) tag.style.transform = `translate3d(${ex}px, ${ey - TAG_LIFT}px, 0) translate(-50%, -50%) rotate(${p.rot * 0.5}deg)`;
-    // Each tier line sits where an answer in that tier would carry the tag. It lights up once the tag passes it.
-    const from = ladderFrom.current.v;
-    rungRefs.current.forEach((rung, index) => {
-      const step = hop.ladder?.[index];
-      if (!rung || !step) return;
-      const y = (climberY(from + step.travel) - top) * scale - TAG_LIFT;
-      rung.style.transform = `translate3d(0, ${y}px, 0)`;
-      rung.classList.toggle("passed", p.v >= from + step.travel - 0.002);
-    });
-    const share = Math.max(0, Math.min(1, p.v / (STOPS - 1)));
-    if (markerRef.current) markerRef.current.style.bottom = `${share * 100}%`;
-    if (fillRef.current) fillRef.current.style.height = `${share * 100}%`;
-    const stop = stopAt(p.v);
-    if (stop !== landedRef.current) {
-      landedRef.current = stop;
-      const info = WORLD_STOPS[stop]!;
-      if (labelRef.current) labelRef.current.textContent = info.label;
-      if (altRef.current) altRef.current.textContent = `ALT ${info.altitude}`;
-    }
-  }
-
-  function pushRoute() {
-    const p = pose.current;
-    const point: [number, number] = [CLIMBER_X + p.dx, climberY(p.v) + p.dy + TRAIL_OFFSET];
-    const last = route.current[route.current.length - 1];
-    if (last && Math.hypot(point[0] - last[0], point[1] - last[1]) < 3) return;
-    route.current.push(point);
-    if (route.current.length > ROUTE_POINTS) route.current.shift();
-    routeRef.current?.setAttribute("points", route.current.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" "));
-  }
-
-  function resetRoute(to: number) {
-    route.current = [[CLIMBER_X, climberY(0) + TRAIL_OFFSET]];
-    if (to > 0) route.current.push([CLIMBER_X, climberY(to) + TRAIL_OFFSET]);
-    routeRef.current?.setAttribute("points", route.current.map(([x, y]) => `${x},${y}`).join(" "));
-  }
-
-  /** What changed by climbing from `from` to `to`: space, a rival overtaken, or a new height. */
-  function announce(from: number, to: number) {
-    if (from < SPACE_STOP - 0.5 && to >= SPACE_STOP - 0.5) {
-      setToast({ id: Date.now(), title: "You’re in space", detail: "100 km up · astronaut suit on", tone: "space" });
-      return;
-    }
-    const passed = ghostsRef.current.filter((ghost) => from < ghost.progress && to >= ghost.progress).sort((a, b) => b.progress - a.progress)[0];
-    if (passed) {
-      setToast({ id: Date.now(), title: `Passed ${passed.label.toLowerCase()}`, detail: `at ${formatAltitude(passed.progress)}`, tone: "pass" });
-      return;
-    }
-    const before = stopAt(from);
-    const after = stopAt(to);
-    // With the card cleared away, the heads-up display already names the new place as the climb reaches it.
-    if (after > before && !focusRef.current) {
-      const info = WORLD_STOPS[after]!;
-      setToast({ id: Date.now(), title: info.label, detail: `Altitude ${info.altitude}`, tone: "world" });
-    }
-  }
-
-  /** `rise`: the card has cleared away, so the climber rises steadily under the answer tag instead of flipping. */
-  function run(kind: Motion, from: number, to: number, duration: number, rise = false) {
-    const start = performance.now();
-    const d = to - from;
-    let frame = 0;
-    const tick = (now: number) => {
-      const t = Math.min(1, (now - start) / duration);
-      pose.current =
-        kind === "stumble"
-          ? stumblePose(t, from, d)
-          : kind === "replay"
-            ? replayPose(t, from, d)
-            : rise
-              ? risePose(t, from, d)
-              : voyagePose(t, from, d);
-      keepInFrame();
-      draw();
-      pushRoute();
-      if (t < 1) frame = requestAnimationFrame(tick);
-      else {
-        pose.current = { v: to, cam: to, ...REST };
-        draw();
-        pushRoute();
-        setMotion("idle");
-        setLanded(stopAt(to));
-        setArrived((value) => value + 1);
-        setSettledHop(hopRef.current);
-        if (kind !== "replay") announce(from, to);
-      }
-    };
-    frame = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(frame);
-  }
-
-  /** The camera lags so the climber visibly rises up the screen, but it never leaves the frame. */
-  function keepInFrame() {
-    const { h, k: scale, top } = size.current;
-    const p = pose.current;
-    const anchor = anchorPx();
-    const maxAbove = (anchor - top - 70) / scale;
-    const maxBelow = (h - anchor - 60) / scale;
-    const lead = (p.v - p.cam) * STEP - p.dy;
-    if (lead > maxAbove) p.cam = p.v - (maxAbove + p.dy) / STEP;
-    if (-lead > maxBelow) p.cam = p.v + (maxBelow - p.dy) / STEP;
-  }
+    skyRef.current?.setTrail(trail);
+  }, [trail]);
 
   useEffect(() => {
-    const from = pose.current.v;
+    skyRef.current?.setGhosts(skyGhosts(ghosts));
+  }, [ghosts]);
+
+  useEffect(() => {
+    if (toasts.length === 0) return;
+    const oldest = toasts[0];
+    const id = window.setTimeout(() => setToasts((list) => list.filter((toast) => toast.id !== oldest.id)), Math.max(0, oldest.born + TOAST_MS - Date.now()));
+    return () => window.clearTimeout(id);
+  }, [toasts]);
+
+  // A new answer climbs from where the rocket is to the new height. Anything else (a reload, a new mode) jumps there.
+  useEffect(() => {
+    const sky = skyRef.current;
+    if (!sky || overview) return;
+    const from = sky.progress();
     const to = progress;
-    if (overview) return;
-    if (reduced || Math.abs(to - from) < 0.001 || Math.abs(to - from) > 2.2 || to < from) {
-      pose.current = { v: to, cam: to, ...REST };
-      resetRoute(to);
-      draw();
-      setLanded(stopAt(to));
+    const fresh = hop.id !== lastHop.current && hop.kind !== "idle";
+    lastHop.current = hop.id;
+    if (!fresh || to < from - 0.001 || to - from > 2.5) {
+      sky.jump(to);
+      lastProgress.current = to;
+      climbTier.current = -1;
+      setLanded(to);
+      setMotion("idle");
       setSettledHop(hop.id);
       return;
     }
-    const kind = hop.kind === "stumble" ? "stumble" : "voyage";
-    setMotion(kind);
-    const streak = hop.combo ?? 0;
-    if (sound) playHop(kind);
-    // A climb with tier lines is one the card clears away for: the lines and the result over the scene tell the story,
-    // so there are no pop-ups. The result screen turns focus on in the same commit, after this render, so the hop
-    // itself says which kind of climb this is.
-    if (hop.ladder) return run(kind, from, to, flightMs(kind, to - from, true), true);
-    if (hop.gain && kind === "voyage") {
-      const { label, points, level, unit = "pts" } = hop.gain;
-      setToast({ id: Date.now(), title: label, detail: `+${points} ${unit}${streak >= 2 ? ` · combo x${streak}` : ""}`, tone: "tier", level });
-      if (score && points > 0) setFly({ id: hop.id, text: `+${points}` });
+    const travel = Math.max(0, to - from);
+    const tier = hop.kind === "voyage" && hop.gain && travel > 0 ? Math.max(0, Math.min(4, hop.gain.level - 1)) : -1;
+    climbTier.current = tier;
+    const gain = gainRef.current;
+    if (gain) {
+      gain.textContent = tier >= 0 ? "+0 m" : "No lift";
+      gain.style.setProperty("--c", tierColor(tier));
+      gain.classList.toggle("big", tier >= 3);
+      gainWidth.current = gain.offsetWidth;
     }
-    if (kind === "stumble") setToast({ id: Date.now(), title: "Miss", detail: streak >= 2 ? `combo x${streak} lost` : "+0 · still climbing", tone: "miss" });
-    return run(kind, from, to, flightMs(kind, to - from, false));
+    setMotion("climb");
+    if (tier >= 0) playBurner(tier, climbMs(travel), IGNITION_MS);
+    else playSputter(IGNITION_MS);
+    sky.climb({
+      from,
+      to,
+      tier,
+      onLand: () => {
+        setMotion("idle");
+        setLanded(to);
+        setSettledHop(hopRef.current);
+        if (tier >= 3) playSparkle();
+      },
+    });
   }, [progress, hop.id]);
 
   /** The end screen replays the whole climb from the launch pad to where the run landed. */
   useEffect(() => {
-    if (!overview) return;
+    const sky = skyRef.current;
+    if (!sky || !overview) return;
     const to = progress;
-    if (reduced || to < 0.5) {
-      pose.current = { v: to, cam: to, ...REST };
-      draw();
-      setLanded(stopAt(to));
+    climbTier.current = -1;
+    if (to < 0.05) {
+      sky.jump(to);
+      setLanded(to);
       return;
     }
+    const best = trail.reduce((top, segment) => (segment.to > segment.from ? Math.max(top, segment.tier) : top), 0);
     setMotion("replay");
-    pose.current = { v: 0, cam: 0, ...REST };
-    resetRoute(0);
-    draw();
-    return run("replay", 0, to, Math.min(REPLAY_MS, 900 + to * 420));
+    playBurner(Math.min(2, best), replayMs(to), 0);
+    sky.climb({
+      from: 0,
+      to,
+      tier: best,
+      replay: true,
+      onLand: () => {
+        setMotion("idle");
+        setLanded(to);
+      },
+    });
   }, [overview]);
-
-  useLayoutEffect(() => {
-    draw();
-  });
 
   useEffect(() => {
     sheetRef.current?.scrollTo({ top: 0 });
@@ -412,123 +330,84 @@ export function Journey({
   const flying = motion !== "idle" || pending;
   const holding = focus && pending;
   const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : ""].join(" ");
-  const earned = hop.gain?.points ?? 0;
-  const info = WORLD_STOPS[landed]!;
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
   // "Above everyone" only when the crowd ghosts are in play. Under 20 players only your best and a friend fly.
   const crowdGhost = ghosts.some((ghost) => ghost.id === "average" || ghost.id === "top");
-  /** Liftoff 1 … Supernova 5: the flame grows with the rarity of the answer. */
-  const boost = motion === "voyage" && hop.gain ? `boost-${hop.gain.level}` : "";
-  const columns = WORLD_W + SIDE * 2;
+  const next = nextMilestone(landed);
+  const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "replay" && !overview;
 
   return (
     <div className={stageClass} ref={stageRef}>
-      <div className="scene" ref={sceneRef}>
-        <svg ref={farRef} className="layer" style={{ width: columns * k, height: FAR_H * k }} viewBox={`${-SIDE} 0 ${columns} ${FAR_H}`} aria-hidden="true">
-          <WorldFar />
-        </svg>
-        <svg ref={mainRef} className="layer" style={{ width: columns * k, height: WORLD_H * k }} viewBox={`${-SIDE} 0 ${columns} ${WORLD_H}`} aria-hidden="true">
-          <WorldMain />
-          {ghosts.map((ghost, index) => (
-            <GhostClimber key={ghost.id} ghost={ghost} lane={index} />
-          ))}
-          <polyline ref={routeRef} className={`route-trace ${motion}`} points="" />
-        </svg>
-        <div className={`explorer ${motion} ${boost}`} ref={explorerRef} aria-hidden="true">
-          <Climber />
-          {motion === "stumble" ? <Smoke /> : null}
-        </div>
-        <svg ref={frontRef} className="layer front" style={{ width: columns * k, height: FRONT_H * k }} viewBox={`${-SIDE} 0 ${columns} ${FRONT_H}`} aria-hidden="true">
-          <WorldFront />
-        </svg>
-        {focus && hop.ladder ? (
-          <div className={holding ? "ladder on" : "ladder"} aria-hidden="true">
-            {hop.ladder.map((rung, index) => (
-              <div
-                key={rung.label}
-                className={`rung band-${rung.band}${rung.points === earned ? " earned" : ""}`}
-                ref={(element) => {
-                  rungRefs.current[index] = element;
-                }}
-              >
-                <span>
-                  {rung.label} · {rung.points}
-                </span>
-              </div>
-            ))}
-          </div>
-        ) : null}
+      <div className="scene">
+        <canvas ref={canvasRef} className="sky-canvas" aria-hidden="true" />
+        <div className={showGain ? "gain on" : "gain"} ref={gainRef} aria-hidden="true" />
         {focus && hop.answer !== undefined ? (
           <div className={`answer-tag ${hop.kind}${holding ? " on" : ""}`} ref={tagRef} aria-hidden="true">
             {hop.answer ? `“${hop.answer}”` : "Out of time"}
           </div>
         ) : null}
-        <div className="speedlines" aria-hidden="true">
-          {Array.from({ length: 8 }, (_, index) => (
-            <i key={index} style={{ left: `${10 + index * 11}%`, animationDelay: `${(index * 73) % 400}ms` }} />
+        <div className="toasts" role="status">
+          {toasts.map((toast) => (
+            <p className="toast" key={toast.id}>
+              <b>{toast.title}</b> · {toast.detail}
+            </p>
           ))}
         </div>
-        {motion === "stumble" ? <div className="miss-flash" key={`miss-${hop.id}`} /> : null}
-        {toast ? (
-          <div className={`toast ${toast.tone} ${toast.level ? `level-${toast.level}` : ""}`} key={toast.id} role="status">
-            <strong>{toast.title}</strong>
-            <span>{toast.detail}</span>
-          </div>
-        ) : null}
-        {fly && !reduced ? (
-          <div className="fly" key={`fly-${fly.id}`} aria-hidden="true">
-            {fly.text}
-          </div>
-        ) : null}
         <div className="hud">
           <div className="hud-side">
-            <p className="where" key={`where-${arrived}`}>
-              <span className="power" ref={altRef}>
-                ALT {info.altitude}
-              </span>
-              <span className="place" ref={labelRef}>
-                {info.label}
+            <p className="where">
+              <small>Altitude</small>
+              <span className="alt-v">
+                <span ref={altRef}>{splitDistance(formatAltitude(landed))[0]}</span>
+                <small ref={altUnitRef}>{splitDistance(formatAltitude(landed))[1]}</small>
               </span>
             </p>
           </div>
           <div className="hud-mid" ref={setHudSlot} />
           <div className="hud-side end">{score ? <ScoreBox score={score} hold={pending} /> : null}</div>
         </div>
-        {/* Under the card, at the top of the open sky: the combo meter and who to beat next. */}
+        {/* Under the card, at the top of the open sky: the next landmark, the combo meter and who to beat next. */}
         <div className="sky-tags">
-          <div>
-            {combo >= 2 ? (
-              <p className="combo" key={`combo-${combo}`}>
-                Combo <b>x{combo}</b>
-              </p>
-            ) : null}
-          </div>
-          <div>
-            {ghosts.length > 0 && !flying ? (
-              <p className={rival ? "rival" : "rival done"}>
-                <small>{rival ? "Next to beat" : crowdGhost ? "Above everyone" : "Passed"}</small>
-                <span>
-                  {rival ? rival.label : crowdGhost ? "you’re out in front" : passedLine(ghosts)}
-                  {rival ? <em> {formatAltitude(rival.progress)}</em> : null}
-                </span>
-              </p>
-            ) : null}
+          {next && !flying ? (
+            <p className="next-mile">
+              Next: {next.name} <b>{formatDistance(Math.max(0, next.km - altitudeKm(landed)))} to go</b>
+            </p>
+          ) : null}
+          <div className="sky-row">
+            <div>
+              {combo >= 2 ? (
+                <p className="combo" key={`combo-${combo}`}>
+                  Combo <b>x{combo}</b>
+                </p>
+              ) : null}
+            </div>
+            <div>
+              {ghosts.length > 0 && !flying ? (
+                <p className={rival ? "rival" : "rival done"}>
+                  <small>{rival ? "Next to beat" : crowdGhost ? "Above everyone" : "Passed"}</small>
+                  <span>
+                    {rival ? rival.label : crowdGhost ? "you’re out in front" : passedLine(ghosts)}
+                    {rival ? <em> {formatAltitude(rival.progress)}</em> : null}
+                  </span>
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
         <div className="altimeter" aria-hidden="true">
           <span className="alt-end">top</span>
           <div className="alt-line">
             <b ref={fillRef} />
-            {WORLD_STOPS.map((stop, index) => (
+            {MILESTONES.slice(1).map((milestone) => (
               <i
-                key={stop.id}
-                className={[index <= landed ? "passed" : "", index === SPACE_STOP ? "space" : ""].join(" ")}
-                style={{ bottom: `${(index / (STOPS - 1)) * 100}%` }}
+                key={milestone.id}
+                className={[milestone.at <= landed + 1e-6 ? "passed" : "", milestone.id === "space" ? "space" : ""].join(" ")}
+                style={{ bottom: `${(milestone.at / TOP) * 100}%` }}
               />
             ))}
             {ghosts.map((ghost) => (
-              <u key={ghost.id} className={`ghost-tick ${ghost.id}`} style={{ bottom: `${(Math.min(STOPS - 1, ghost.progress) / (STOPS - 1)) * 100}%` }} />
+              <u key={ghost.id} className={`ghost-tick ${ghost.id}`} style={{ bottom: `${(Math.min(TOP, ghost.progress) / TOP) * 100}%` }} />
             ))}
             <em ref={markerRef} />
           </div>
@@ -539,10 +418,10 @@ export function Journey({
           type="button"
           aria-pressed={sound}
           onClick={() => {
-            const next = !sound;
-            setSound(next);
-            writeSound(next);
-            if (next) playHop("voyage");
+            const on = !sound;
+            setSoundOn(on);
+            setSound(on);
+            if (on) window.setTimeout(() => playChime(1), 60);
           }}
         >
           {sound ? "Sound on" : "Sound off"}
@@ -553,6 +432,16 @@ export function Journey({
       </div>
     </div>
   );
+}
+
+/** "384,000 km" as ["384,000", "km"], so the number can be big and the unit small. */
+function splitDistance(text: string): [string, string] {
+  const space = text.indexOf(" ");
+  return space < 0 ? [text, ""] : [text.slice(0, space), text.slice(space + 1)];
+}
+
+function skyGhosts(ghosts: Ghost[]): SkyGhost[] {
+  return ghosts.map((ghost) => ({ progress: ghost.progress, label: ghost.label, color: GHOST_COLORS[ghost.id] }));
 }
 
 /** The run's score, top right. It holds still while a climb plays, then counts up as the climb lands. */
@@ -568,145 +457,9 @@ function ScoreBox({ score, hold }: { score: HudScore; hold: boolean }) {
   );
 }
 
-/** The altitude of the stop a fractional progress value rounds to. */
-export function formatAltitude(progress: number): string {
-  return WORLD_STOPS[stopAt(progress)]!.altitude;
-}
-
-/** A faint outline of another climber, parked at the height they reached. */
-function GhostClimber({ ghost, lane }: { ghost: Ghost; lane: number }) {
-  const x = [70, WORLD_W - 70, WORLD_W - 130, 130][lane % 4]!;
-  const y = climberY(ghost.progress) + (lane >= 2 ? -40 : 0);
-  return (
-    <g className={`ghost ${ghost.id}`} transform={`translate(${x} ${y})`}>
-      <circle cy="-18" r="8" fill="none" strokeWidth="1.4" />
-      <rect x="-7" y="-10" width="14" height="20" rx="5" fill="none" strokeWidth="1.4" />
-      <path d="M-4 10 v10 M4 10 v10" fill="none" strokeWidth="1.4" />
-      <text x="0" y="38" textAnchor="middle" fontSize="11" className="mono">
-        {ghost.label}
-      </text>
-    </g>
-  );
-}
-
-const ease = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
-const clamp01 = (t: number) => Math.max(0, Math.min(1, t));
-
-/** Right answer: crouch, blast off, a full flip at the top of the climb, then settle a whole stop higher. */
-function voyagePose(t: number, from: number, d: number): Pose {
-  if (t < 0.12) {
-    const c = Math.sin((t / 0.12) * Math.PI);
-    return { v: from, cam: from, dx: 0, dy: 12 * c, rot: 0, sx: 1 + 0.12 * c, sy: 1 - 0.15 * c };
-  }
-  const u = clamp01((t - 0.12) / 0.7);
-  const e = ease(u);
-  const flip = ease(clamp01((u - 0.3) / 0.45));
-  const stretch = Math.sin(Math.min(1, u * 4) * Math.PI) * 0.2;
-  const land = t > 0.82 ? Math.sin(((t - 0.82) / 0.18) * Math.PI) : 0;
-  return {
-    v: from + d * e,
-    cam: from + d * ease(clamp01((t - 0.24) / 0.76)),
-    dx: Math.sin(u * Math.PI) * 46,
-    dy: land * 8,
-    rot: -360 * flip + 10 * Math.sin(u * Math.PI),
-    sx: 1 - stretch * 0.4,
-    sy: 1 + stretch,
-  };
-}
-
-/** How long one answer's climb plays. With the card cleared away, a rarer answer climbs for longer, like a deeper dive. */
-function flightMs(kind: "voyage" | "stumble", distance: number, focus: boolean): number {
-  if (kind === "stumble") return STUMBLE_MS;
-  if (!focus) return VOYAGE_MS;
-  return Math.round(RISE_MIN_MS + (RISE_MAX_MS - RISE_MIN_MS) * clamp01(distance / 1.45));
-}
-
-/** Card cleared away: a short crouch, then a steady rise with a gentle sway. No flips. The camera follows a beat later. */
-function risePose(t: number, from: number, d: number): Pose {
-  if (t < 0.08) {
-    const c = Math.sin((t / 0.08) * Math.PI);
-    return { v: from, cam: from, dx: 0, dy: 8 * c, rot: 0, sx: 1 + 0.08 * c, sy: 1 - 0.1 * c };
-  }
-  const u = clamp01((t - 0.08) / 0.92);
-  const e = 1 - (1 - u) ** 3;
-  return {
-    v: from + d * e,
-    cam: from + d * ease(clamp01((t - 0.18) / 0.82)),
-    dx: Math.sin(u * Math.PI * 2) * 10 * (1 - u),
-    dy: 0,
-    rot: Math.sin(u * Math.PI * 3) * 5 * (1 - u),
-    sx: 1,
-    sy: 1,
-  };
-}
-
-/** Wrong answer: the jetpack sputters, the climber drops and tumbles, then manages a short climb. */
-function stumblePose(t: number, from: number, d: number): Pose {
-  if (t < 0.38) {
-    const s = t / 0.38;
-    return { v: from, cam: from, dx: Math.sin(t * 110) * 5, dy: 46 * ease(s), rot: Math.sin(t * 70) * 24 + 20 * s, sx: 1, sy: 1 };
-  }
-  if (t < 0.82) {
-    const u = (t - 0.38) / 0.44;
-    const e = 1 - (1 - u) ** 2;
-    return {
-      v: from + d * e,
-      cam: from + d * ease(clamp01((t - 0.3) / 0.7)),
-      dx: 6 * Math.sin(u * 14),
-      dy: 46 * (1 - e),
-      rot: 20 * (1 - u) + 8 * Math.sin(u * 18),
-      sx: 1,
-      sy: 1,
-    };
-  }
-  const l = (t - 0.82) / 0.18;
-  return { v: from + d, cam: from + d * ease(clamp01((t - 0.3) / 0.7)), dx: 0, dy: 4 * Math.sin(l * Math.PI), rot: 6 * Math.sin(l * Math.PI * 2), sx: 1, sy: 1 };
-}
-
-/** End screen: climb the whole way again with the camera alongside. */
-function replayPose(t: number, from: number, d: number): Pose {
-  const e = ease(t);
-  return { v: from + d * e, cam: from + d * ease(clamp01(t * 1.05 - 0.02)), dx: Math.sin(t * Math.PI * 3) * 14, dy: 0, rot: 0, sx: 1, sy: 1 };
-}
-
-/** The climber: a jetpack pilot on the way up, an astronaut once past the edge of space. */
-function Climber() {
-  return (
-    <svg viewBox="-40 -46 80 100" width="72" height="90" className="climber" aria-hidden="true">
-      <g className="flame">
-        <path d="M-13 30 q5 12 0 30 q-5 -18 0 -30 Z" />
-        <path d="M13 30 q5 12 0 30 q-5 -18 0 -30 Z" />
-      </g>
-      <rect className="pack" x="-19" y="-8" width="11" height="34" rx="5" />
-      <rect className="pack" x="8" y="-8" width="11" height="34" rx="5" />
-      <path className="pack" d="M-17 26 h7 l1.5 5 h-10 Z M10 26 h7 l1.5 5 h-10 Z" />
-      <path className="limb" d="M-6 20 l-4 20 M6 20 l4 20" />
-      <path className="limb" d="M-10 -4 q-13 4 -16 18 M10 -4 q13 4 16 18" />
-      <rect className="suit" x="-10" y="-12" width="20" height="34" rx="7" />
-      <rect className="panel" x="-5" y="-3" width="10" height="7" rx="1.5" />
-      <g className="head-pilot">
-        <circle className="suit" cy="-23" r="9" />
-        <path className="cap" d="M-9 -25 a9 9 0 0 1 18 0 Z" />
-        <circle className="goggle" cx="-4" cy="-22" r="3" />
-        <circle className="goggle" cx="4" cy="-22" r="3" />
-      </g>
-      <g className="head-astro">
-        <circle className="suit" cy="-24" r="13" />
-        <path className="visor" d="M-9 -27 a9 6 0 0 1 18 0 v4 a9 5 0 0 1 -18 0 Z" />
-        <circle className="glint" cx="-5" cy="-28" r="1.6" />
-      </g>
-    </svg>
-  );
-}
-
-function Smoke() {
-  return (
-    <div className="smoke">
-      {Array.from({ length: 6 }, (_, index) => (
-        <i key={index} style={{ animationDelay: `${index * 110}ms` }} />
-      ))}
-    </div>
-  );
+/** A tier's colour as a CSS variable, for a result card or a chip. */
+export function tierStyle(tier: number): CSSProperties {
+  return { ["--tier-c" as string]: tierColor(tier) } as CSSProperties;
 }
 
 function useReducedMotion(): boolean {
@@ -719,37 +472,4 @@ function useReducedMotion(): boolean {
     return () => media.removeEventListener("change", update);
   }, []);
   return reduced;
-}
-
-function readSound(): boolean {
-  try {
-    return localStorage.getItem(SOUND_KEY) === "on";
-  } catch {
-    return false;
-  }
-}
-
-function writeSound(on: boolean) {
-  try {
-    localStorage.setItem(SOUND_KEY, on ? "on" : "off");
-  } catch {
-    // Sound stays on for this visit only.
-  }
-}
-
-function playHop(kind: "voyage" | "stumble") {
-  const context = new AudioContext();
-  const osc = context.createOscillator();
-  const gain = context.createGain();
-  osc.type = kind === "voyage" ? "triangle" : "sawtooth";
-  osc.frequency.value = kind === "voyage" ? 440 : 140;
-  gain.gain.value = 0.035;
-  osc.connect(gain);
-  gain.connect(context.destination);
-  osc.start();
-  if (kind === "voyage") osc.frequency.exponentialRampToValueAtTime(880, context.currentTime + 0.25);
-  else osc.frequency.exponentialRampToValueAtTime(70, context.currentTime + 0.35);
-  gain.gain.exponentialRampToValueAtTime(0.0001, context.currentTime + 0.35);
-  osc.stop(context.currentTime + 0.4);
-  window.setTimeout(() => void context.close(), 700);
 }

@@ -14,10 +14,12 @@ import {
   type Reveal,
 } from "@ballpark/shared";
 import { ApiError, errorCopy, getPack, postPackGuess, postPlusOrder, postPlusVerify, postTestUnlock } from "./api";
-import { CountUp, Tally, currentCombo } from "./game";
+import { CountUp, Tally, currentCombo, trailOf } from "./game";
 import { haptic, shareText } from "./haptic";
 import { EarlyBlock } from "./rivals";
 import { QuestionScreen, RevealScreen } from "./screens";
+import type { SkyTrail } from "./sky";
+import { playBonk } from "./sound";
 
 /*
  * Ballpark+: themed packs and no ads. The daily game, the league and streaks stay free.
@@ -276,8 +278,8 @@ export function PackRun({
   deviceId: string;
   packId: string;
   onHome: () => void;
-  /** How high the climber already is when the pack opens, the points so far, and the right answers in a row. */
-  onFlight: (progress: number, score: number, combo: number) => void;
+  /** How high the rocket already is when the pack opens, the points so far, the right answers in a row, and the climb so far. */
+  onFlight: (progress: number, score: number, combo: number, trail: SkyTrail[]) => void;
   /** One answer scored: its points, its tier label when it scored any, and what the player typed. */
   onHop: (points: number, label: string | null, answer: string) => void;
   onEnd: () => void;
@@ -286,6 +288,7 @@ export function PackRun({
   const [phase, setPhase] = useState<PackPhase>({ name: "loading" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
 
   useEffect(() => {
     let live = true;
@@ -294,7 +297,12 @@ export function PackRun({
         if (!live) return;
         setPack(loaded);
         const points = loaded.questions.map((question) => question.reveal?.points ?? null);
-        onFlight(flight(loaded), points.reduce<number>((sum, value) => sum + (value ?? 0), 0), currentCombo(points));
+        onFlight(
+          flight(loaded),
+          points.reduce<number>((sum, value) => sum + (value ?? 0), 0),
+          currentCombo(points),
+          trailOf(loaded.questions, PACK_QUESTIONS),
+        );
         if (loaded.result) {
           setPhase({ name: "end" });
           onEnd();
@@ -338,6 +346,12 @@ export function PackRun({
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "not_listed") {
+        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
+        playBonk();
+        haptic("bad");
+        return;
+      }
       setError(errorCopy(caught));
     } finally {
       setBusy(false);
@@ -352,6 +366,7 @@ export function PackRun({
         index={phase.index}
         busy={busy}
         error={error}
+        rejections={rejected.id === pack.questions[phase.index]?.id ? rejected.count : 0}
         onHome={onHome}
         onSubmit={(guess) => void submit(phase.index, guess)}
       />

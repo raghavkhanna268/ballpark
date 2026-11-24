@@ -133,7 +133,7 @@ describe("submissions", () => {
     expect(result!.score).toBeGreaterThanOrEqual(50);
     expect(result?.shareText).toContain("Ballpark #8 · Classic");
     expect(result?.shareText).toContain("🚀");
-    expect(result?.reached).toMatch(/ (m|km)\b/);
+    expect(result?.shareText).toMatch(/🚀 [\d.,]+ (m|km)/);
     expect(result?.shareText).toContain("ballpark.local/?race=c8-");
     expect(result?.shareText).not.toContain("Mercury");
 

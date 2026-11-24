@@ -60,7 +60,7 @@ describe("altitude", () => {
   it("puts the height and landmark on the share card without answers", () => {
     expect(climbShareLine(0)).toBe("🚀 still on the launch pad");
     expect(climbShareLine(1.4)).toMatch(/^🚀 \d+\.\d km · past Everest summit$/);
-    expect(climbedPhrase(6.3)).toBe("384,400 km, past the Moon");
+    expect(climbedPhrase(6.3)).toBe("384,000 km, past the Moon");
   });
 });
 

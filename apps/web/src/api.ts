@@ -167,6 +167,7 @@ export function errorCopy(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.code === "rate_limited") return "Too many guesses in a short time. Wait a minute, then try again.";
     if (error.code === "already_submitted") return "That question is already locked in.";
+    if (error.code === "not_listed") return "Not on our list. Try another name.";
     if (error.code === "out_of_order") return "That pick is out of order. Reload the run and continue from the current pair.";
     if (error.code === "run_finished") return "Today's scored run is already finished.";
     if (error.code === "practice_locked") return "Finish today's scored run before practicing.";
