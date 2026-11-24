@@ -132,7 +132,8 @@ describe("submissions", () => {
     expect(result!.emojis).not.toContain("⬛");
     expect(result!.score).toBeGreaterThanOrEqual(50);
     expect(result?.shareText).toContain("Ballpark #8 · Classic");
-    expect(result?.shareText).toContain("reached");
+    expect(result?.shareText).toContain("🚀");
+    expect(result?.reached).toMatch(/ (m|km)\b/);
     expect(result?.shareText).toContain("ballpark.local/?race=c8-");
     expect(result?.shareText).not.toContain("Mercury");
 
@@ -142,7 +143,7 @@ describe("submissions", () => {
     expect(replay.questions.every((question) => question.reveal !== null)).toBe(true);
   });
 
-  it("pays more for a rare name than a common one, and zero for an invalid name", async () => {
+  it("pays more for a rare name than a common one, and lets an unlisted name try again", async () => {
     const named = spaceDay().find((question) => question.id === "q-space-year");
     if (!named) throw new Error("missing name_one");
     const rare = await guess(DEVICE, named.id, { type: "name_one", text: "Ethiopia" });
@@ -181,10 +182,20 @@ describe("submissions", () => {
     expect(commonBody.reveal.answerText).toBe("India");
     expect(commonBody.reveal.points).toBeLessThan(rareBody.reveal.points);
 
-    const invalid = await guess("55555555-5555-4555-8555-555555555555", named.id, { type: "name_one", text: "Iceland" });
-    const invalidBody = (await invalid.json()) as { reveal: { band: string; points: number } };
-    expect(invalidBody.reveal.points).toBe(0);
-    expect(invalidBody.reveal.band).toBe("black");
+    // A name that is not on the list is not stored: the player gets to try again while the clock runs.
+    const stranger = "55555555-5555-4555-8555-555555555555";
+    const invalid = await guess(stranger, named.id, { type: "name_one", text: "Iceland" });
+    expect(invalid.status).toBe(422);
+    expect(((await invalid.json()) as { error: string }).error).toBe("not_listed");
+    const retry = await guess(stranger, named.id, { type: "name_one", text: "Nigeria" });
+    expect(retry.status).toBe(200);
+    expect(((await retry.json()) as { reveal: { points: number } }).reveal.points).toBeGreaterThan(0);
+
+    // Running out of time still locks the question at 0.
+    const late = await guess("77777777-7777-4777-8777-777777777777", named.id, { type: "name_one", text: "", timedOut: true });
+    const lateBody = (await late.json()) as { reveal: { band: string; points: number } };
+    expect(lateBody.reveal.points).toBe(0);
+    expect(lateBody.reveal.band).toBe("black");
 
     const typo = await guess("66666666-6666-4666-8666-666666666666", named.id, { type: "name_one", text: "Nigera" });
     const typoReveal = ((await typo.json()) as { reveal: { answerText: string; points: number } }).reveal;

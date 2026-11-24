@@ -16,7 +16,7 @@ import {
   puzzleSlot,
   scoreHeadToHead,
   toPublicRound,
-  utcToday,
+  playToday,
   type H2HFact,
   type Placement,
   type H2HRound,
@@ -413,7 +413,7 @@ async function officialResult(
     cleared,
     marks,
     reached: reachedPhrase(level),
-    provisional: date >= utcToday(),
+    provisional: date >= playToday(),
     place: placement(score, scores.length === 0 ? [score] : scores),
     race,
   };

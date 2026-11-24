@@ -3,21 +3,20 @@ import { joinLeague } from "./league.js";
 import {
   beatPercent,
   classicShareText,
+  climbShareLine,
+  climbedPhrase,
   formatFactValue,
   formatFactor,
   NAME_CAP,
   CLASSIC_QUESTIONS,
   classicStep,
-  levelForProgress,
   placement,
   raceCode,
-  reachedPhrase,
   puzzleNumber,
   puzzleSlot,
   SEED_SLOTS,
   sliderRange,
-  utcToday,
-  zoomShareLine,
+  playToday,
   type AcceptedAnswer,
   type Band,
   type Confidence,
@@ -33,10 +32,11 @@ import {
   type ServerQuestion,
   type SliderScale,
 } from "@ballpark/shared";
-import { scoreClassicQuestion, suggestionsForQuestion, type PlayQuestion } from "./classic-score.js";
+import { RETRY_LIMIT, isUnlistedName, scoreClassicQuestion, suggestionsForQuestion, type PlayQuestion } from "./classic-score.js";
 import { finalizeDay } from "./finalize.js";
 import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/shared/scoring";
 import { HttpError } from "./http.js";
+import { enforceRateLimit } from "./rate-limit.js";
 
 const MODE = "classic";
 
@@ -160,6 +160,10 @@ export async function submitGuess(
     .bind(deviceId, date, MODE, question.id)
     .first<{ id: string }>();
   if (existing) throw new HttpError(409, "already_submitted");
+  if (isUnlistedName(question, guess)) {
+    await enforceRateLimit(db, `try:${deviceId}:${date}:${question.id}`, RETRY_LIMIT);
+    throw new HttpError(422, "not_listed");
+  }
 
   const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, classicScope(date), question.id, null));
   try {
@@ -393,7 +397,7 @@ export async function revealFor(db: D1Database, scope: AnswerScope, question: Pl
     confidenceDelta,
     bonusPoints: scored.bonusPoints,
     // A pack has no reset: its rarity keeps moving as more players finish it.
-    provisional: scope.mode === MODE && scope.key >= utcToday(),
+    provisional: scope.mode === MODE && scope.key >= playToday(),
     context: question.context,
     sourceUrl: question.sourceUrl,
     sourceName: question.sourceName,
@@ -484,7 +488,6 @@ async function dayResult(
     .bind(deviceId, date, MODE)
     .all<{ points: number }>();
   const climbed = (mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP, CLASSIC_QUESTIONS), 0);
-  const reached = levelForProgress(climbed);
   const race = raceCode("classic", number, climbed);
   return {
     score: mine.score,
@@ -492,9 +495,9 @@ async function dayResult(
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(reached), race),
-    reached: reachedPhrase(reached),
-    provisional: date >= utcToday(),
+    shareText: classicShareText(number, emojis, mine.score, shareHost, climbShareLine(climbed), race),
+    reached: climbedPhrase(climbed),
+    provisional: date >= playToday(),
     place: placement(mine.score, scores),
     race,
   };

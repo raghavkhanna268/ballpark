@@ -2,10 +2,9 @@ import {
   NAME_CAP,
   PACK_QUESTIONS,
   classicStep,
-  levelForProgress,
+  climbShareLine,
+  climbedPhrase,
   placement,
-  reachedPhrase,
-  zoomShareLine,
   type Band,
   type Guess,
   type PackGuessResponse,
@@ -14,8 +13,9 @@ import {
   type PackSummary,
 } from "@ballpark/shared";
 import { BAND_EMOJI } from "@ballpark/shared/scoring";
-import { scoreClassicQuestion } from "./classic-score.js";
+import { RETRY_LIMIT, isUnlistedName, scoreClassicQuestion } from "./classic-score.js";
 import { HttpError } from "./http.js";
+import { enforceRateLimit } from "./rate-limit.js";
 import { hasPlus } from "./plus.js";
 import { loadQuestions, otherGuesses, parseGuess, parseStringArray, revealFor, toPublic, validateGuess, type AnswerScope } from "./puzzle.js";
 
@@ -104,6 +104,10 @@ export async function submitPackGuess(
   if (!question) throw new HttpError(404, "unknown_question");
   validateGuess(question, guess);
   const scope = scopeFor(id);
+  if (isUnlistedName(question, guess)) {
+    await enforceRateLimit(db, `try:${deviceId}:${scope.key}:${question.id}`, RETRY_LIMIT);
+    throw new HttpError(422, "not_listed");
+  }
   const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, scope, question.id, null));
   try {
     await db
@@ -133,7 +137,6 @@ async function packResult(db: D1Database, row: PackRow, deviceId: string, shareH
   const bands = ordered.map((item) => item.band);
   const emojis = bands.map((band) => BAND_EMOJI[band]);
   const climbed = ordered.reduce((sum, item) => sum + classicStep(item.points, NAME_CAP, PACK_QUESTIONS), 0);
-  const reached = levelForProgress(climbed);
   const scope = scopeFor(row.id);
   const board = await db
     .prepare(
@@ -147,8 +150,8 @@ async function packResult(db: D1Database, row: PackRow, deviceId: string, shareH
     score,
     bands,
     emojis,
-    reached: reachedPhrase(reached),
+    reached: climbedPhrase(climbed),
     place: placement(score, scores),
-    shareText: `Ballpark+ · ${row.emoji} ${row.title}\n${emojis.join("")} ${score} pts\n${zoomShareLine(reached)}\n${shareHost}`,
+    shareText: `Ballpark+ · ${row.emoji} ${row.title}\n${emojis.join("")} ${score} pts\n${climbShareLine(climbed)}\n${shareHost}`,
   };
 }

@@ -65,14 +65,102 @@ export function journeyProgress(correct: number, answered: number): number {
 }
 
 /**
- * Classic and packs: how far one answer flies in a run of `questions`. Steps are sized so a perfect run
- * reaches the Milky Way (10 stops) however long it is. In five questions a miss hops 0.28, any scored
- * answer flies at least 0.6, and full marks fly 2. A seven-question day scales each of those by 5/7.
+ * Classic and packs: how far one answer flies in a run of `questions`. Height follows points with no base amount,
+ * so a Supernova (100) climbs ten times as far as a Liftoff (10), and a miss or a timeout does not climb at all.
+ * A perfect run reaches the centre of the Milky Way (10) however many questions it has.
  */
 export function classicStep(points: number, max: number, questions: number): number {
-  const scale = 5 / Math.max(1, questions);
-  if (points <= 0 || max <= 0) return 0.28 * scale;
-  return (0.6 + 1.4 * Math.min(1, points / max)) * scale;
+  if (points <= 0 || max <= 0) return 0;
+  return (10 * Math.min(1, points / max)) / Math.max(1, questions);
+}
+
+/**
+ * Real landmarks along the climb. `at` is the progress (0 to 10) where the climb passes it, and `km` its real height
+ * or distance. Between two landmarks the height grows on a log scale, so each point moves the camera about as far.
+ * 700 Classic points reach the last one.
+ */
+export type Milestone = { id: string; name: string; phrase: string; at: number; km: number };
+
+export const MILESTONES: Milestone[] = [
+  { id: "pad", name: "Launch pad", phrase: "the launch pad", at: 0, km: 0 },
+  { id: "qutub", name: "Qutub Minar", phrase: "the top of the Qutub Minar", at: 0.125, km: 0.073 },
+  { id: "burj", name: "Top of the Burj Khalifa", phrase: "the top of the Burj Khalifa", at: 0.275, km: 0.828 },
+  { id: "monsoon", name: "Monsoon clouds", phrase: "the monsoon clouds", at: 0.625, km: 2 },
+  { id: "everest", name: "Everest summit", phrase: "the summit of Everest", at: 1.3, km: 8.849 },
+  { id: "jets", name: "Where jets cruise", phrase: "the height where jets cruise", at: 1.65, km: 11 },
+  { id: "balloons", name: "Weather balloons pop", phrase: "where weather balloons pop", at: 2.3, km: 35 },
+  { id: "meteors", name: "Meteors burn up", phrase: "where meteors burn up", at: 3, km: 80 },
+  { id: "space", name: "Space begins", phrase: "the edge of space", at: 3.4, km: 100 },
+  { id: "station", name: "Space station", phrase: "the space station", at: 4.2, km: 400 },
+  { id: "satellites", name: "TV satellites", phrase: "the TV satellites", at: 5.2, km: 35_786 },
+  { id: "moon", name: "The Moon", phrase: "the Moon", at: 6.3, km: 384_400 },
+  { id: "mars", name: "Mars", phrase: "Mars", at: 7.5, km: 2.25e8 },
+  { id: "saturn", name: "Saturn", phrase: "Saturn", at: 8.7, km: 1.43e9 },
+  { id: "galaxy", name: "Centre of the Milky Way", phrase: "the centre of the Milky Way", at: 10, km: 2.4599e17 },
+];
+
+/** How high a progress value is, in km. Linear up to the first landmark, then log-scaled between landmarks. */
+export function altitudeKm(progress: number): number {
+  if (progress <= 0) return 0;
+  for (let index = 0; index < MILESTONES.length - 1; index += 1) {
+    const low = MILESTONES[index]!;
+    const high = MILESTONES[index + 1]!;
+    if (progress < high.at) {
+      const share = (progress - low.at) / (high.at - low.at);
+      if (low.km <= 0) return high.km * share;
+      return Math.exp(Math.log(low.km) + (Math.log(high.km) - Math.log(low.km)) * share);
+    }
+  }
+  return MILESTONES[MILESTONES.length - 1]!.km;
+}
+
+const KM_PER_LIGHT_YEAR = 9.461e12;
+
+/** "73 m", "9.6 km", "384,400 km", "225 million km", "1.4 billion km", "26,000 light years". */
+export function formatDistance(km: number): string {
+  if (km < 1) return `${Math.round(km * 1000)} m`;
+  if (km < 100) return `${km.toFixed(1)} km`;
+  if (km < 1e6) return `${Math.round(km).toLocaleString("en-US")} km`;
+  if (km < 1e9) return `${(km / 1e6).toFixed(km < 1e7 ? 1 : 0)} million km`;
+  if (km < KM_PER_LIGHT_YEAR / 10) return `${(km / 1e9).toFixed(1)} billion km`;
+  const years = km / KM_PER_LIGHT_YEAR;
+  return `${years < 10 ? years.toFixed(2) : Math.round(years).toLocaleString("en-US")} light years`;
+}
+
+/** The height of a progress value, written out: "9.6 km". */
+export function formatAltitude(progress: number): string {
+  return formatDistance(altitudeKm(progress));
+}
+
+/** The last landmark at or below a progress value. */
+export function milestoneAt(progress: number): Milestone {
+  let found = MILESTONES[0]!;
+  for (const milestone of MILESTONES) if (milestone.at <= progress + 1e-6) found = milestone;
+  return found;
+}
+
+/** The next landmark above a progress value, or null past the last one. */
+export function nextMilestone(progress: number): Milestone | null {
+  return MILESTONES.find((milestone) => milestone.at > progress + 1e-6) ?? null;
+}
+
+/** How many landmarks a progress value has reached, not counting the launch pad. */
+export function milestonesReached(progress: number): number {
+  return MILESTONES.filter((milestone) => milestone.at > 0 && milestone.at <= progress + 1e-6).length;
+}
+
+/** For the end screen: "9.6 km, past the summit of Everest", or "0 m" on the launch pad. */
+export function climbedPhrase(progress: number): string {
+  const height = formatAltitude(progress);
+  const passed = milestoneAt(progress);
+  return passed.at > 0 ? `${height}, past ${passed.phrase}` : height;
+}
+
+/** For the share card, with no answers in it: "🚀 9.6 km · past Everest summit". */
+export function climbShareLine(progress: number): string {
+  if (progress <= 0) return "🚀 still on the launch pad";
+  const passed = milestoneAt(progress);
+  return passed.at > 0 ? `🚀 ${formatAltitude(progress)} · past ${passed.name}` : `🚀 ${formatAltitude(progress)} up`;
 }
 
 /** Today's field, as distances along the journey, so the client can fly ghosts for the average and the best. */
