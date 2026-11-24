@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MILESTONES, altitudeKm, formatAltitude, formatDistance, nextMilestone } from "@ballpark/shared";
 import { useCountUp } from "./game";
-import { IGNITION_MS, climbMs, createSky, replayMs, tierColor, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
+import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, replayMs, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
 import { playBurner, playChime, playSparkle, playSputter, readSound, setSound, unlockAudio } from "./sound";
 import "./journey.css";
 
@@ -16,10 +16,12 @@ export type Hop = {
   combo?: number;
   /** What the player typed. It rides above the rocket while the climb plays. Empty when the clock ran out. */
   answer?: string;
+  /** Today's Afterburner was on: double the climb, with a hotter flame. */
+  boost?: boolean;
 };
 /** The score in the heads-up display. It counts up after each answer, like an arcade score. */
 export type HudScore = { value: number; label: string; digits: number };
-export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number };
+export type Ghost = { id: "best" | "average" | "top" | "friend"; label: string; progress: number; paint?: RocketPaint };
 /** One answer's stretch of the climb, coloured by its tier (0 Liftoff to 4 Supernova, -1 a miss). */
 export type TrailSegment = SkyTrail;
 
@@ -82,6 +84,7 @@ export function Journey({
   ghosts = [],
   score = null,
   combo = 0,
+  paint = CLASSIC_PAINT,
   children,
 }: {
   /** 0 is the launch pad and 10 the centre of the Milky Way. Height follows points. */
@@ -101,6 +104,8 @@ export function Journey({
   score?: HudScore | null;
   /** Right answers in a row. Shown as a combo meter from two up. */
   combo?: number;
+  /** Your rocket's paint job from the Hangar. */
+  paint?: RocketPaint;
   children: ReactNode;
 }) {
   const reduced = useReducedMotion();
@@ -152,6 +157,7 @@ export function Journey({
     sky.setScene(scenery);
     sky.setTrail(trail);
     sky.setGhosts(skyGhosts(ghostsRef.current));
+    sky.setPaint(paint);
     sky.jump(progress);
     let size = { w: 0, h: 0, wide: false };
 
@@ -246,6 +252,10 @@ export function Journey({
   }, [ghosts]);
 
   useEffect(() => {
+    skyRef.current?.setPaint(paint);
+  }, [paint]);
+
+  useEffect(() => {
     if (toasts.length === 0) return;
     const oldest = toasts[0];
     const id = window.setTimeout(() => setToasts((list) => list.filter((toast) => toast.id !== oldest.id)), Math.max(0, oldest.born + TOAST_MS - Date.now()));
@@ -260,7 +270,8 @@ export function Journey({
     const to = progress;
     const fresh = hop.id !== lastHop.current && hop.kind !== "idle";
     lastHop.current = hop.id;
-    if (!fresh || to < from - 0.001 || to - from > 2.5) {
+    // The longest single climb is an Afterburner Supernova, 20/7 of a stop. Anything bigger is a reload: jump.
+    if (!fresh || to < from - 0.001 || to - from > 3) {
       sky.jump(to);
       lastProgress.current = to;
       climbTier.current = -1;
@@ -280,12 +291,15 @@ export function Journey({
       gainWidth.current = gain.offsetWidth;
     }
     setMotion("climb");
-    if (tier >= 0) playBurner(tier, climbMs(travel), IGNITION_MS);
+    const boost = hop.boost === true && tier >= 0;
+    if (tier >= 0) playBurner(boost ? Math.min(4, tier + 1) : tier, climbMs(travel), IGNITION_MS);
     else playSputter(IGNITION_MS);
+    if (boost) pushToast("Afterburner ×2", "Double points, double the climb");
     sky.climb({
       from,
       to,
       tier,
+      boost,
       onLand: () => {
         setMotion("idle");
         setLanded(to);
@@ -441,7 +455,7 @@ function splitDistance(text: string): [string, string] {
 }
 
 function skyGhosts(ghosts: Ghost[]): SkyGhost[] {
-  return ghosts.map((ghost) => ({ progress: ghost.progress, label: ghost.label, color: GHOST_COLORS[ghost.id] }));
+  return ghosts.map((ghost) => ({ progress: ghost.progress, label: ghost.label, color: GHOST_COLORS[ghost.id], paint: ghost.paint }));
 }
 
 /** The run's score, top right. It holds still while a climb plays, then counts up as the climb lands. */

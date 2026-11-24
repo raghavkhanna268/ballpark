@@ -108,5 +108,5 @@ export async function headToHeadField(db: D1Database, date: string, length: numb
 }
 
 function round(value: number): number {
-  return Math.round(value * 100) / 100;
+  return Math.round(value * 10000) / 10000;
 }

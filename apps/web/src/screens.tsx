@@ -1,9 +1,11 @@
 import { QuestionTimer } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CountUp, Tally, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
+import { CountUp, Tally, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
 import { tierStyle, useFocusMode, useJourney } from "./journey";
-import { haptic, shareText } from "./haptic";
+import { haptic } from "./haptic";
+import { CurveChart, FlightPath, TheCatch, TodayBoard } from "./flightlog";
+import { sharePostcard, type PostcardInput } from "./postcard";
 import {
   COMPARE_MIN_PLAYERS,
   canCompare,
@@ -79,7 +81,10 @@ export function HomeScreen({
         </header>
 
         <section className="day-card">
-          <p className="kicker">#{puzzle.puzzleNumber} · Today’s climb</p>
+          <p className="kicker">
+            #{puzzle.puzzleNumber} · Today’s climb
+            {puzzle.today.climbing ? <span className="climbing"> · {puzzle.today.climbing.toLocaleString("en-US")} climbing today</span> : null}
+          </p>
           <p className="theme">{puzzle.theme}</p>
           <p className="blurb">{puzzle.blurb}</p>
           <p className="tomorrow">Tomorrow · {puzzle.nextTheme}</p>
@@ -165,6 +170,9 @@ export function StatsPanel({ stats, streak }: { stats: Stats; streak: StreakView
   );
 }
 
+/** Today's Afterburner: ready to arm before an answer, armed for this one, or already spent. */
+export type AfterburnerView = { ready: boolean; armed: boolean; onToggle: () => void };
+
 export function QuestionScreen({
   puzzle,
   question,
@@ -172,6 +180,10 @@ export function QuestionScreen({
   busy,
   error,
   rejections = 0,
+  rejectedText = "",
+  afterburner = null,
+  onNudge,
+  onReport,
   onSubmit,
   onHome,
 }: {
@@ -182,11 +194,19 @@ export function QuestionScreen({
   error: string | null;
   /** Names the server said are not on the list for this question. Each one costs 2 seconds. */
   rejections?: number;
+  /** The last name that was not on the list, for "Should this count?". */
+  rejectedText?: string;
+  afterburner?: AfterburnerView | null;
+  /** Opens this question's nudge and returns its line. */
+  onNudge?: () => Promise<string>;
+  /** Sends a name that was not on the list for review. */
+  onReport?: (text: string) => Promise<void>;
   onSubmit: (guess: Guess) => void;
   onHome: () => void;
 }) {
   const reading = useReadTime(question.id);
   const locked = busy || reading > 0;
+  const stuck = useStuck(question.id, reading === 0 && !busy);
   return (
     <div className="stack ask">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
@@ -200,6 +220,19 @@ export function QuestionScreen({
       {question.type !== "name_one" ? <p className="type-kicker">{typeLabel(question.type)}</p> : null}
       <h2 className="prompt">{question.prompt}</h2>
       {question.type === "name_one" ? <p className="rarer">▲ Rarer answers climb higher ▲</p> : null}
+      {afterburner && (afterburner.ready || afterburner.armed) ? (
+        <button
+          type="button"
+          className={`afterburner${afterburner.armed ? " armed" : ""}`}
+          aria-pressed={afterburner.armed}
+          disabled={busy}
+          onClick={afterburner.onToggle}
+        >
+          <span aria-hidden="true">🔥</span>
+          <strong>{afterburner.armed ? "Afterburner on" : "Afterburner ×2"}</strong>
+          <small>{afterburner.armed ? "This stage scores and climbs double. Tap to save it." : "Once a day: double one stage you are sure of."}</small>
+        </button>
+      ) : null}
       {question.type === "estimate" && question.slider && question.unit ? (
         <EstimateForm unit={question.unit} slider={question.slider} busy={locked} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
       ) : null}
@@ -223,8 +256,76 @@ export function QuestionScreen({
           Not on our list. Try another. <b>−2 s</b>
         </p>
       ) : null}
+      {rejections > 0 && rejectedText && onReport ? <ReportButton key={`${question.id}-${rejections}`} text={rejectedText} onReport={onReport} /> : null}
+      {question.hasNudge && onNudge ? <NudgeLine key={question.id} ready={stuck} onNudge={onNudge} /> : null}
       {error ? <p className="form-error">{error}</p> : null}
     </div>
+  );
+}
+
+/** After this long on a question's clock with nothing locked in, a stuck player can ask for a nudge. */
+const NUDGE_AFTER_MS = 15_000;
+
+function useStuck(questionKey: string, running: boolean): boolean {
+  const [stuck, setStuck] = useState(false);
+  useEffect(() => setStuck(false), [questionKey]);
+  useEffect(() => {
+    if (!running || stuck) return;
+    const id = window.setTimeout(() => setStuck(true), NUDGE_AFTER_MS);
+    return () => window.clearTimeout(id);
+  }, [running, questionKey, stuck]);
+  return stuck;
+}
+
+/** "Stuck? Get a nudge": one line that points at a corner of the answers. The answer after it scores at most a Moonshot. */
+function NudgeLine({ ready, onNudge }: { ready: boolean; onNudge: () => Promise<string> }) {
+  const [state, setState] = useState<{ kind: "closed" | "opening" | "failed" } | { kind: "open"; text: string }>({ kind: "closed" });
+  if (state.kind === "open") {
+    return (
+      <p className="nudge" role="status">
+        <span aria-hidden="true">💡</span> {state.text} <small>Capped at Moonshot</small>
+      </p>
+    );
+  }
+  if (!ready) return null;
+  return (
+    <button
+      type="button"
+      className="nudge-button"
+      disabled={state.kind === "opening"}
+      onClick={() => {
+        setState({ kind: "opening" });
+        onNudge().then(
+          (text) => setState({ kind: "open", text }),
+          () => setState({ kind: "failed" }),
+        );
+      }}
+    >
+      {state.kind === "failed" ? "The nudge didn’t load. Try again" : "Stuck? Get a nudge"}
+      <small>This stage then scores at most a Moonshot</small>
+    </button>
+  );
+}
+
+/** "Should this count?": sends the name that was not on the list to be checked. */
+function ReportButton({ text, onReport }: { text: string; onReport: (text: string) => Promise<void> }) {
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "failed">("idle");
+  if (state === "sent") return <p className="report-line">Thanks. If we add “{text}”, it scores for you at midnight.</p>;
+  return (
+    <button
+      type="button"
+      className="text-button report-line"
+      disabled={state === "sending"}
+      onClick={() => {
+        setState("sending");
+        onReport(text).then(
+          () => setState("sent"),
+          () => setState("failed"),
+        );
+      }}
+    >
+      {state === "failed" ? "Couldn’t send that. Try again?" : `Should “${text}” count? Tell us`}
+    </button>
   );
 }
 
@@ -252,7 +353,7 @@ export function RevealScreen({
   const { holding } = useJourney();
   const named = question.type === "name_one";
   const scored = reveal.points > 0;
-  const tier = tierOf(reveal.points, maxPoints(question.type));
+  const tier = tierOf(basePoints(reveal), maxPoints(question.type));
   return (
     <div className="stack result">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
@@ -264,6 +365,12 @@ export function RevealScreen({
         {named && scored && reveal.answerText ? <p className="result-answer">“{reveal.answerText}”</p> : null}
         {!named && reveal.answerText && reveal.answerText !== reveal.label ? <p className="result-answer">{reveal.answerText}</p> : null}
         <p className="flavour">{flavourLine(reveal.label, tier, named)}</p>
+        {reveal.boosted || reveal.nudged ? (
+          <p className="badges">
+            {reveal.boosted ? <b className="chip boost">🔥 Afterburner ×2</b> : null}
+            {reveal.nudged ? <b className="chip nudged">💡 Nudged · up to Moonshot</b> : null}
+          </p>
+        ) : null}
         <p className="points">
           <b className="pts-line">
             {reveal.points > 0 ? "+" : ""}
@@ -304,12 +411,22 @@ export function RevealScreen({
   );
 }
 
+type EndTab = "result" | "log" | "catch" | "today";
+const END_TABS: Array<{ id: EndTab; label: string }> = [
+  { id: "result", label: "Result" },
+  { id: "log", label: "Flight log" },
+  { id: "catch", label: "The catch" },
+  { id: "today", label: "Today" },
+];
+
 export function EndScreen({
   puzzle,
   result,
   stats,
   streak,
   rivals,
+  postcard,
+  extras,
   ad,
   onHome,
 }: {
@@ -319,11 +436,16 @@ export function EndScreen({
   streak: StreakView & { savedToday: boolean };
   /** Your rank, the friend you raced, and the weekly league. */
   rivals?: ReactNode;
+  /** The picture of your climb that Share sends with the text. */
+  postcard: PostcardInput;
+  /** A new paint job, and the streak reminder switch. */
+  extras?: ReactNode;
   /** An ad space, for free players only. */
   ad?: ReactNode;
   onHome: () => void;
 }) {
-  const [shareState, setShareState] = useState<"idle" | "shared" | "copied" | "failed">("idle");
+  const [shareState, setShareState] = useState<"idle" | "busy" | "shared" | "saved" | "failed">("idle");
+  const [tab, setTab] = useState<EndTab>("result");
   return (
     <>
       <div className="stack end">
@@ -331,27 +453,55 @@ export function EndScreen({
           <p className="mission">Mission complete</p>
           <p className="kicker">Classic · #{puzzle.puzzleNumber}</p>
         </div>
-        <div className="end-score">
-          <h2>You climbed {result.reached}</h2>
-          <p className="score">
-            <CountUp value={result.score} pad={3} />
-            <span> pts</span>
-          </p>
+        <div className="end-tabs" role="tablist" aria-label="Today’s climb">
+          {END_TABS.map((item) => (
+            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? "on" : ""} onClick={() => setTab(item.id)}>
+              {item.label}
+            </button>
+          ))}
         </div>
-        <Tally rows={puzzle.questions.map((question) => question.reveal)} />
-        {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
-        {rivals}
+        {tab === "result" ? (
+          <>
+            <div className="end-score">
+              <h2>You climbed {result.reached}</h2>
+              <p className="score">
+                <CountUp value={result.score} pad={3} />
+                <span> pts</span>
+              </p>
+            </div>
+            <Tally rows={puzzle.questions.map((question) => question.reveal)} />
+            {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
+            {rivals}
+            {extras}
+          </>
+        ) : null}
+        {tab === "log" ? (
+          <>
+            <FlightPath questions={puzzle.questions} />
+            <CurveChart curve={result.curve} players={puzzle.field.players} />
+          </>
+        ) : null}
+        {tab === "catch" ? <TheCatch questions={puzzle.questions} /> : null}
+        {tab === "today" ? <TodayBoard today={puzzle.today} players={puzzle.field.players} /> : null}
         <button
           className="primary"
           type="button"
+          disabled={shareState === "busy"}
           onClick={() => {
             haptic("tap");
-            void shareText(result.shareText).then((outcome) => {
-              setShareState(outcome === "cancelled" ? "idle" : outcome === "shared" ? "shared" : outcome === "copied" ? "copied" : "failed");
-            });
+            setShareState("busy");
+            void sharePostcard(postcard, result.shareText).then((outcome) => setShareState(outcome === "cancelled" ? "idle" : outcome));
           }}
         >
-          {shareState === "copied" ? "Copied" : shareState === "shared" ? "Shared" : shareState === "failed" ? "Copy didn’t work" : "Share"}
+          {shareState === "busy"
+            ? "Painting your postcard…"
+            : shareState === "saved"
+              ? "Postcard saved, text copied"
+              : shareState === "shared"
+                ? "Shared"
+                : shareState === "failed"
+                  ? "Couldn’t share. Try again"
+                  : "Share postcard"}
         </button>
         {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
         <div className="end-foot">

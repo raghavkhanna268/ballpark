@@ -326,7 +326,7 @@
 .log-stats p { margin: 0; display: flex; flex-direction: column; gap: 2px; }
 .log-stats .mono { font-size: 1.05rem; color: var(--amber); }
 .log-stats small { font-size: 0.7rem; color: var(--muted); }
-.world-strip { list-style: none; display: grid; grid-template-columns: repeat(14, 1fr); gap: 3px; margin: 0; padding: 0; }
+.world-strip { list-style: none; display: grid; grid-template-columns: repeat(15, 1fr); gap: 3px; margin: 0; padding: 0; }
 .world-strip li { height: 6px; border: 1px solid rgba(143, 211, 255, 0.35); }
 .world-strip li.on { background: var(--amber); border-color: var(--amber); }
 .finds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
@@ -590,6 +590,21 @@
   animation: tally-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) both;
 }
 .tally li.empty { opacity: 0.4; animation: none; }
+.tally li { position: relative; }
+.tally-boost {
+  position: absolute;
+  top: -7px;
+  right: -5px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd27a, #ff8a3d);
+  color: #1a1206;
+  font-family: var(--display);
+  font-size: 0.5rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1.5;
+}
 .tally-stage { font-size: 0.55rem; }
 .tally-emoji { font-size: 1rem; line-height: 1.1; }
 .tally b { font-size: 0.7rem; }
@@ -614,15 +629,18 @@
 .sheet .mode-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; border-top: 1px solid rgba(143, 211, 255, 0.14); }
 .sheet .mode-card h2 { margin: 0; font-size: 1.05rem; }
 .sheet .mode-card p { font-size: 0.8rem; line-height: 1.35; }
-.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 6px; }
+.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .tile {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 6px;
   align-items: center;
-  gap: 1px;
+  justify-items: start;
   min-width: 0;
-  min-height: 64px;
-  padding: 6px 4px;
+  min-height: 44px;
+  padding: 4px 7px;
+  text-align: left;
   border: 1px solid rgba(143, 211, 255, 0.22);
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.03);
@@ -631,7 +649,7 @@
   cursor: pointer;
 }
 .tile:hover, .tile:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.25); }
-.tile-icon { font-size: 1.1rem; line-height: 1.2; }
+.tile-icon { grid-row: span 2; font-size: 1.1rem; line-height: 1.2; }
 .tile strong { font-size: 0.78rem; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile small { font-size: 0.62rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .home-panel .back { align-self: flex-start; min-height: 28px; font-size: 0.85rem; }
@@ -859,4 +877,202 @@
   .where .alt-v small { font-size: 0.8rem; }
   .sheet .ad-slot { left: 56px; width: 440px; }
   .altimeter { top: 64px; }
+}
+
+/* ---------- Phase 2: the daily habit ---------- */
+/* Afterburner: once a day, arm it before an answer to double that stage. */
+.afterburner {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 7px 12px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 179, 71, 0.55);
+  background: rgba(255, 179, 71, 0.06);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.afterburner span { grid-row: span 2; font-size: 1.3rem; }
+.afterburner strong { font-family: var(--display); font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
+.afterburner small { font-size: 0.76rem; color: var(--muted); }
+.afterburner.armed {
+  border-style: solid;
+  border-color: var(--amber);
+  background: linear-gradient(90deg, rgba(255, 179, 71, 0.22), rgba(255, 90, 31, 0.14));
+  box-shadow: var(--glow-amber);
+  animation: burner-armed 1.2s ease-in-out infinite;
+}
+.afterburner.armed small { color: #ffe1b8; }
+@keyframes burner-armed { 50% { box-shadow: 0 0 2px rgba(255, 179, 71, 0.5), 0 0 26px rgba(255, 120, 40, 0.55); } }
+
+/* Stuck nudge and "Should this count?" */
+.nudge-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  margin: 0 auto;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(143, 211, 255, 0.45);
+  background: rgba(143, 211, 255, 0.08);
+  color: var(--line-art);
+  font-weight: 700;
+  font-size: 0.84rem;
+  cursor: pointer;
+  animation: retry-in 0.4s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.nudge-button small { font-weight: 500; font-size: 0.7rem; color: var(--muted); }
+.nudge {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border-left: 3px solid var(--line-art);
+  background: rgba(143, 211, 255, 0.08);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+.nudge small { display: block; margin-top: 2px; font-size: 0.7rem; color: var(--muted); }
+.report-line { margin: -4px auto 0; font-size: 0.78rem; color: var(--muted); text-align: center; }
+.sheet .text-button.report-line { min-height: 26px; text-decoration: underline; text-underline-offset: 3px; }
+
+/* Badges on a result: Afterburner and nudged. */
+.badges { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 6px 0 0; }
+.chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-family: var(--display);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.chip.boost { color: #1a1206; background: linear-gradient(90deg, #ffd27a, #ff8a3d); }
+.chip.nudged { color: var(--line-art); border: 1px solid rgba(143, 211, 255, 0.5); }
+
+/* End screen tabs */
+.end-tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 3px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); }
+.end-tabs button {
+  min-height: 32px;
+  border: none;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-weight: 700;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.end-tabs button.on { background: rgba(143, 211, 255, 0.16); color: var(--ink); box-shadow: inset 0 0 0 1px rgba(143, 211, 255, 0.4); }
+
+/* Flight log: the staircase climb past the landmarks */
+.flight-path { margin: 0; }
+.flight-path svg { display: block; width: 100%; height: auto; }
+.flight-path .mile-line line { stroke: rgba(143, 211, 255, 0.35); stroke-dasharray: 3 4; }
+.flight-path .mile-line text { fill: #b8c6e0; font-size: 9px; font-weight: 600; }
+.flight-path .ground { stroke: rgba(255, 255, 255, 0.25); }
+.flight-path .boost-mark { fill: #ffb347; font-size: 10px; font-weight: 800; }
+.flight-path figcaption { margin-top: 2px; font-family: var(--display); font-size: 0.78rem; font-weight: 700; color: var(--amber); text-align: center; }
+
+/* Today's climbs as bars with yours marked */
+.curve { margin: 0; display: grid; gap: 6px; }
+.curve figcaption { font-size: 0.86rem; color: var(--muted); }
+.curve figcaption strong { color: var(--ink); }
+.curve-bars { position: relative; display: flex; align-items: flex-end; gap: 3px; height: 70px; padding-top: 14px; }
+.curve-bars i { flex: 1; border-radius: 3px 3px 0 0; background: rgba(143, 211, 255, 0.3); }
+.curve-bars i.you { background: var(--amber); box-shadow: var(--glow-amber); }
+.curve-you { position: absolute; top: 0; transform: translateX(-50%); font-family: var(--display); font-size: 0.56rem; color: var(--amber); }
+.curve-axis { display: flex; justify-content: space-between; margin: 0; font-size: 0.7rem; color: var(--muted); }
+
+/* The catch: each stage, your answer and how many said it */
+.catch { list-style: none; display: grid; gap: 6px; margin: 0; padding: 0; }
+.catch li > div { min-width: 0; }
+.catch li { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); border-left: 3px solid var(--c); }
+.catch-stage { font-family: var(--display); font-size: 0.7rem; color: var(--muted); text-align: center; }
+.catch-prompt { margin: 0; font-size: 0.7rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.catch-answer { display: flex; align-items: baseline; gap: 6px; margin: 0; }
+.catch-answer strong { font-size: 0.92rem; }
+.catch-answer em { font-style: normal; font-size: 0.7rem; color: var(--c); font-weight: 700; }
+.catch-said { margin: 0; font-size: 0.7rem; color: #b8c6e0; }
+.catch-points { font-family: var(--display); font-size: 0.8rem; color: var(--c); }
+
+/* Today's board */
+.board { list-style: none; display: grid; gap: 4px; margin: 0; padding: 0; }
+.board li { display: grid; grid-template-columns: 22px 20px minmax(0, 1fr) auto; gap: 8px; align-items: center; padding: 5px 8px; border-radius: 10px; background: rgba(255, 255, 255, 0.04); }
+.board li.you { background: rgba(255, 179, 71, 0.14); box-shadow: inset 0 0 0 1px rgba(255, 179, 71, 0.5); }
+.board li.board-gap { display: block; padding: 0; background: none; text-align: center; color: var(--muted); }
+.board-rank { font-family: var(--display); font-size: 0.74rem; color: var(--muted); text-align: center; }
+.board-name, .board-height { display: grid; line-height: 1.2; }
+.board-name strong { font-size: 0.84rem; }
+.board-name small, .board-height small { font-size: 0.68rem; color: var(--muted); }
+.board-height { text-align: right; }
+.board-height strong { font-family: var(--display); font-size: 0.74rem; color: var(--amber); }
+.rocket-icon { display: block; overflow: visible; }
+
+/* Hangar */
+.skins { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 6px 0 0; padding: 0; }
+.skin {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  width: 100%;
+  padding: 8px 4px 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(143, 211, 255, 0.22);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  cursor: pointer;
+}
+.skin strong { font-size: 0.78rem; }
+.skin small { font-size: 0.64rem; color: var(--muted); text-align: center; line-height: 1.2; }
+.skin.on { border-color: var(--amber); background: rgba(255, 179, 71, 0.12); box-shadow: var(--glow-amber); }
+.skin.on small { color: var(--amber); }
+.skin.locked { cursor: default; }
+.new-skin {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 179, 71, 0.6);
+  background: rgba(255, 179, 71, 0.1);
+  animation: retry-in 0.5s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.new-skin p { display: grid; margin: 0; }
+.new-skin strong { font-size: 0.88rem; }
+.new-skin small { font-size: 0.72rem; color: var(--muted); }
+.chip-button { padding: 6px 12px; border-radius: 999px; border: none; background: var(--amber); color: var(--tide-ink); font-weight: 800; cursor: pointer; }
+
+/* Streak reminder switch */
+.reminder-switch {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(143, 211, 255, 0.25);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+.reminder-switch > span:last-child { display: grid; }
+.reminder-switch strong { font-size: 0.86rem; }
+.reminder-switch small { font-size: 0.72rem; color: var(--muted); }
+.reminder-switch .knob { position: relative; width: 34px; height: 20px; border-radius: 999px; background: rgba(255, 255, 255, 0.18); transition: background 0.2s; }
+.reminder-switch .knob::after { content: ""; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.2s; }
+.reminder-switch.on .knob { background: var(--amber); }
+.reminder-switch.on .knob::after { transform: translateX(14px); }
+
+/* Players today, on the home card */
+.day-card .climbing { color: var(--amber); }
+
+@media (prefers-reduced-motion: reduce) {
+  .afterburner.armed, .nudge-button, .new-skin { animation: none; }
 }

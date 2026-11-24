@@ -117,13 +117,43 @@ export async function postPractice(deviceId: string): Promise<{ round: PublicH2H
   return read<{ round: PublicH2HRound }>(response);
 }
 
-export async function postGuess(deviceId: string, questionId: string, guess: Guess): Promise<GuessResponse> {
+/** `afterburner` spends today's Afterburner on this stage. `skin` is the Hangar paint job, for the board and race links. */
+export async function postGuess(
+  deviceId: string,
+  questionId: string,
+  guess: Guess,
+  extras: { afterburner?: boolean; skin?: string } = {},
+): Promise<GuessResponse> {
   const response = await fetch(`/api/guess${devQuery()}`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-device-id": deviceId },
-    body: JSON.stringify({ questionId, guess }),
+    body: JSON.stringify({ questionId, guess, ...extras }),
   });
   return read<GuessResponse>(response);
+}
+
+/** Opens a stuck nudge for one of today's questions. The answer that follows scores at most a Moonshot. */
+export function postNudge(deviceId: string, questionId: string): Promise<{ nudge: string }> {
+  return post<{ nudge: string }>(`/api/nudge${devQuery()}`, deviceId, { questionId });
+}
+
+/** "Should this count?": sends a name that was not on the list for review. */
+export function postReport(deviceId: string, questionId: string, text: string): Promise<{ ok: true }> {
+  return post<{ ok: true }>(`/api/report${devQuery()}`, deviceId, { questionId, text });
+}
+
+export type ReminderState = { key: string | null; on: boolean };
+
+export async function getReminder(deviceId: string): Promise<ReminderState> {
+  return read<ReminderState>(await fetch("/api/reminder", { headers: { "x-device-id": deviceId } }));
+}
+
+export function postReminder(deviceId: string, endpoint: string): Promise<ReminderState> {
+  return post<ReminderState>("/api/reminder", deviceId, { endpoint });
+}
+
+export async function deleteReminder(deviceId: string): Promise<ReminderState> {
+  return read<ReminderState>(await fetch("/api/reminder", { method: "DELETE", headers: { "x-device-id": deviceId } }));
 }
 
 async function post<T>(path: string, deviceId: string, body: unknown): Promise<T> {
@@ -168,6 +198,7 @@ export function errorCopy(error: unknown): string {
     if (error.code === "rate_limited") return "Too many guesses in a short time. Wait a minute, then try again.";
     if (error.code === "already_submitted") return "That question is already locked in.";
     if (error.code === "not_listed") return "Not on our list. Try another name.";
+    if (error.code === "afterburner_used") return "Today’s Afterburner is already spent. Lock in without it.";
     if (error.code === "out_of_order") return "That pick is out of order. Reload the run and continue from the current pair.";
     if (error.code === "run_finished") return "Today's scored run is already finished.";
     if (error.code === "practice_locked") return "Finish today's scored run before practicing.";

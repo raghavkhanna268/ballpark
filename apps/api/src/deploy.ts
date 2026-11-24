@@ -27,7 +27,8 @@ function serveAsset(pathname: string): Response {
     if (path.includes(".")) return new Response("Not found", { status: 404 });
     return html(ASSETS["/index.html"]);
   }
-  return html(asset, path !== "/index.html");
+  // Only Vite's hashed build files never change. The page and the streak-reminder service worker must be re-checked.
+  return html(asset, path.startsWith("/assets/"));
 }
 
 function html(asset: EmbeddedAsset | undefined, immutable = false): Response {

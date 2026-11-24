@@ -27,11 +27,17 @@ export function tierColor(tier: number): string {
 
 /** One answer's stretch of the climb, in journey progress, coloured by its tier. */
 export type SkyTrail = { from: number; to: number; tier: number };
-/** Another climber's height: your best, today's average and best, or a friend you are racing. */
-export type SkyGhost = { progress: number; label: string; color: string };
+/** A rocket's paint job from the Hangar: the body's gradient left to right, the nose and fins, and the window. */
+export type RocketPaint = { body: [string, string, string]; accent: string; window: string; pattern?: "stripes" | "stars" | "craters" };
+
+export const CLASSIC_PAINT: RocketPaint = { body: ["#98a1bb", "#ffffff", "#b3bbd2"], accent: "#e8505b", window: "#22305e" };
+
+/** Another climber's height: your best, today's average and best, or a friend you are racing (in their paint job). */
+export type SkyGhost = { progress: number; label: string; color: string; paint?: RocketPaint };
 /** Where the rocket is this frame, for the labels the page draws over the canvas. */
 export type SkyFrame = { progress: number; from: number; x: number; y: number; climbing: boolean };
-export type ClimbOptions = { from: number; to: number; tier: number; replay?: boolean; onLand?: () => void };
+/** `boost` is the Afterburner: a hotter, bigger burn. */
+export type ClimbOptions = { from: number; to: number; tier: number; replay?: boolean; boost?: boolean; onLand?: () => void };
 
 export type Sky = {
   resize(width: number, height: number, wide: boolean): void;
@@ -40,6 +46,9 @@ export type Sky = {
   setAnchor(share: number): void;
   setTrail(trail: SkyTrail[]): void;
   setGhosts(ghosts: SkyGhost[]): void;
+  setPaint(paint: RocketPaint): void;
+  /** Draws one frame now, with the camera on the rocket. For a still sky that runs no animation loop, like the postcard. */
+  draw(): void;
   /** Puts the rocket at a height with no animation. */
   jump(progress: number): void;
   climb(options: ClimbOptions): void;
@@ -166,6 +175,7 @@ type Climb = {
   tier: number;
   miss: boolean;
   replay: boolean;
+  boost: boolean;
   v: number;
   p: number;
   onLand?: () => void;
@@ -174,7 +184,8 @@ type Climb = {
 /** The rocket's body, nose up, with its base at 0. */
 const BODY_PATH = "M0 -58 C12 -46 12 -24 9 -6 L-9 -6 C-12 -24 -12 -46 0 -58Z";
 
-export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
+/** `still` draws only when asked to, at `pixelRatio`, with no animation loop. */
+export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: { still?: boolean; pixelRatio?: number } = {}): Sky {
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Canvas is not available");
   const ctx = context;
@@ -196,6 +207,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
   let climb: Climb | null = null;
   let trail: SkyTrail[] = [];
   let ghosts: SkyGhost[] = [];
+  let paint: RocketPaint = CLASSIC_PAINT;
   const sparks: Array<{ x: number; y: number; vx: number; vy: number; life: number; c: string }> = [];
   const exhaust: Array<{ x: number; y: number; vx: number; vy: number; life: number; s: number; c: string }> = [];
   let ring: { t0: number; c: string } | null = null;
@@ -978,15 +990,23 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       if (y < 70 || y > H + 40) return;
       const lanes = wide ? [RX - 120, RX + 120, RX - 200, RX + 200] : [W * 0.2, W * 0.8, W * 0.32, W * 0.68];
       const x = lanes[index % lanes.length];
-      ctx.save();
-      ctx.translate(x, y);
-      ctx.scale(0.55, 0.55);
-      ctx.globalAlpha = 0.85;
-      ctx.setLineDash([4, 4]);
-      ctx.lineWidth = 2.4;
-      ctx.strokeStyle = ghost.color;
-      ctx.stroke(new Path2D(BODY_PATH));
-      ctx.restore();
+      if (ghost.paint) {
+        // A friend's ghost flies in their own paint job, a little see-through.
+        ctx.save();
+        ctx.globalAlpha = 0.7;
+        drawShip(x, y, 0.55, ghost.paint, -1);
+        ctx.restore();
+      } else {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(0.55, 0.55);
+        ctx.globalAlpha = 0.85;
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2.4;
+        ctx.strokeStyle = ghost.color;
+        ctx.stroke(new Path2D(BODY_PATH));
+        ctx.restore();
+      }
       ctx.fillStyle = ghost.color;
       ctx.fillText(ghost.label, x, y + 14);
     });
@@ -994,10 +1014,30 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
   }
 
   /* ---------- rocket and effects ---------- */
-  function drawRocket(x: number, y: number, power: number, tier: number, t: number) {
+  function drawRocket(x: number, y: number, power: number, tier: number, t: number, boost = false) {
     ctx.save();
     ctx.translate(x, y);
     const c = tier >= 0 ? tierColor(tier) : "#ffb35c";
+    if (boost && power > 0) {
+      // Afterburner: a white-hot core and a ring of shock diamonds under the flame.
+      const L = (30 + 50 * power) * (0.9 + 0.1 * Math.sin((t || 0) * 0.09));
+      const g = ctx.createLinearGradient(0, 0, 0, L);
+      g.addColorStop(0, "#ffffff");
+      g.addColorStop(0.35, "#ffb347");
+      g.addColorStop(1, "#ff5a1f00");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(-12, 0);
+      ctx.quadraticCurveTo(0, L * 1.5, 12, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = "#fff6d8cc";
+      for (let k = 1; k <= 3; k++) {
+        ctx.beginPath();
+        ctx.ellipse(0, k * L * 0.28, 4.5 - k, 2.4, 0, 0, 6.283);
+        ctx.fill();
+      }
+    }
     if (power > 0) {
       const L = (16 + 34 * power) * (0.85 + 0.15 * Math.sin((t || 0) * 0.06));
       const w = 5 + 4 * power;
@@ -1017,7 +1057,16 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = "#e8505b";
+    ctx.restore();
+    drawShip(x, y, 1, paint, lastTier);
+  }
+
+  /** The rocket itself in a paint job, nose up with its base at (x, y). `band` is a tier whose colour rings the body, or -1. */
+  function drawShip(x: number, y: number, scale: number, look: RocketPaint, band: number) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = look.accent;
     ctx.beginPath();
     ctx.moveTo(-8.5, -24);
     ctx.lineTo(-17, -1);
@@ -1031,22 +1080,36 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
     ctx.closePath();
     ctx.fill();
     const body = ctx.createLinearGradient(-11, 0, 11, 0);
-    body.addColorStop(0, "#98a1bb");
-    body.addColorStop(0.45, "#ffffff");
-    body.addColorStop(1, "#b3bbd2");
+    body.addColorStop(0, look.body[0]);
+    body.addColorStop(0.45, look.body[1]);
+    body.addColorStop(1, look.body[2]);
     ctx.fillStyle = body;
     ctx.fill(BODY);
     ctx.save();
     ctx.clip(BODY);
-    ctx.fillStyle = "#e8505b";
+    ctx.fillStyle = look.accent;
     ctx.fillRect(-14, -60, 28, 13);
+    if (look.pattern === "stripes") {
+      ctx.globalAlpha = 0.8;
+      ctx.fillRect(-14, -27, 28, 3);
+      ctx.globalAlpha = 1;
+    } else if (look.pattern === "stars") {
+      circ(-4, -18, 1.2);
+      circ(5, -24, 1);
+      circ(2, -44, 0.9);
+    } else if (look.pattern === "craters") {
+      ctx.fillStyle = "#00000022";
+      circ(-4, -19, 2.4);
+      circ(5, -13, 1.8);
+      circ(4, -44, 1.4);
+    }
     // A band in the colour of your last tier
-    if (lastTier >= 0) {
-      ctx.fillStyle = tierColor(lastTier);
+    if (band >= 0) {
+      ctx.fillStyle = tierColor(band);
       ctx.fillRect(-14, -21, 28, 5);
     }
     ctx.restore();
-    ctx.fillStyle = "#22305e";
+    ctx.fillStyle = look.window;
     circ(0, -34, 5);
     ctx.strokeStyle = "#cfd6ea";
     ctx.lineWidth = 1.5;
@@ -1071,7 +1134,8 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
     if (climb.miss) return p < 0.45 && Math.random() < 0.5 ? 0.25 : 0;
     const ramp = Math.min(1, p / 0.12);
     const fade = p > 0.85 ? Math.max(0, (1 - p) / 0.15) : 1;
-    return POWER[Math.max(0, Math.min(POWER.length - 1, climb.tier))] * Math.max(0.25, ramp) * Math.max(0.15, fade);
+    const boost = climb.boost ? 1.3 : 1;
+    return boost * POWER[Math.max(0, Math.min(POWER.length - 1, climb.tier))] * Math.max(0.25, ramp) * Math.max(0.15, fade);
   }
 
   function burst(c: string) {
@@ -1204,7 +1268,8 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       h = c.from + (c.miss ? 0 : c.d);
       if (!c.miss && !c.replay) {
         lastTier = c.tier;
-        if (c.tier >= 3) burst(tierColor(c.tier));
+        if (c.boost) burst("#ffb347");
+        else if (c.tier >= 3) burst(tierColor(c.tier));
       }
       c.onLand?.();
     }
@@ -1212,6 +1277,10 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
 
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
+    render(now);
+  }
+
+  function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
     const moving = climb !== null || sparks.length > 0 || exhaust.length > 0 || ring !== null;
@@ -1248,7 +1317,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
     effects(dt, power);
     const sway = climb && !climb.miss ? Math.sin(climb.p * Math.PI * 4) * 2 * power : 0;
     const flying = climb ? climb.tier : lastTier;
-    drawRocket(RX + sway, sy(h), power, flying, t);
+    drawRocket(RX + sway, sy(h), power, flying, t, climb?.boost === true && !climb.miss);
     ctx.restore();
     api.onFrame?.({ progress: h / STOP, from: lastFrom / STOP, x: RX + sway, y: sy(h), climbing: climb !== null && !climb.replay });
   }
@@ -1262,7 +1331,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       P = H * 0.95;
       wide = isWide;
       RX = wide ? W * 0.62 : W / 2;
-      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const dpr = options.pixelRatio ?? Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1292,6 +1361,16 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       ghosts = next;
       dirty = true;
     },
+    setPaint(next) {
+      paint = next;
+      dirty = true;
+    },
+    draw() {
+      cam = h;
+      anc = ancTarget;
+      dirty = true;
+      render(performance.now());
+    },
     jump(progress) {
       climb = null;
       h = progress * STOP;
@@ -1300,7 +1379,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       syncPassed();
       dirty = true;
     },
-    climb({ from, to, tier, replay = false, onLand }) {
+    climb({ from, to, tier, replay = false, boost = false, onLand }) {
       const start = from * STOP;
       const d = Math.max(0, (to - from) * STOP);
       const miss = !replay && (tier < 0 || d <= 0);
@@ -1309,7 +1388,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
       if (replay) cam = start;
       syncPassed();
       const dur = reduce ? 0 : replay ? replayMs(to - from) : climbMs(miss ? 0 : to - from);
-      climb = { from: start, d, t0: performance.now() + (reduce || replay ? 0 : IGNITION_MS), dur, tier, miss, replay, v: 0, p: 0, onLand };
+      climb = { from: start, d, t0: performance.now() + (reduce || replay ? 0 : IGNITION_MS), dur, tier, miss, replay, boost: boost && !miss, v: 0, p: 0, onLand };
       dirty = true;
       if (reduce) stepClimb(performance.now());
     },
@@ -1323,6 +1402,6 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean): Sky {
     },
   };
 
-  raf = requestAnimationFrame(frame);
+  if (!options.still) raf = requestAnimationFrame(frame);
   return api;
 }

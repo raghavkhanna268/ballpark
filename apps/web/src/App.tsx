@@ -18,10 +18,13 @@ import {
   type Race,
   type Reveal,
 } from "@ballpark/shared";
-import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, type HeadToHeadState } from "./api";
+import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, postNudge, postReport, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
-import { currentCombo, gainLevel, maxPoints, tierOf, trailOf } from "./game";
+import { basePoints, currentCombo, gainLevel, maxPoints, stageStep, tierOf, trailOf } from "./game";
+import { HangarCard, RocketIcon, SKINS, activeSkin, earnedFrom, isUnlocked, loadHangar, newlyEarned, saveHangar, skinById, type HangarState } from "./hangar";
+import { TodayBoard } from "./flightlog";
+import { ReminderSwitch } from "./reminder";
 import { Journey, type Ghost, type Hop, type HudScore, type TrailSegment } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
 import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
@@ -72,7 +75,16 @@ export function App() {
   const [packRun, setPackRun] = useState({ score: 0, combo: 0 });
   const [packTrail, setPackTrail] = useState<TrailSegment[]>([]);
   /** Names the server said are not on the list, for the question on screen: each one costs 2 seconds. */
-  const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
+  const [rejected, setRejected] = useState<{ id: string; count: number; text: string }>({ id: "", count: 0, text: "" });
+  /** Today's Afterburner is armed for the next answer. */
+  const [armed, setArmed] = useState(false);
+  const [hangar, setHangar] = useState<HangarState>(() => loadHangar());
+  const earned = useMemo(() => earnedFrom(stats.maxStreak, logbook), [stats.maxStreak, logbook]);
+  const skin = activeSkin(hangar, earned);
+
+  function pickSkin(id: string) {
+    setHangar(saveHangar({ selected: id, seen: SKINS.filter((item) => isUnlocked(item, earned)).map((item) => item.id) }));
+  }
 
   const refreshPlus = useCallback(async () => {
     try {
@@ -116,6 +128,16 @@ export function App() {
     void refresh();
   }, [refresh]);
 
+  /** Today's board and the climbing count, again after a finish, so the end screen lists this run. */
+  async function refreshToday() {
+    try {
+      const next = await getPuzzle(stats.deviceId);
+      setPuzzle((current) => (current && current.date === next.date ? { ...current, today: next.today, field: next.field } : current));
+    } catch {
+      // The board from the start of the game stays up.
+    }
+  }
+
   async function submit(index: number, guess: Guess) {
     if (!puzzle) return;
     const question = puzzle.questions[index];
@@ -124,15 +146,17 @@ export function App() {
     setError(null);
     haptic("tap");
     try {
-      const response = await postGuess(stats.deviceId, question.id, guess);
+      const response = await postGuess(stats.deviceId, question.id, guess, { afterburner: armed || undefined, skin: skin.id });
+      setArmed(false);
       const questions = puzzle.questions.map((item, itemIndex) => (itemIndex === index ? { ...item, reveal: response.reveal } : item));
       const nextPuzzle = { ...puzzle, questions, result: response.result };
       setPuzzle(nextPuzzle);
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
       const max = maxPoints(question.type);
-      const travel = classicStep(response.reveal.points, max, CLASSIC_QUESTIONS);
+      const travel = stageStep(question.type, response.reveal, CLASSIC_QUESTIONS);
       const scored = response.reveal.points > 0;
-      const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(response.reveal.points, max) } : undefined;
+      const base = basePoints(response.reveal);
+      const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(base, max) } : undefined;
       const combo = scored ? currentCombo(pointsOf(nextPuzzle)) : currentCombo(pointsOf(puzzle));
       setHop((current) => ({
         id: current.id + 1,
@@ -141,24 +165,28 @@ export function App() {
         gain,
         combo,
         answer: guess.type === "name_one" ? guess.text : undefined,
+        boost: response.reveal.boosted,
       }));
-      if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
+      if (question.type === "name_one" && base >= NAME_CAP / 2) {
         setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
       }
       if (response.result) {
         setLogbook(recordRun("classic", flightFor(nextPuzzle)));
         void refreshLeague();
+        void refreshToday();
       }
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
       if (caught instanceof ApiError && caught.code === "not_listed") {
         // Not on our list: nothing is stored, the clock loses 2 seconds, and the player tries another name.
-        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
+        const text = guess.type === "name_one" ? guess.text : "";
+        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1, text }));
         playBonk();
         haptic("bad");
         return;
       }
+      if (caught instanceof ApiError && caught.code === "afterburner_used") setArmed(false);
       if (caught instanceof ApiError && caught.code === "already_submitted") {
         await refresh();
       }
@@ -181,6 +209,8 @@ export function App() {
     phase.name === "home" || phase.name === "plus" || mode === "pack"
       ? []
       : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
+  const afterburnerReady = puzzle !== null && puzzle.result === null && !puzzle.questions.some((question) => question.reveal?.boosted);
+  const fresh = newlyEarned(hangar, earned);
   const showAds = plus !== null && !plus.plus;
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
@@ -230,6 +260,7 @@ export function App() {
       trail={mode === "pack" ? packTrail : mode === "classic" ? classicTrail : NO_TRAIL}
       score={hudScore}
       combo={combo}
+      paint={skin}
       overview={phase.name === "end" || h2hOverview || (phase.name === "pack" && phase.done)}
       page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "pack" ? `pack-${phase.id}` : phase.name}
     >
@@ -272,6 +303,28 @@ export function App() {
                 ]
               : []),
             {
+              id: "today",
+              icon: "🏁",
+              title: "Today",
+              note: puzzle.today.climbing ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten at 20 players",
+              content: (
+                <section className="card today-card" aria-label="Today’s board">
+                  <div className="mode-top">
+                    <h2>Today’s top climbs</h2>
+                    <p className="streak">#{puzzle.puzzleNumber}</p>
+                  </div>
+                  <TodayBoard today={puzzle.today} players={puzzle.field.players} />
+                </section>
+              ),
+            },
+            {
+              id: "hangar",
+              icon: "🚀",
+              title: "Hangar",
+              note: fresh.length > 0 ? `New: ${fresh[0]!.name}` : `${SKINS.filter((item) => isUnlocked(item, earned)).length}/${SKINS.length} paint jobs`,
+              content: <HangarCard state={hangar} earned={earned} streak={classicStreak.streak} onPick={pickSkin} />,
+            },
+            {
               id: "logbook",
               icon: "📓",
               title: "Logbook",
@@ -291,6 +344,12 @@ export function App() {
           busy={busy}
           error={error}
           rejections={rejected.id === puzzle.questions[phase.index]?.id ? rejected.count : 0}
+          rejectedText={rejected.id === puzzle.questions[phase.index]?.id ? rejected.text : ""}
+          afterburner={{ ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) }}
+          onNudge={async () => (await postNudge(stats.deviceId, puzzle.questions[phase.index]!.id)).nudge}
+          onReport={async (text) => {
+            await postReport(stats.deviceId, puzzle.questions[phase.index]!.id, text);
+          }}
           onHome={() => setPhase({ name: "home" })}
           onSubmit={(guess) => void submit(phase.index, guess)}
         />
@@ -323,6 +382,40 @@ export function App() {
               {puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
               {classicRace ? <FriendResult race={classicRace} mine={classicFlight} /> : null}
               <LeagueLine league={league} />
+            </>
+          }
+          postcard={{
+            puzzleNumber: puzzle.puzzleNumber,
+            scenery,
+            trail: classicTrail,
+            progress: classicFlight,
+            paint: skin,
+            score: puzzle.result.score,
+            tiers: puzzle.questions.map((question) =>
+              question.reveal && question.reveal.points > 0 ? tierOf(basePoints(question.reveal), maxPoints(question.type)) : -1,
+            ),
+            boosted: puzzle.result.boosted,
+            host: puzzle.shareHost,
+          }}
+          extras={
+            <>
+              {fresh.length > 0 ? (
+                <div className="new-skin">
+                  <RocketIcon paint={fresh[0]!} size={44} />
+                  <p>
+                    <strong>New paint job: {fresh[0]!.name}</strong>
+                    <small>
+                      {fresh.length > 1
+                        ? `Also new: ${listNames(fresh.slice(1).map((item) => item.name))}. All in the Hangar.`
+                        : "Earned in the Hangar. Friends see it on the board and in race links."}
+                    </small>
+                  </p>
+                  <button type="button" className="chip-button" onClick={() => pickSkin(fresh[0]!.id)}>
+                    Fly it
+                  </button>
+                </div>
+              ) : null}
+              <ReminderSwitch deviceId={stats.deviceId} />
             </>
           }
           ad={showAds ? <AdSlot onPlus={() => setPhase({ name: "plus" })} /> : null}
@@ -421,10 +514,7 @@ export function App() {
 const NO_TRAIL: TrailSegment[] = [];
 
 function flightFor(puzzle: PuzzleResponse): number {
-  return puzzle.questions.reduce((sum, question) => {
-    if (!question.reveal) return sum;
-    return sum + classicStep(question.reveal.points, maxPoints(question.type), CLASSIC_QUESTIONS);
-  }, 0);
+  return puzzle.questions.reduce((sum, question) => (question.reveal ? sum + stageStep(question.type, question.reveal, CLASSIC_QUESTIONS) : sum), 0);
 }
 
 /** Each answered question's points in order, with null for the ones still to play. */
@@ -438,9 +528,14 @@ function classicScore(puzzle: PuzzleResponse): number {
 
 function ghostsFor(best: number, field: FieldStats | undefined, race: Race | null): Ghost[] {
   const ghosts: Ghost[] = [];
-  if (race) ghosts.push({ id: "friend", label: "Your friend", progress: race.progress });
+  if (race) ghosts.push({ id: "friend", label: "Your friend", progress: race.progress, paint: skinById(race.skin) ?? undefined });
   if (best > 0) ghosts.push({ id: "best", label: "Your best", progress: best });
   if (field && field.players > 0 && field.averageProgress !== null) ghosts.push({ id: "average", label: "Today’s average", progress: field.averageProgress });
   if (field && field.players > 1 && field.bestProgress !== null) ghosts.push({ id: "top", label: "Today’s best", progress: field.bestProgress });
   return ghosts;
+}
+
+/** "A", "A and B", "A, B and C". */
+function listNames(names: string[]): string {
+  return names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
 }
