@@ -1,7 +1,6 @@
 export type {
   Band,
   BoardRow,
-  ClimbCurve,
   CompareGuess,
   Confidence,
   CrowdStat,

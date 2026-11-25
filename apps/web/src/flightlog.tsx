@@ -4,7 +4,6 @@ import {
   formatAltitude,
   milestoneAt,
   type BoardRow,
-  type ClimbCurve,
   type PublicQuestion,
   type TodayStats,
 } from "@ballpark/shared";
@@ -13,8 +12,8 @@ import { RocketIcon, skinById, SKINS } from "./hangar";
 import { MISS_COLOR, tierColor } from "./sky";
 
 /**
- * The flight log on the end screen: your climb stage by stage past the landmarks, where it sits among today's
- * climbs (bots included), and The catch (what you answered and how many others said the same).
+ * The flight log on the end screen: your climb stage by stage past the landmarks, today's board, and The catch
+ * (what you answered and how many others said the same).
  */
 
 type Stage = { index: number; from: number; to: number; tier: number; boosted: boolean };
@@ -82,33 +81,6 @@ export function FlightPath({ questions }: { questions: PublicQuestion[] }) {
   );
 }
 
-/** Today's finished climbs, bots included, as bars with yours marked. */
-export function CurveChart({ curve }: { curve: ClimbCurve | null }) {
-  if (!curve) return <p className="hint">Finish today’s climb to see where it lands.</p>;
-  const most = Math.max(1, ...curve.bins);
-  const youAt = Math.min(0.999, curve.you / curve.top);
-  return (
-    <figure className="curve">
-      <figcaption>
-        <strong>Higher than {curve.higherThan}%</strong> of today’s climbs
-      </figcaption>
-      <div className="curve-bars" aria-hidden="true">
-        {curve.bins.map((count, index) => {
-          const mine = Math.floor(youAt * curve.bins.length) === index;
-          return <i key={index} className={mine ? "you" : ""} style={{ height: `${Math.max(4, (count / most) * 100)}%` }} />;
-        })}
-        <b className="curve-you" style={{ left: `${youAt * 100}%` }}>
-          You
-        </b>
-      </div>
-      <p className="curve-axis">
-        <span>Launch pad</span>
-        <span>{formatAltitude(curve.top)}</span>
-      </p>
-    </figure>
-  );
-}
-
 /** Each stage: what you answered, its tier, and how many players said the same. */
 export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
   return (
@@ -150,7 +122,7 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
   );
 }
 
-/** The ten highest climbs today, by callsign, each in its rocket's paint job. Bots fly with a 🤖. */
+/** The ten highest climbs today, by callsign, each in its rocket's paint job. */
 export function TodayBoard({ today }: { today: TodayStats }) {
   if (today.board.length === 0) return <p className="hint">No finished climbs yet today.</p>;
   return (
@@ -173,21 +145,12 @@ export function TodayBoard({ today }: { today: TodayStats }) {
 function BoardLine({ row }: { row: BoardRow }) {
   const paint = skinById(row.skin) ?? SKINS[0]!;
   return (
-    <li className={row.you ? "you" : row.bot ? "bot" : undefined}>
+    <li className={row.you ? "you" : undefined}>
       <span className="board-rank">{row.rank}</span>
-      {row.bot ? (
-        <span className="board-bot" aria-hidden="true">
-          🤖
-        </span>
-      ) : (
-        <RocketIcon paint={paint} size={26} />
-      )}
+      <RocketIcon paint={paint} size={26} />
       <span className="board-name">
         <strong>{row.you ? `${row.callsign} (you)` : row.callsign}</strong>
-        <small>
-          {row.bot ? "Bot · " : ""}
-          {milestoneAt(row.progress).at > 0 ? `past ${milestoneAt(row.progress).name}` : "off the pad"}
-        </small>
+        <small>{milestoneAt(row.progress).at > 0 ? `past ${milestoneAt(row.progress).name}` : "off the pad"}</small>
       </span>
       <span className="board-height">
         <strong>{formatAltitude(row.progress)}</strong>

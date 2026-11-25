@@ -3,7 +3,7 @@ import { NAME_CAP, classicStep, type Guess, type PuzzleResponse, type Reveal, ty
 import { ApiError, errorCopy, getRound, postRoundGuess, type RoundRef } from "./api";
 import { CountUp, Tally, currentCombo, trailOf } from "./game";
 import { haptic, shareText } from "./haptic";
-import { fieldLine } from "./rivals";
+import { RankBlock } from "./rivals";
 import { QuestionScreen, RevealScreen, type Correction } from "./screens";
 import type { SkyTrail } from "./sky";
 import { playBonk } from "./sound";
@@ -231,29 +231,8 @@ function RoundPlace({ result }: { result: RoundResult }) {
   if (!result.place) {
     return <p className="players">Rarity here counts everyone who has ever answered these questions.</p>;
   }
-  const { rank, players, next } = result.place;
-  if (result.hypothetical) {
-    return (
-      <div className="rank-block">
-        <h2>
-          You’d have been #{rank} <span>of {players} that day</span>
-        </h2>
-        <p className="players">
-          {next ? `${next.gap} pts behind #${next.rank} on the day.` : "Nobody climbed higher that day."} {fieldLine(result.place)}
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="rank-block">
-      <h2>
-        You’re #{rank} <span>of {players} {result.placeWhat}</span>
-      </h2>
-      <p className="players">
-        {next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher here."} {fieldLine(result.place)}
-      </p>
-    </div>
-  );
+  if (result.hypothetical) return <RankBlock place={result.place} unit="pts" who="that day’s players" among="that day" wouldHave />;
+  return <RankBlock place={result.place} unit="pts" who={`everyone ${result.placeWhat}`} among={result.placeWhat} />;
 }
 
 /** A round in the shape the Classic screens read. */
@@ -271,7 +250,7 @@ function asPuzzle(round: RoundResponse): PuzzleResponse {
     questions: round.questions,
     result: null,
     field: { players: 0, averageProgress: null, bestProgress: null },
-    today: { climbing: null, bots: 0, board: [], you: null },
+    today: { climbing: 0, board: [], you: null },
   };
 }
 

@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { addUtcDays, playToday } from "@ballpark/shared";
+import { crewSize } from "../src/bots.ts";
 import { isPushEndpoint, saveReminder, sendReminders, type ReminderEnv } from "../src/reminders.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
@@ -29,7 +30,7 @@ async function call(path: string, deviceId: string, body?: unknown, method = bod
 }
 
 type Reveal = { label: string; points: number; boosted: boolean; nudged: boolean; crowd: { count?: number } };
-type Result = { score: number; shareText: string; emojis: string[]; boosted: number | null; race: string; curve: unknown };
+type Result = { score: number; shareText: string; emojis: string[]; boosted: number | null; race: string; place: { players: number } | null };
 
 async function answer(deviceId: string, questionId: string, text: string, extras: Record<string, unknown> = {}) {
   const response = await call("/api/guess", deviceId, { questionId, guess: { type: "name_one", text }, ...extras });
@@ -148,15 +149,15 @@ describe("should this count?", () => {
 });
 
 describe("today's board and the flight log", () => {
-  it("fills the board with labelled bots from the first player, and draws the curve", async () => {
-    type Today = { climbing: number | null; bots: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean; bot: boolean }>; you: unknown };
-    // Before anyone plays, today's bots are already on the board.
+  it("fills the board with bots that look and count like players from the first game", async () => {
+    type Today = { climbing: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean }>; you: unknown };
+    // Before anyone plays, today's bots are already on the board and in the climbing count, with callsigns and paint.
     const early = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today; field: { players: number; averageProgress: number | null } };
-    expect(early.today.bots).toBeGreaterThan(10);
-    // Bots are never counted as people climbing, and a handful of people is not announced.
-    expect(early.today.climbing).toBeNull();
+    expect(early.today.climbing).toBe(crewSize(DAY));
     expect(early.today.board).toHaveLength(10);
-    expect(early.today.board.every((row) => row.bot && !row.you)).toBe(true);
+    expect(early.today.board.every((row) => !row.you && /^\S+ \S+ \d+$/.test(row.callsign))).toBe(true);
+    expect(early.today.board.some((row) => row.skin !== null)).toBe(true);
+    expect(JSON.stringify(early.today)).not.toMatch(/bot/i);
     // Bots pick different answers, so their climbs spread out.
     expect(new Set(early.today.board.map((row) => row.progress)).size).toBeGreaterThan(3);
     expect(early.field.averageProgress).not.toBeNull();
@@ -170,19 +171,15 @@ describe("today's board and the flight log", () => {
       const response = await call("/api/guess", DEVICE, { questionId: question.id, guess: correctGuess(question), skin: "aurora" });
       result = ((await response.json()) as { result: Result | null }).result;
     }
-    const curve = result!.curve as { bins: number[]; top: number; you: number; higherThan: number };
-    expect(curve.bins.reduce((sum, count) => sum + count, 0)).toBe(5 + early.today.bots);
-    expect(curve.higherThan).toBeGreaterThanOrEqual(0);
-    expect(curve.higherThan).toBeLessThanOrEqual(100);
+    expect(result!.place!.players).toBe(5 + crewSize(DAY));
 
     const day = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today };
-    expect(day.today.climbing).toBeNull();
+    expect(day.today.climbing).toBe(5 + crewSize(DAY));
     expect(day.today.board).toHaveLength(10);
     const heights = day.today.board.map((row) => row.progress);
     expect([...heights].sort((left, right) => right - left)).toEqual(heights);
-    const mine = day.today.board.find((row) => row.you) ?? (day.today.you as { skin: string | null; you: boolean; bot: boolean });
+    const mine = day.today.board.find((row) => row.you) ?? (day.today.you as { skin: string | null; you: boolean });
     expect(mine.you).toBe(true);
-    expect(mine.bot).toBe(false);
     expect(mine.skin).toBe("aurora");
     expect(JSON.stringify(day.today)).not.toContain(OTHER.slice(0, 8));
   });

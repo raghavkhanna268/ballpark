@@ -183,31 +183,15 @@ export type DayResult = {
   /** The stage that used today's Afterburner, by index, or null. */
   boosted: number | null;
   /** Today's finished climbs as a histogram of heights with yours marked. Null below 20 finishers. */
-  curve: ClimbCurve | null;
-};
-
-export type ClimbCurve = {
-  /** Finished climbs per height band, lowest first. Each band is `top / bins.length` tall. */
-  bins: number[];
-  top: number;
-  /** Your height. */
-  you: number;
-  /** The share of other finishers you climbed higher than, 0 to 100. */
-  higherThan: number;
 };
 
 /** One finished climb on today's board. */
-export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean; bot: boolean };
+export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean };
 
 export type TodayStats = {
-  /**
-   * People who have answered at least one question today, from PEOPLE_SHOWN_FROM of them. Below that the count
-   * is left out instead of saying how few, and today's bots keep the board full.
-   */
-  climbing: number | null;
-  /** Today's bots on the board. */
-  bots: number;
-  /** The ten highest finished climbs, bots included. */
+  /** Everyone climbing today. */
+  climbing: number;
+  /** The ten highest finished climbs. */
   board: BoardRow[];
   /** Your row when you finished outside the top ten. */
   you: BoardRow | null;

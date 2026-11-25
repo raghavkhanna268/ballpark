@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { assertSeed } from "../seed/content.ts";
 import { resolvePlayDate } from "../src/play-date.ts";
+import { crewSize } from "../src/bots.ts";
 import { HttpError } from "../src/http.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
@@ -126,11 +127,17 @@ describe("submissions", () => {
       expect(body.reveal.crowd.submissions).toBe(1);
       result = body.result;
     }
-    // The only player today is ranked among today's bots, who are counted apart.
-    const place = result!.place as { rank: number; players: number; bots: number };
-    expect(place.bots).toBeGreaterThan(10);
-    expect(place.players).toBe(place.bots + 1);
+    // The only player today is ranked among today's bots, who count like players, and nothing marks them.
+    const place = result!.place as { rank: number; players: number; betterThan: number | null; spread: { bins: number[]; top: number; you: number } };
+    expect(crewSize(DAY)).toBeGreaterThan(10);
+    expect(place.players).toBe(crewSize(DAY) + 1);
     expect(result!.players).toBe(place.players);
+    expect(JSON.stringify(result)).not.toMatch(/bot/i);
+    // Where you stand: the share of the field you beat, and everyone's scores for the curve.
+    expect(place.betterThan).toBe(result!.beatPercent);
+    expect(place.spread.you).toBe(result!.score);
+    expect(place.spread.bins.reduce((sum, count) => sum + count, 0)).toBe(place.players);
+    expect(place.spread.top).toBeGreaterThanOrEqual(result!.score);
     // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
     expect(result!.emojis).toHaveLength(7);
     expect(result!.emojis).not.toContain("⬛");

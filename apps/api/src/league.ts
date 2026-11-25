@@ -17,8 +17,8 @@ import { leagueBots } from "./bots.js";
 
 /**
  * Weekly leagues. A device joins the week's league the first time it finishes a game that week (Monday to
- * Sunday, UTC). Groups hold up to 30 players of the same rank, and 20 bots play in every group, so each table
- * is open from the first game. League points are Classic points plus 50 per right Head-to-head pick. Last week's
+ * Sunday, UTC). Groups hold up to 30 players of the same rank, and 20 bots play in every group, looking like
+ * players, so each table is open from the first game. League points are Classic points plus 50 per right Head-to-head pick. Last week's
  * finish decides this week's league: top five up, bottom five down.
  */
 
@@ -74,7 +74,7 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     moveUp: LEAGUE_MOVE_UP,
   };
   if (!member) {
-    return { ...base, joined: false, tier: 0, name: leagueName(0), above: leagueName(1), moveDown: 0, players: 0, bots: 0, moved: null, you: null, standings: [] };
+    return { ...base, joined: false, tier: 0, name: leagueName(0), above: leagueName(1), moveDown: 0, players: 0, moved: null, you: null, standings: [] };
   }
   const table = await standings(db, week, member.tier, member.grp, date);
   const rows: LeagueStanding[] = table.map((row) => ({
@@ -82,7 +82,6 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     callsign: row.bot ?? callsign(row.device_id),
     points: row.points,
     you: row.device_id === deviceId,
-    bot: row.bot !== null,
   }));
   const hadPrevious = await db
     .prepare("SELECT 1 AS hit FROM league_members WHERE device_id = ? AND week < ? LIMIT 1")
@@ -96,7 +95,6 @@ export async function loadLeague(db: D1Database, deviceId: string, date: string)
     above: member.tier < LEAGUES.length - 1 ? leagueName(member.tier + 1) : null,
     moveDown: member.tier > 0 && table.length >= LEAGUE_DEMOTION_MIN_GROUP ? LEAGUE_MOVE_DOWN : 0,
     players: table.length,
-    bots: table.filter((row) => row.bot !== null).length,
     moved: hadPrevious ? (member.moved > 0 ? "up" : member.moved < 0 ? "down" : "same") : null,
     you: rows.find((row) => row.you) ?? null,
     standings: rows,

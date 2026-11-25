@@ -158,7 +158,7 @@ async function boardPlace(board: RoundBoard, questionIds: string[], questions: P
   const bots = crewRuns(board.bots.seed, ordered, { afterburner: board.bots.afterburner }).map((bot) => bot.score);
   // A past day's scores are other players'; yours joins them to say where you would have been.
   const players = board.hypothetical ? [...(await board.scores()), score] : await board.scores();
-  return placement(score, [...players, ...bots], bots.length);
+  return placement(score, [...players, ...bots]);
 }
 
 /** Finished scores in one stored set: everyone who answered all of its questions. */

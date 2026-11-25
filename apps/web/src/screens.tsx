@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { CountUp, Tally, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
 import { tierStyle, useFocusMode, useJourney } from "./journey";
 import { haptic } from "./haptic";
-import { CurveChart, FlightPath, TheCatch, TodayBoard } from "./flightlog";
+import { FlightPath, TheCatch, TodayBoard } from "./flightlog";
 import { sharePostcard, type PostcardInput } from "./postcard";
 import {
   COLD_START_RESPONSES,
@@ -90,7 +90,7 @@ export function HomeScreen({
         <section className="day-card">
           <p className="kicker">
             #{puzzle.puzzleNumber} · Today’s climb
-            {puzzle.today.climbing ? <span className="climbing"> · {puzzle.today.climbing.toLocaleString("en-US")} climbing today</span> : null}
+            {puzzle.today.climbing > 0 ? <span className="climbing"> · {puzzle.today.climbing.toLocaleString("en-US")} climbing today</span> : null}
           </p>
           <p className="theme">{puzzle.theme}</p>
           <p className="blurb">{puzzle.blurb}</p>
@@ -466,6 +466,7 @@ export function EndScreen({
   result,
   stats,
   streak,
+  standing,
   rivals,
   postcard,
   extras,
@@ -476,7 +477,9 @@ export function EndScreen({
   result: DayResult;
   stats: Stats;
   streak: StreakView & { savedToday: boolean };
-  /** Your rank, the friend you raced, and the weekly league. */
+  /** Where you stand among today's players, right under the score. */
+  standing?: ReactNode;
+  /** The friend you raced, and the weekly league. */
   rivals?: ReactNode;
   /** The picture of your climb that Share sends with the text. */
   postcard: PostcardInput;
@@ -513,6 +516,7 @@ export function EndScreen({
                 <span> pts</span>
               </p>
             </div>
+            {standing}
             <Tally rows={puzzle.questions.map((question) => question.reveal)} />
             {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
             {rivals}
@@ -520,10 +524,7 @@ export function EndScreen({
           </>
         ) : null}
         {tab === "log" ? (
-          <>
-            <FlightPath questions={puzzle.questions} />
-            <CurveChart curve={result.curve} />
-          </>
+          <FlightPath questions={puzzle.questions} />
         ) : null}
         {tab === "catch" ? <TheCatch questions={puzzle.questions} /> : null}
         {tab === "today" ? <TodayBoard today={puzzle.today} /> : null}

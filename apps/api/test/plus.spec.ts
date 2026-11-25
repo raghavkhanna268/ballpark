@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { JourneyResponse, PackSummary, PlusStatus, RoundGuessResponse, RoundResponse } from "@ballpark/shared";
 import { packs, questions } from "../seed/content.ts";
+import { crewSize } from "../src/bots.ts";
 import { hmacHex } from "../src/plus.ts";
 import { correctGuess, resetAndSeed } from "./seed-db.ts";
 
@@ -153,9 +154,10 @@ describe("pack journeys", () => {
     const done = await playChapter(1, cricketQuestions);
     expect(done.reveal.provisional).toBe(false);
     expect(done.result?.score).toBeGreaterThan(0);
-    // The first to finish a chapter is ranked among the chapter's bots.
-    expect(done.result!.place!.players - done.result!.place!.bots).toBe(1);
-    expect(done.result!.place!.bots).toBeGreaterThan(10);
+    // The first to finish a chapter is ranked among the chapter's bots, who count like players.
+    expect(crewSize("pack:cricket")).toBeGreaterThan(10);
+    expect(done.result!.place!.players).toBe(1 + crewSize("pack:cricket"));
+    expect(done.result!.place!.betterThan).not.toBeNull();
     expect(done.result?.hypothetical).toBe(false);
     expect(done.result?.shareText).toContain("Ballpark+ · 🏏 Cricket Crazy · Chapter 1");
 
@@ -178,7 +180,7 @@ describe("pack journeys", () => {
     const mine = await playChapter(2, chapterTwo, DEVICE, true);
     // The same rare answers again: once someone in the chapter has said them, they are no longer rare.
     expect(mine.result!.score).toBeLessThan(theirs.result!.score);
-    expect(mine.result!.place!.players - mine.result!.place!.bots).toBe(2);
+    expect(mine.result!.place!.players).toBe(2 + crewSize("pack:cricket:2"));
     expect(mine.result?.placeWhat).toBe("who played this chapter");
 
     const twice = await call("/api/packs/cricket/chapters/2/guess", DEVICE, { questionId: chapterTwo[0]!.id, guess: correctGuess(chapterTwo[0]!) });

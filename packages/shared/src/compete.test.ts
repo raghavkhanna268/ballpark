@@ -3,10 +3,31 @@ import { advanceStreak, callsign, liveStreak, nextTier, parseRace, placement, ra
 
 describe("placement", () => {
   it("ranks by score with shared ranks for ties, and names the gap to the next rank up", () => {
-    expect(placement(300, [500, 400, 400, 300, 100])).toEqual({ rank: 4, players: 5, bots: 0, next: { rank: 2, gap: 100 } });
-    expect(placement(500, [500, 400])).toEqual({ rank: 1, players: 2, bots: 0, next: null });
-    expect(placement(400, [500, 400, 400], 2)).toEqual({ rank: 2, players: 3, bots: 2, next: { rank: 1, gap: 100 } });
-    expect(placement(7, [])).toEqual({ rank: 1, players: 1, bots: 0, next: null });
+    expect(placement(300, [500, 400, 400, 300, 100])).toMatchObject({ rank: 4, players: 5, next: { rank: 2, gap: 100 } });
+    expect(placement(500, [500, 400])).toMatchObject({ rank: 1, players: 2, next: null });
+    expect(placement(400, [500, 400, 400])).toMatchObject({ rank: 2, players: 3, next: { rank: 1, gap: 100 } });
+    expect(placement(7, [])).toMatchObject({ rank: 1, players: 1, next: null });
+  });
+
+  it("says what share of the others you beat, ties not counted, and nothing when you played alone", () => {
+    expect(placement(300, [500, 400, 400, 300, 100]).betterThan).toBe(25);
+    expect(placement(500, [500, 400]).betterThan).toBe(100);
+    expect(placement(400, [500, 400, 400]).betterThan).toBe(0);
+    expect(placement(7, []).betterThan).toBeNull();
+  });
+
+  it("counts every score into bands from 0 to the top for the curve", () => {
+    const place = placement(260, [520, 270, 260, 90, 0]);
+    expect(place.spread.top).toBe(600);
+    expect(place.spread.you).toBe(260);
+    expect(place.spread.bins).toHaveLength(14);
+    expect(place.spread.bins.reduce((sum, count) => sum + count, 0)).toBe(5);
+    expect(place.spread.bins[0]).toBe(1);
+    expect(place.spread.bins[6]).toBe(2);
+    // A fixed top, like Head-to-head's ten picks: a perfect run sits in the last band.
+    const picks = placement(10, [10, 7, 3], 10);
+    expect(picks.spread.bins).toHaveLength(10);
+    expect(picks.spread.bins[9]).toBe(1);
   });
 });
 

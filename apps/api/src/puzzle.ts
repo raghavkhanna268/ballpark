@@ -1,4 +1,4 @@
-import { climbCurve, dayBots, fieldClimbs, stageStep, todayStats } from "./field.js";
+import { dayBots, fieldClimbs, stageStep, todayStats } from "./field.js";
 import { joinLeague } from "./league.js";
 import {
   beatPercent,
@@ -603,11 +603,10 @@ async function dayResult(
     shareText: classicShareText(number, emojis, mine.score, shareHost, climbShareLine(climbed), race, cruise),
     reached: climbedPhrase(climbed),
     provisional: date >= playToday(),
-    place: cruise ? null : placement(mine.score, scores, bots.length),
+    place: cruise ? null : placement(mine.score, scores),
     cruise,
     race,
     boosted: boosted >= 0 ? boosted : null,
-    curve: climbCurve(await fieldClimbs(db, date, questions), deviceId),
   };
 }
 

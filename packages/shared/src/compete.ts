@@ -1,27 +1,39 @@
-import { addUtcDays } from "./dates.js";
+import { addUtcDays, beatPercent } from "./dates.js";
 
 /* ---------- rank after every game ---------- */
 
 export type Placement = {
   /** 1 is the top. Players on the same score share a rank. */
   rank: number;
-  /** Everyone ranked, bots included. */
   players: number;
-  /** How many of `players` are bots. */
-  bots: number;
   /** The next rank up and how many points it is ahead, or null when you are at the top. */
   next: { rank: number; gap: number } | null;
+  /** The share of everyone else you scored higher than, 0 to 100, ties not counted. Null when nobody else played. */
+  betterThan: number | null;
+  /** Everyone's scores, yours included, counted into equal bands from 0 to `top`, lowest first. `you` is your score. */
+  spread: { bins: number[]; top: number; you: number };
 };
 
-/** Where `mine` sits among today's finished scores (`all` includes `mine`, and `bots` of them are bots). */
-export function placement(mine: number, all: number[], bots = 0): Placement {
+/** How many bands the end screen's curve of scores has. */
+export const SPREAD_BANDS = 14;
+
+/**
+ * Where `mine` sits among a field's finished scores (`all` includes `mine`). `top` is the right end of the curve:
+ * the most a run can score, or by default the highest score rounded up to the next hundred.
+ */
+export function placement(mine: number, all: number[], top?: number): Placement {
   const scores = all.length === 0 ? [mine] : all;
   const above = scores.filter((score) => score > mine);
   const rank = above.length + 1;
-  if (above.length === 0) return { rank, players: scores.length, bots, next: null };
+  const end = top ?? Math.max(100, Math.ceil(Math.max(...scores) / 100) * 100);
+  const bands = Math.min(SPREAD_BANDS, Math.max(1, end));
+  const bins = Array.from({ length: bands }, () => 0);
+  for (const score of scores) bins[Math.max(0, Math.min(bands - 1, Math.floor((score / end) * bands)))]! += 1;
+  const shared = { players: scores.length, betterThan: scores.length > 1 ? beatPercent(mine, scores) : null, spread: { bins, top: end, you: mine } };
+  if (above.length === 0) return { rank, next: null, ...shared };
   const nextScore = Math.min(...above);
   const nextRank = scores.filter((score) => score > nextScore).length + 1;
-  return { rank, players: scores.length, bots, next: { rank: nextRank, gap: nextScore - mine } };
+  return { rank, next: { rank: nextRank, gap: nextScore - mine }, ...shared };
 }
 
 /* ---------- race a friend ---------- */
@@ -105,8 +117,7 @@ export function callsign(seed: string): string {
   return `${first} ${second} ${number}`;
 }
 
-/** One row of a league table. `bot` marks a bot rival, shown as one and never counted as a person. */
-export type LeagueStanding = { rank: number; callsign: string; points: number; you: boolean; bot: boolean };
+export type LeagueStanding = { rank: number; callsign: string; points: number; you: boolean };
 
 export type LeagueResponse = {
   /** Monday and Sunday of this league week. */
@@ -121,10 +132,8 @@ export type LeagueResponse = {
   moveUp: number;
   /** 0 when this group is too small to send anyone down. */
   moveDown: number;
-  /** Everyone in your group this week, bots included. */
+  /** Everyone in your group this week. */
   players: number;
-  /** How many of `players` are bots. */
-  bots: number;
   /** Where last week sent you: up a league, down one, or the same. Null on your first week. */
   moved: "up" | "down" | "same" | null;
   you: LeagueStanding | null;

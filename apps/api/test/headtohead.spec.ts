@@ -1,8 +1,9 @@
 import { env } from "cloudflare:test";
 import { exports } from "cloudflare:workers";
-import { buildHeadToHeadSequence, puzzleSlot, toPublicRound, type H2HFact } from "@ballpark/shared";
+import { beatPercent, buildHeadToHeadSequence, puzzleSlot, toPublicRound, type H2HFact } from "@ballpark/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { facts, puzzles, questions } from "../seed/content.ts";
+import { headToHeadBots } from "../src/bots.ts";
 import { resetAndSeed } from "./seed-db.ts";
 
 const DEVICE = "33333333-3333-4333-8333-333333333333";
@@ -116,18 +117,17 @@ describe("head-to-head API", () => {
       joined: boolean;
       name: string;
       players: number;
-      bots: number;
-      you: { rank: number; points: number; bot: boolean } | null;
-      standings: Array<{ bot: boolean; you: boolean }>;
+      you: { rank: number; points: number } | null;
+      standings: Array<{ callsign: string; you: boolean }>;
     };
     expect(table.joined).toBe(true);
     expect(table.name).toBe("Cadet league");
-    expect(table.you).toMatchObject({ points: 50, bot: false });
-    // One player still gets a full table: the group's bots, each marked as one.
-    expect(table.bots).toBe(20);
+    expect(table.you).toMatchObject({ points: 50 });
+    // One player still gets a full table: the group's bots, with callsigns like anyone's and nothing marking them.
     expect(table.players).toBe(21);
     expect(table.standings).toHaveLength(21);
-    expect(table.standings.filter((row) => row.bot)).toHaveLength(20);
+    expect(new Set(table.standings.map((row) => row.callsign)).size).toBe(21);
+    expect(JSON.stringify(table)).not.toMatch(/bot/i);
 
     const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
     expect(again.status).toBe(409);
@@ -164,11 +164,18 @@ describe("head-to-head API", () => {
     const now = new Date().toISOString();
     await insertResult(DEVICE, 8, now);
     await insertResult(OTHER, 8, now);
-    const left = (await (await state(DEVICE)).json()) as { result: { beatPercent: number; score: number } };
-    const right = (await (await state(OTHER)).json()) as { result: { beatPercent: number; score: number } };
+    type Ended = { result: { beatPercent: number; score: number; players: number; place: { rank: number; betterThan: number; spread: { top: number } } } };
+    const left = (await (await state(DEVICE)).json()) as Ended;
+    const right = (await (await state(OTHER)).json()) as Ended;
+    // Today's bots run the same picks and count like players; the two equal scores tie.
+    const bots = headToHeadBots(DAY, 10);
     expect(left.result.score).toBe(8);
-    expect(left.result.beatPercent).toBe(0);
-    expect(right.result.beatPercent).toBe(0);
+    expect(left.result.players).toBe(2 + bots.length);
+    expect(left.result.beatPercent).toBe(beatPercent(8, [8, 8, ...bots]));
+    expect(right.result.beatPercent).toBe(left.result.beatPercent);
+    expect(right.result.place.rank).toBe(left.result.place.rank);
+    expect(left.result.place.betterThan).toBe(left.result.beatPercent);
+    expect(left.result.place.spread.top).toBe(10);
   });
 });
 

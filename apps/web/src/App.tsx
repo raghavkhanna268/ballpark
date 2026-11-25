@@ -372,7 +372,7 @@ export function App() {
               id: "today",
               icon: "🏁",
               title: "Today",
-              note: puzzle.today.climbing ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten climbs",
+              note: puzzle.today.climbing > 0 ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten climbs",
               content: (
                 <section className="card today-card" aria-label="Today’s board">
                   <div className="mode-top">
@@ -445,9 +445,9 @@ export function App() {
           result={puzzle.result}
           stats={stats}
           streak={classicStreak}
+          standing={puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
           rivals={
             <>
-              {puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
               {puzzle.result.cruise ? <p className="cruise-note">⛵ A cruise: no clock, so it stays off the board and the league. Your streak still counts.</p> : null}
               {classicRace ? <FriendResult race={classicRace} mine={classicFlight} /> : null}
               <LeagueLine league={league} />

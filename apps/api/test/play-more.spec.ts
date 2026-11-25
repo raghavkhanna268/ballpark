@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ARCHIVE_FREE_DAYS, addUtcDays, puzzleSlot, type ArchiveResponse, type DayResult, type GuessResponse, type PuzzleResponse, type RoundGuessResponse, type RoundResponse, type UnlimitedStatus } from "@ballpark/shared";
 import { puzzles, questions, type SeedQuestion } from "../seed/content.ts";
+import { crewSize } from "../src/bots.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
 const DEVICE = "55555555-5555-4555-8555-555555555555";
@@ -46,8 +47,8 @@ describe("Cruise", () => {
   it("keeps the day but stays off the board", async () => {
     const ranked = await playDaily(OTHER, DAY);
     expect(ranked.cruise).toBe(false);
-    // One person, ranked among the day's bots.
-    expect(ranked.place!.players - ranked.place!.bots).toBe(1);
+    // One person, ranked among the day's bots, who count like players.
+    expect(ranked.place!.players).toBe(1 + crewSize(DAY));
 
     const cruise = await playDaily(DEVICE, DAY, { cruise: true });
     expect(cruise.cruise).toBe(true);
@@ -59,7 +60,7 @@ describe("Cruise", () => {
     const row = await env.DB.prepare("SELECT cruise FROM daily_results WHERE device_id = ? AND puzzle_date = ?").bind(DEVICE, DAY).first<{ cruise: number }>();
     expect(row?.cruise).toBe(1);
     const theirs = (await (await call("/api/puzzle", OTHER, DAY)).json()) as PuzzleResponse;
-    expect(theirs.result!.place!.players - theirs.result!.place!.bots).toBe(1);
+    expect(theirs.result!.place!.players).toBe(1 + crewSize(DAY));
     expect(theirs.cruise).toBe(false);
     const mine = (await (await call("/api/puzzle", DEVICE, DAY)).json()) as PuzzleResponse;
     expect(mine.cruise).toBe(true);
@@ -121,15 +122,15 @@ describe("the archive", () => {
     expect(last!.result!.hypothetical).toBe(true);
     // The live player and you, among that day's bots: the same bots that were on the day's board.
     const place = last!.result!.place!;
-    expect(place.players - place.bots).toBe(2);
-    expect(place.bots).toBe(live.place!.bots);
+    expect(place.players).toBe(2 + crewSize(DAY));
+    expect(live.place!.players).toBe(1 + crewSize(DAY));
     expect(last!.result!.shareText).toContain("Ballpark #8 · Archive");
 
     // Nothing reached the day's results, so the live player's board still has one player.
     const results = await env.DB.prepare("SELECT COUNT(*) AS n FROM daily_results WHERE device_id = ?").bind(DEVICE).first<{ n: number }>();
     expect(results?.n).toBe(0);
     const theirs = (await (await call("/api/puzzle", OTHER, DAY)).json()) as PuzzleResponse;
-    expect(theirs.result!.place!.players - theirs.result!.place!.bots).toBe(1);
+    expect(theirs.result!.place!.players).toBe(1 + crewSize(DAY));
 
     const list = (await (await call("/api/archive", DEVICE, TODAY)).json()) as ArchiveResponse;
     expect(list.days.find((day) => day.date === DAY)).toMatchObject({ played: "archive", answered: 7, score: last!.result!.score });
