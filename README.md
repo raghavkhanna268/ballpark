@@ -68,9 +68,11 @@ How high you get is the score you carry around. There is no target: a run climbs
 
 **Comparing waits for 20 players.** A comparison with three other people means little, so nothing compares you with the crowd until there are 20 of them (`COMPARE_MIN_PLAYERS` in `packages/shared/src/compete.ts`). Below that, a finished Classic, chapter or archive day shows "Early player #N to finish today" (or "this chapter", "that day") instead of a rank, the "Today's average" and "Today's best" ghost climbers stay hidden, the reveal says rarity is still our estimate instead of showing crowd shares, and the league card says how many players the group has so far. Rarity points still work from the first answer, because they fall back on the seed's priors until 20 answers exist.
 
-Every question has a 30-second timer, in both modes, and it starts after the 3-second read. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
+Every question has a 25-second timer, in both modes, and it starts after the 3-second read. When it runs out, the answer locks as "Out of time": 0 points in Classic, a miss in Head-to-head. The timer is in the browser only. The server does not check it yet, so a reload starts it again.
 
 **Second chance.** A name that is not on the list does not end the question. The server answers `422 not_listed`, stores nothing, and the card says "Not on our list. Try another. −2 s": the box shakes and clears, and the clock loses 2 seconds. You can keep trying until a name is on the list or the clock runs out. Tries are rate limited per question (10 a minute, `RETRY_LIMIT`). A timeout still stores 0 points.
+
+**Did you mean.** A name close to a listed one is not scored as typed. The server answers `422 did_you_mean` with the listed spelling (`suggestAccepted` in `packages/shared/src/match.ts`), stores nothing, and the box fills with that spelling under a line like “Kilomter” → Kilometer. Lock in sends it, or the player edits it. It costs no time. "Close" is a slip of one letter from 4 letters, two from 6 and three from 9 (a swap of two neighbours counts as one), or the start of one name typed to at least 4 letters and half its length. When two different answers are just as close, nothing is offered and the name counts as not on the list. These tries share the per-question rate limit, so the offers can't be used to read out the list.
 
 Share uses the Web Share API when the browser has it, and copies to the clipboard otherwise. The card names the height you climbed and the last landmark you passed, and stays free of answers:
 
@@ -99,7 +101,7 @@ Race my climb: ballpark.local/?race=h325-1000
 
 ## Scoring
 
-Classic is seven open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents, aliases, and small typos against a server-side list, and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Supernova. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
+Classic is seven open "name one" questions a day, scored by how rare your answer is. The Worker matches case, accents and aliases against a server-side list, and offers the listed spelling for a near miss (see "Did you mean" above), and works out the share of other players who gave the same answer. Your own answer does not count, so the first player of the day can still find a Supernova. Until 20 other answers exist, that share is blended with a fixed prior from the seed, and the reveal says so. The share sets a named tier:
 
 | Tier | Share of other players | Points | Emoji |
 | --- | --- | --- | --- |

@@ -46,7 +46,7 @@ import { ArchiveScreen, JourneyScreen, PacksScreen, PlayMore, UnlimitedScreen } 
 import { AdSlot, PlusScreen } from "./plus";
 import { RoundRun } from "./rounds";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
-import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel } from "./screens";
+import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel, type Correction } from "./screens";
 import { sceneryFor } from "./sky";
 import { playBonk } from "./sound";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
@@ -107,6 +107,8 @@ export function App() {
   const [roundSize, setRoundSize] = useState(5);
   /** Names the server said are not on the list, for the question on screen: each one costs 2 seconds. */
   const [rejected, setRejected] = useState<{ id: string; count: number; text: string }>({ id: "", count: 0, text: "" });
+  /** The listed spelling offered for a name typed close to one, on the question it belongs to. */
+  const [correction, setCorrection] = useState<Correction & { id: string }>({ id: "", from: "", to: "", key: 0 });
   /** Today's Afterburner is armed for the next answer. */
   const [armed, setArmed] = useState(false);
   const [hangar, setHangar] = useState<HangarState>(() => loadHangar());
@@ -210,6 +212,14 @@ export function App() {
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "did_you_mean" && caught.suggestion) {
+        // Close to a listed name: the box fills with that spelling to confirm or edit. No time is lost.
+        const to = caught.suggestion;
+        const from = guess.type === "name_one" ? guess.text : "";
+        setCorrection((current) => ({ id: question.id, from, to, key: current.key + 1 }));
+        haptic("ok");
+        return;
+      }
       if (caught instanceof ApiError && caught.code === "not_listed") {
         // Not on our list: nothing is stored, the clock loses 2 seconds, and the player tries another name.
         const text = guess.type === "name_one" ? guess.text : "";
@@ -401,6 +411,7 @@ export function App() {
           error={error}
           rejections={rejected.id === puzzle.questions[phase.index]?.id ? rejected.count : 0}
           rejectedText={rejected.id === puzzle.questions[phase.index]?.id ? rejected.text : ""}
+          correction={correction.id === puzzle.questions[phase.index]?.id ? correction : null}
           afterburner={{ ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) }}
           clock={!cruise}
           onNudge={async () => (await postNudge(stats.deviceId, puzzle.questions[phase.index]!.id)).nudge}

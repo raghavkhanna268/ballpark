@@ -66,7 +66,7 @@ export default {
     } catch (error) {
       if (error instanceof HttpError) {
         console.log(JSON.stringify({ level: "info", event: "request_rejected", code: error.code, status: error.status }));
-        return withCors(json({ error: error.code }, error.status));
+        return withCors(json({ ...error.extra, error: error.code }, error.status));
       }
       console.log(
         JSON.stringify({

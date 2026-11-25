@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-export const QUESTION_SECONDS = 30;
-/** The countdown is drawn as ten blocks, one for every three seconds, like an arcade power bar. */
+export const QUESTION_SECONDS = 25;
+/** The countdown is drawn as ten blocks, one for every two and a half seconds, like an arcade power bar. */
 const BLOCKS = 10;
 
 /**
- * A 30-second countdown for one question. It starts the first time `running` is true, so the 3-second read before
+ * A 25-second countdown for one question. It starts the first time `running` is true, so the 3-second read before
  * it is free, and pauses its ticking while `running` is false (for example while an answer is being sent).
  * `penaltyMs` comes off the time left: each name that is not on the list costs 2 seconds.
  * It calls onExpire once when time runs out.

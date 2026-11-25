@@ -197,8 +197,16 @@ describe("submissions", () => {
     expect(lateBody.reveal.points).toBe(0);
     expect(lateBody.reveal.band).toBe("black");
 
-    const typo = await guess("66666666-6666-4666-8666-666666666666", named.id, { type: "name_one", text: "Nigera" });
-    const typoReveal = ((await typo.json()) as { reveal: { answerText: string; points: number } }).reveal;
+    // A near miss is not scored on its own: the listed spelling comes back to confirm, and nothing is stored yet.
+    const speller = "66666666-6666-4666-8666-666666666666";
+    const typo = await guess(speller, named.id, { type: "name_one", text: "Nigera" });
+    expect(typo.status).toBe(422);
+    expect(await typo.json()).toEqual({ error: "did_you_mean", suggestion: "Nigeria" });
+    const half = await guess(speller, named.id, { type: "name_one", text: "Ethiop" });
+    expect(await half.json()).toEqual({ error: "did_you_mean", suggestion: "Ethiopia" });
+    const confirmed = await guess(speller, named.id, { type: "name_one", text: "Nigeria" });
+    expect(confirmed.status).toBe(200);
+    const typoReveal = ((await confirmed.json()) as { reveal: { answerText: string; points: number } }).reveal;
     expect(typoReveal.answerText).toBe("Nigeria");
     expect(typoReveal.points).toBeGreaterThan(0);
   });

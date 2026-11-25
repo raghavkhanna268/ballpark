@@ -13,7 +13,7 @@ import {
   type RoundSummary,
 } from "@ballpark/shared";
 import { BAND_EMOJI } from "@ballpark/shared/scoring";
-import { RETRY_LIMIT, isUnlistedName, scoreClassicQuestion } from "./classic-score.js";
+import { RETRY_LIMIT, checkName, nameRejection, scoreClassicQuestion } from "./classic-score.js";
 import { HttpError } from "./http.js";
 import { enforceRateLimit } from "./rate-limit.js";
 import { loadQuestions, otherGuesses, parseGuess, revealFor, toPublic, validateGuess, type AnswerScope, type CrowdScope } from "./puzzle.js";
@@ -97,9 +97,10 @@ export async function submitRoundGuess(
   const question = questions.find((candidate) => candidate.id === questionId);
   if (!question) throw new HttpError(404, "unknown_question");
   validateGuess(question, guess);
-  if (isUnlistedName(question, guess)) {
+  const rejection = nameRejection(checkName(question, guess));
+  if (rejection) {
     await enforceRateLimit(db, `try:${deviceId}:${def.store.key}:${question.id}`, RETRY_LIMIT);
-    throw new HttpError(422, "not_listed");
+    throw rejection;
   }
   const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, def.crowd, question.id, null));
   try {

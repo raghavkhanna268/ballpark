@@ -31,7 +31,7 @@ import {
   type ServerQuestion,
   type SliderScale,
 } from "@ballpark/shared";
-import { RETRY_LIMIT, isUnlistedName, scoreStage, suggestionsForQuestion, type PlayQuestion, type StageOptions } from "./classic-score.js";
+import { RETRY_LIMIT, checkName, isUnlistedName, nameRejection, scoreStage, suggestionsForQuestion, type PlayQuestion, type StageOptions } from "./classic-score.js";
 import { finalizeDay } from "./finalize.js";
 import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/shared/scoring";
 import { HttpError } from "./http.js";
@@ -191,9 +191,11 @@ export async function submitGuess(
     .bind(deviceId, date, MODE)
     .first<{ cruise: number }>();
   if (started && started.cruise === 1 !== cruise) throw new HttpError(409, "mode_locked");
-  if (isUnlistedName(question, guess)) {
+  // A name that is not on the list, or only close to one, is not stored: the player tries again while the clock runs.
+  const rejection = nameRejection(checkName(question, guess));
+  if (rejection) {
     await enforceRateLimit(db, `try:${deviceId}:${date}:${question.id}`, RETRY_LIMIT);
-    throw new HttpError(422, "not_listed");
+    throw rejection;
   }
   if (extras.afterburner) {
     const used = await db

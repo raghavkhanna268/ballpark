@@ -189,6 +189,12 @@ export function StatsPanel({ stats, streak }: { stats: Stats; streak: StreakView
   );
 }
 
+/**
+ * A typed name that is close to a listed one: the box is filled with the listed spelling for the player to lock in
+ * or edit. `key` goes up with each new offer.
+ */
+export type Correction = { from: string; to: string; key: number };
+
 /** Today's Afterburner: ready to arm before an answer, armed for this one, or already spent. */
 export type AfterburnerView = { ready: boolean; armed: boolean; onToggle: () => void };
 
@@ -200,6 +206,7 @@ export function QuestionScreen({
   error,
   rejections = 0,
   rejectedText = "",
+  correction = null,
   afterburner = null,
   clock = true,
   onNudge,
@@ -218,6 +225,8 @@ export function QuestionScreen({
   rejections?: number;
   /** The last name that was not on the list, for "Should this count?". */
   rejectedText?: string;
+  /** The listed spelling offered for the last name typed, if it was close to one. */
+  correction?: Correction | null;
   afterburner?: AfterburnerView | null;
   /** Opens this question's nudge and returns its line. */
   onNudge?: () => Promise<string>;
@@ -274,6 +283,7 @@ export function QuestionScreen({
           busy={busy}
           locked={reading > 0}
           rejections={rejections}
+          correction={correction}
           onSubmit={(text) => onSubmit({ type: "name_one", text })}
         />
       ) : null}
@@ -960,10 +970,13 @@ function NameForm({
   busy,
   locked = false,
   rejections = 0,
+  correction = null,
   onSubmit,
 }: {
   suggestions: string[];
   busy: boolean;
+  /** A listed spelling to fill the box with, for the player to confirm or edit. */
+  correction?: Correction | null;
   /** True during the 3-second read: the question shows, the box waits. */
   locked?: boolean;
   /** Goes up each time a name is not on the list. The box clears for the next try. */
@@ -972,7 +985,18 @@ function NameForm({
 }) {
   const [text, setText] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
+  const [offer, setOffer] = useState<Correction | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Fill in the spelling from the list. Lock in sends it as it stands; any edit puts the box back in the player's hands.
+    if (!correction) return;
+    setText(correction.to);
+    setOffer(correction);
+    setLocalError(null);
+    inputRef.current?.focus({ preventScroll: true });
+    // Only a new offer refills the box.
+  }, [correction?.key]);
 
   useEffect(() => {
     if (rejections === 0) return;
@@ -1012,7 +1036,11 @@ function NameForm({
           disabled={locked}
           list={suggestions.length > 0 ? "name-suggestions" : undefined}
           value={text}
-          onChange={(event) => setText(event.target.value)}
+          onChange={(event) => {
+            setText(event.target.value);
+            setOffer(null);
+          }}
+          aria-describedby={offer ? "did-you-mean" : undefined}
           autoComplete="off"
           autoCapitalize="words"
           enterKeyHint="done"
@@ -1025,6 +1053,15 @@ function NameForm({
             <option key={name} value={name} />
           ))}
         </datalist>
+      ) : null}
+      {offer ? (
+        <p className="did-you-mean" id="did-you-mean" role="status" key={offer.key}>
+          <span>
+            “{offer.from}” <i aria-hidden="true">→</i>
+            <span className="sr"> looks like </span> <b>{offer.to}</b>
+          </span>
+          <small>Lock in to confirm, or edit it</small>
+        </p>
       ) : null}
       {localError ? <p className="form-error">{localError}</p> : null}
       <button className="primary" type="submit" disabled={busy || locked}>

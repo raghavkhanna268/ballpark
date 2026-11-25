@@ -4,7 +4,7 @@ import { ApiError, errorCopy, getRound, postRoundGuess, type RoundRef } from "./
 import { CountUp, Tally, currentCombo, trailOf } from "./game";
 import { haptic, shareText } from "./haptic";
 import { EarlyBlock } from "./rivals";
-import { QuestionScreen, RevealScreen } from "./screens";
+import { QuestionScreen, RevealScreen, type Correction } from "./screens";
 import type { SkyTrail } from "./sky";
 import { playBonk } from "./sound";
 
@@ -51,6 +51,7 @@ export function RoundRun({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
+  const [correction, setCorrection] = useState<Correction & { id: string }>({ id: "", from: "", to: "", key: 0 });
   const words = WORDS[ref.kind];
 
   useEffect(() => {
@@ -105,6 +106,13 @@ export function RoundRun({
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "did_you_mean" && caught.suggestion) {
+        const to = caught.suggestion;
+        const from = guess.type === "name_one" ? guess.text : "";
+        setCorrection((current) => ({ id: question.id, from, to, key: current.key + 1 }));
+        haptic("ok");
+        return;
+      }
       if (caught instanceof ApiError && caught.code === "not_listed") {
         setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
         playBonk();
@@ -126,6 +134,7 @@ export function RoundRun({
         busy={busy}
         error={error}
         rejections={rejected.id === round.questions[phase.index]?.id ? rejected.count : 0}
+        correction={correction.id === round.questions[phase.index]?.id ? correction : null}
         onHome={onHome}
         onSubmit={(guess) => void submit(phase.index, guess)}
       />

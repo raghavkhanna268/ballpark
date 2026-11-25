@@ -64,6 +64,8 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    /** For "did_you_mean": the listed spelling the typed answer looks like. */
+    readonly suggestion: string | null = null,
   ) {
     super(code);
   }
@@ -80,9 +82,9 @@ function devQuery(extra: Record<string, string> = {}): string {
 }
 
 async function read<T>(response: Response): Promise<T> {
-  const body = (await response.json().catch(() => null)) as { error?: string } | null;
+  const body = (await response.json().catch(() => null)) as { error?: string; suggestion?: unknown } | null;
   if (!response.ok) {
-    throw new ApiError(response.status, body?.error ?? "request_failed");
+    throw new ApiError(response.status, body?.error ?? "request_failed", typeof body?.suggestion === "string" ? body.suggestion : null);
   }
   return body as T;
 }
@@ -243,6 +245,7 @@ export function errorCopy(error: unknown): string {
     if (error.code === "rate_limited") return "Too many guesses in a short time. Wait a minute, then try again.";
     if (error.code === "already_submitted") return "That question is already locked in.";
     if (error.code === "not_listed") return "Not on our list. Try another name.";
+    if (error.code === "did_you_mean") return error.suggestion ? `Did you mean ${error.suggestion}? Lock it in to confirm.` : "Check the spelling and try again.";
     if (error.code === "afterburner_used") return "Today’s Afterburner is already spent. Lock in without it.";
     if (error.code === "out_of_order") return "That pick is out of order. Reload the run and continue from the current pair.";
     if (error.code === "run_finished") return "Today's scored run is already finished.";

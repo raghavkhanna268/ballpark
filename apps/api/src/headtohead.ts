@@ -154,7 +154,7 @@ export async function pickHeadToHead(
   const round = sequence[index];
   if (!round) throw new HttpError(400, "invalid_guess");
   if (choice.timedOut) {
-    // The 30-second timer ran out. It counts as a miss.
+    // The 25-second timer ran out. It counts as a miss.
   } else if (round.kind === "higher-lower") {
     if (choice.direction !== "higher" && choice.direction !== "lower") throw new HttpError(400, "invalid_guess");
   } else if (!round.items.some((item) => item.id === choice.choiceId)) {

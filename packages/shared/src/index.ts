@@ -65,7 +65,7 @@ export {
   weekStart,
 } from "./compete.js";
 export type { AcceptedAnswer } from "./match.js";
-export { levenshtein, matchAccepted, normalizeAnswer, priorShare } from "./match.js";
+export { exactAccepted, levenshtein, matchAccepted, normalizeAnswer, priorShare, suggestAccepted } from "./match.js";
 export type { NameTier } from "./rarity.js";
 export { COLD_START_RESPONSES, NAME_BASE, NAME_CAP, NAME_TIERS, blendShare, nameOnePoints, nameTier, rarityMultiplier } from "./rarity.js";
 export type { FieldStats, Milestone, ScaleLevel } from "./scale.js";

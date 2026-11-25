@@ -108,7 +108,7 @@ export type RankGuess = {
 export type NameGuess = {
   type: "name_one";
   text: string;
-  /** The 30-second timer ran out. Scores zero. */
+  /** The 25-second timer ran out. Scores zero. */
   timedOut?: boolean;
 };
 

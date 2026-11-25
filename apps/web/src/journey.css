@@ -313,7 +313,7 @@
 @keyframes ready { 50% { box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 26px rgba(255, 179, 71, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .toast, .combo, .scorebox strong, .timer-track i, .retry-note,
+  .toast, .combo, .scorebox strong, .timer-track i, .retry-note, .did-you-mean,
   .tally li, .mission, .sheet .mode-card .primary { animation: none; }
   .scene { transition: none; }
 }
@@ -849,6 +849,28 @@
 }
 .retry-note b { color: var(--miss-red); font-family: var(--display); font-weight: 900; }
 @keyframes retry-in { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: none; } }
+
+/* A name close to a listed one: the box fills with the listed spelling, and this line shows the change. */
+.did-you-mean {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(143, 211, 255, 0.5);
+  background: rgba(143, 211, 255, 0.1);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 2px 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #d8ecff;
+  text-align: center;
+  animation: retry-in 0.4s cubic-bezier(0.3, 1.5, 0.5, 1);
+}
+.did-you-mean i { font-style: normal; opacity: 0.7; }
+.did-you-mean b { color: #8fd3ff; }
+.did-you-mean small { font-size: 0.72rem; font-weight: 500; opacity: 0.75; }
 
 /* The result glows in its tier's colour. Deep space and Supernova get a ring of light. */
 .stage.is-focus .sheet .result .reveal[class*="tier-"] { --tier: var(--tier-c); --tier-glow: color-mix(in srgb, var(--tier-c) 60%, transparent); }
