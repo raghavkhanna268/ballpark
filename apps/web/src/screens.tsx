@@ -1,4 +1,4 @@
-import { QuestionTimer } from "./timer";
+import { ClockFuse, ClockRing, QuestionTimer, useQuestionClock } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { CountUp, Tally, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
@@ -238,10 +238,18 @@ export function QuestionScreen({
   const reading = clock ? readTime : 0;
   const locked = busy || reading > 0;
   const stuck = useStuck(question.id, reading === 0 && !busy);
+  const naming = question.type === "name_one";
+  // A name-one question answers in the bar at the bottom of the screen, with the clock beside the box.
+  const dockClock = useQuestionClock({
+    questionKey: question.id,
+    running: clock && naming && !busy && reading === 0,
+    penaltyMs: rejections * RETRY_PENALTY_MS,
+    onExpire: () => onSubmit({ type: "name_one", text: "", timedOut: true }),
+  });
   return (
     <div className="stack ask">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
-      {clock ? (
+      {naming ? null : clock ? (
         <QuestionTimer
           questionKey={question.id}
           running={!busy && reading === 0}
@@ -276,20 +284,16 @@ export function QuestionScreen({
       {question.type === "rank" ? (
         <RankForm items={question.items} busy={locked} onSubmit={(order) => onSubmit({ type: "rank", order })} />
       ) : null}
-      {question.type === "name_one" ? (
+      {naming ? (
         <NameForm
           suggestions={question.suggestions}
           busy={busy}
           locked={reading > 0}
           rejections={rejections}
           correction={correction}
+          clock={clock ? { left: dockClock.left, total: dockClock.total, read: reading } : null}
           onSubmit={(text) => onSubmit({ type: "name_one", text })}
         />
-      ) : null}
-      {rejections > 0 ? (
-        <p className="retry-note" key={rejections} role="alert">
-          Not on our list. Try another.{clock ? <b> −2 s</b> : null}
-        </p>
       ) : null}
       {rejections > 0 && rejectedText && onReport ? <ReportButton key={`${question.id}-${rejections}`} text={rejectedText} onReport={onReport} /> : null}
       {question.hasNudge && onNudge ? <NudgeLine key={question.id} ready={stuck} onNudge={onNudge} /> : null}
@@ -961,13 +965,18 @@ function countdownLabel(now: Date): string {
   return `Resets ${local} · ${hours}h ${minutes}m ${seconds}s`;
 }
 
-/** The scoring ladder, shown before the player answers, so the goal is to think past the obvious. */
+/**
+ * The answer bar, fixed to the bottom of the screen like a Krillion dive: the clock in a ring, the box with a fuse
+ * line that burns down under it, and Lock in. Notes about the last try (not on the list, did you mean) sit just above
+ * it. On a phone the bar rides on top of the keyboard.
+ */
 function NameForm({
   suggestions,
   busy,
   locked = false,
   rejections = 0,
   correction = null,
+  clock,
   onSubmit,
 }: {
   suggestions: string[];
@@ -978,12 +987,16 @@ function NameForm({
   locked?: boolean;
   /** Goes up each time a name is not on the list. The box clears for the next try. */
   rejections?: number;
+  /** The question's clock, or null in Cruise. `read` counts down the 3-second read before it starts. */
+  clock: { left: number; total: number; read: number } | null;
   onSubmit: (text: string) => void;
 }) {
+  const { dockSlot } = useJourney();
   const [text, setText] = useState("");
   const [localError, setLocalError] = useState<string | null>(null);
   const [offer, setOffer] = useState<Correction | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  useKeyboardLift();
 
   useEffect(() => {
     // Fill in the spelling from the list. Lock in sends it as it stands; any edit puts the box back in the player's hands.
@@ -1014,36 +1027,66 @@ function NameForm({
     // Once the read is over, put the cursor in the box on a computer. A phone waits for a tap, so no keyboard jumps up.
     if (!locked && window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus({ preventScroll: true });
   }, [locked]);
-  return (
-    <form
-      className="guess-form"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (text.trim().length < 1) {
-          setLocalError(suggestions.length > 0 ? "Type an answer. The list is everyone in that group, not a hint." : "Type an answer first.");
-          return;
-        }
-        onSubmit(text.trim());
-      }}
-    >
-      <label className="number-field">
-        <span className="sr">Your answer</span>
-        <input
-          ref={inputRef}
-          disabled={locked}
-          list={suggestions.length > 0 ? "name-suggestions" : undefined}
-          value={text}
-          onChange={(event) => {
-            setText(event.target.value);
-            setOffer(null);
-          }}
-          aria-describedby={offer ? "did-you-mean" : undefined}
-          autoComplete="off"
-          autoCapitalize="words"
-          enterKeyHint="done"
-          placeholder="Type any right answer"
-        />
-      </label>
+  const dock = (
+    <div className="answer-dock">
+      <div className="dock-notes">
+        {rejections > 0 ? (
+          <p className="retry-note" key={rejections} role="alert">
+            Not on our list. Try another.{clock ? <b> −2 s</b> : null}
+          </p>
+        ) : null}
+        {offer ? (
+          <p className="did-you-mean" id="did-you-mean" role="status" key={offer.key}>
+            <span>
+              “{offer.from}” <i aria-hidden="true">→</i>
+              <span className="sr"> looks like </span> <b>{offer.to}</b>
+            </span>
+            <small>Lock in to confirm, or edit it</small>
+          </p>
+        ) : null}
+        {localError ? <p className="form-error">{localError}</p> : null}
+      </div>
+      <form
+        className="guess-form dock-bar"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (text.trim().length < 1) {
+            setLocalError(suggestions.length > 0 ? "Type an answer. The list is everyone in that group, not a hint." : "Type an answer first.");
+            return;
+          }
+          onSubmit(text.trim());
+        }}
+      >
+        {clock ? (
+          <ClockRing left={clock.left} total={clock.total} read={clock.read} />
+        ) : (
+          <span className="dock-cruise" title="Cruise: no clock" aria-label="Cruise, no clock">
+            ⛵
+          </span>
+        )}
+        <label className="number-field dock-field">
+          <span className="sr">Your answer</span>
+          <input
+            ref={inputRef}
+            disabled={locked}
+            list={suggestions.length > 0 ? "name-suggestions" : undefined}
+            value={text}
+            onChange={(event) => {
+              setText(event.target.value);
+              setOffer(null);
+            }}
+            aria-describedby={offer ? "did-you-mean" : undefined}
+            autoComplete="off"
+            autoCapitalize="words"
+            enterKeyHint="send"
+            placeholder={clock && clock.read > 0 ? `Clock starts in ${clock.read}` : "Type any right answer"}
+          />
+          {clock ? <ClockFuse left={clock.left} total={clock.total} read={clock.read} /> : null}
+        </label>
+        <button className="dock-go" type="submit" disabled={busy || locked}>
+          {busy ? "…" : "Lock in"}
+        </button>
+      </form>
       {suggestions.length > 0 ? (
         <datalist id="name-suggestions">
           {suggestions.map((name) => (
@@ -1051,21 +1094,33 @@ function NameForm({
           ))}
         </datalist>
       ) : null}
-      {offer ? (
-        <p className="did-you-mean" id="did-you-mean" role="status" key={offer.key}>
-          <span>
-            “{offer.from}” <i aria-hidden="true">→</i>
-            <span className="sr"> looks like </span> <b>{offer.to}</b>
-          </span>
-          <small>Lock in to confirm, or edit it</small>
-        </p>
-      ) : null}
-      {localError ? <p className="form-error">{localError}</p> : null}
-      <button className="primary" type="submit" disabled={busy || locked}>
-        {busy ? "Checking…" : "Lock in answer"}
-      </button>
-    </form>
+    </div>
   );
+  return dockSlot ? createPortal(dock, dockSlot) : dock;
+}
+
+/**
+ * Keeps the answer bar on top of a phone's keyboard. The keyboard shrinks the visible part of the page, and `--kb`
+ * says by how much, so the bar can sit just above it.
+ */
+function useKeyboardLift() {
+  useEffect(() => {
+    const view = window.visualViewport;
+    if (!view) return;
+    const root = document.documentElement;
+    const update = () => {
+      const covered = Math.max(0, Math.round(window.innerHeight - view.height - view.offsetTop));
+      root.style.setProperty("--kb", `${covered}px`);
+    };
+    update();
+    view.addEventListener("resize", update);
+    view.addEventListener("scroll", update);
+    return () => {
+      view.removeEventListener("resize", update);
+      view.removeEventListener("scroll", update);
+      root.style.removeProperty("--kb");
+    };
+  }, []);
 }
 
 function LogNumberLine({

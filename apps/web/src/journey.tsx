@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MILESTONES, altitudeKm, formatAltitude, formatDistance, nextMilestone } from "@ballpark/shared";
 import { useCountUp } from "./game";
 import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, replayMs, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
@@ -33,11 +33,12 @@ type Motion = "idle" | "climb" | "replay";
 type Toast = { id: number; born: number; title: string; detail: string };
 
 /**
- * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, whether a climb is
- * still playing (so a result waits for it), and a switch that clears the card away so the climb has the whole screen.
+ * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, a slot at the
+ * bottom of the screen for the answer bar, whether a climb is still playing (so a result waits for it), and a switch
+ * that clears the card away so the climb has the whole screen.
  */
-type JourneyContextValue = { hudSlot: HTMLElement | null; holding: boolean; setFocus: (on: boolean) => void };
-const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, holding: false, setFocus: () => {} });
+type JourneyContextValue = { hudSlot: HTMLElement | null; dockSlot: HTMLElement | null; holding: boolean; setFocus: (on: boolean) => void };
+const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {} });
 
 export function useJourney(): JourneyContextValue {
   return useContext(JourneyContext);
@@ -136,6 +137,12 @@ export function Journey({
   const [sound, setSoundOn] = useState(() => readSound());
   const [focus, setFocus] = useState(false);
   const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
+  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const bindDock = useCallback((element: HTMLDivElement | null) => {
+    dockRef.current = element;
+    setDockSlot(element);
+  }, []);
   /** The last answer whose climb has finished. Until the current one lands, a result waits off screen. */
   const [settledHop, setSettledHop] = useState(hop.id);
   const focusRef = useRef(focus);
@@ -172,14 +179,18 @@ export function Journey({
       const card = sheet.getBoundingClientRect();
       const top = focusRef.current ? HUD_H : Math.max(0, Math.round(card.bottom - stage.getBoundingClientRect().top));
       stage.style.setProperty("--sheet-bottom", `${top}px`);
+      // The answer bar at the bottom: the rocket waits just above it.
+      const dock = dockRef.current?.offsetHeight ?? 0;
+      stage.style.setProperty("--dock-h", `${dock}px`);
       const under = focusRef.current ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
-      sky.setAnchor(under);
+      sky.setAnchor(dock > 0 ? Math.min(under, (h - dock - 10) / h) : under);
     };
     measureRef.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     observer.observe(sheet);
+    if (dockRef.current) observer.observe(dockRef.current);
 
     sky.onFrame = (frame) => {
       const km = altitudeKm(frame.progress);
@@ -442,8 +453,9 @@ export function Journey({
         </button>
       </div>
       <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef}>
-        <JourneyContext.Provider value={{ hudSlot, holding, setFocus }}>{children}</JourneyContext.Provider>
+        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus }}>{children}</JourneyContext.Provider>
       </div>
+      <div className="dock-slot" ref={bindDock} />
     </div>
   );
 }

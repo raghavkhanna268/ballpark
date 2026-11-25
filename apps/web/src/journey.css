@@ -719,9 +719,80 @@
 .hud .dots i.band-black { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 122, 102, 0.5); }
 .hud .stage-no { font-size: 0.56rem; letter-spacing: 0.16em; color: var(--line-art); text-shadow: 0 0 6px rgba(143, 211, 255, 0.5); }
 
-/* The question card: just the question. */
+/* The question card: just the question. The answer box lives in the bar at the bottom. */
 .sheet .stack.ask { animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .sheet .play-head p span { color: var(--muted); font-size: 0.8rem; }
+.sheet .stack.ask .prompt { font-size: clamp(1.25rem, 5.2vw, 1.6rem); line-height: 1.2; }
+
+/* The answer bar, fixed to the bottom like a Krillion dive: clock ring, the box with its fuse, Lock in. */
+.dock-slot { position: absolute; z-index: 9; left: 0; right: 0; bottom: var(--kb, 0px); pointer-events: none; }
+.answer-dock {
+  pointer-events: auto;
+  padding: 22px 12px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(180deg, rgba(6, 10, 22, 0) 0%, rgba(6, 10, 22, 0.88) 38%, rgba(6, 10, 22, 0.94) 100%);
+  animation: dock-in 0.4s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+@keyframes dock-in { from { transform: translateY(100%); } to { transform: none; } }
+.dock-notes, .answer-dock .dock-bar { max-width: 600px; margin: 0 auto; }
+.dock-notes { display: grid; gap: 6px; margin-bottom: 10px; }
+.dock-notes:empty { display: none; }
+.answer-dock .dock-bar { display: flex; flex-direction: row; align-items: center; gap: 10px; }
+.answer-dock .dock-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1.5px solid rgba(143, 211, 255, 0.35);
+  border-radius: 10px;
+  background: rgba(10, 16, 32, 0.94);
+  color: var(--ink);
+}
+.answer-dock .dock-field:focus-within { border-color: var(--line-art); box-shadow: 0 0 0 1px var(--line-art), 0 0 16px rgba(143, 211, 255, 0.3); }
+.answer-dock .dock-field:has(input:disabled) { opacity: 0.7; }
+.answer-dock .dock-field input { width: 100%; padding: 12px 0; font: inherit; font-size: 1.15rem; color: var(--ink); }
+.answer-dock .dock-field input::placeholder { color: var(--muted); opacity: 0.8; }
+.dock-go {
+  flex: 0 0 auto;
+  min-height: 50px;
+  padding: 0 18px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffd08a 0%, #ffb347 45%, #f39a2b 100%);
+  color: #1a1206;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 18px rgba(255, 179, 71, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+.dock-go:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #a8640f, 0 2px 6px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.45); }
+.dock-go:disabled { filter: saturate(0.4) brightness(0.8); cursor: default; }
+.dock-go:focus-visible { outline: 2px solid var(--line-art); outline-offset: 3px; }
+.dock-cruise { flex: 0 0 auto; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: rgba(10, 16, 32, 0.94); box-shadow: 0 0 0 2px rgba(143, 211, 255, 0.3); font-size: 1.4rem; }
+
+/* The clock ring: seconds left inside a ring that empties, red for the last ten, amber during the read. */
+.clock-ring { position: relative; flex: 0 0 auto; width: 54px; height: 54px; }
+.clock-ring svg { display: block; width: 100%; height: 100%; transform: rotate(-90deg); }
+.clock-track { fill: rgba(10, 16, 32, 0.94); stroke: rgba(143, 211, 255, 0.16); stroke-width: 4; }
+.clock-left { fill: none; stroke: var(--line-art); stroke-width: 4; stroke-linecap: round; transition: stroke-dashoffset 0.1s linear; filter: drop-shadow(0 0 3px rgba(143, 211, 255, 0.8)); }
+.clock-ring b { position: absolute; inset: 0; display: grid; place-items: center; font-family: var(--display); font-weight: 900; font-size: 1.15rem; color: var(--line-art); text-shadow: 0 0 10px rgba(143, 211, 255, 0.7); font-variant-numeric: tabular-nums; }
+.clock-ring.low .clock-left, .clock-ring.out .clock-left { stroke: var(--miss-red); filter: drop-shadow(0 0 4px rgba(255, 122, 102, 0.9)); }
+.clock-ring.low b, .clock-ring.out b { color: var(--miss-red); text-shadow: 0 0 12px rgba(255, 122, 102, 0.8); }
+.clock-ring.low b { animation: blink 1s steps(2, end) infinite; }
+.clock-ring.waiting .clock-left { stroke: var(--amber); filter: drop-shadow(0 0 4px rgba(255, 179, 71, 0.8)); animation: read-pulse 1s ease-in-out infinite; }
+.clock-ring.waiting b { color: #ffd88a; text-shadow: 0 0 10px rgba(255, 179, 71, 0.7); }
+.clock-fuse { position: absolute; left: 10px; right: 10px; bottom: 5px; height: 3px; border-radius: 2px; background: rgba(143, 211, 255, 0.12); overflow: hidden; }
+.clock-fuse b { display: block; height: 100%; background: var(--line-art); box-shadow: 0 0 6px rgba(143, 211, 255, 0.8); transform-origin: left center; transition: transform 0.1s linear; }
+.clock-fuse.low b { background: var(--miss-red); box-shadow: 0 0 6px rgba(255, 122, 102, 0.9); }
+/* The sound switch moves up out of the bar's way. */
+.stage:has(.answer-dock) .sound-toggle { bottom: calc(var(--dock-h, 90px) + 8px); }
+@media (prefers-reduced-motion: reduce) {
+  .answer-dock, .clock-ring.low b, .clock-ring.waiting .clock-left { animation: none; }
+}
 
 /* Your answer, rising through the sky with the climber under it. */
 .answer-tag {
@@ -901,6 +972,10 @@
   .stage.is-focus .sheet { padding: 0 16px; }
   .stage.is-focus .sheet .stack.result { padding-top: 104px; }
   .sky-tags { left: calc(50% - 230px); right: auto; width: 460px; }
+  /* The question card sits lower, in the middle of the sky, with the answer bar at the bottom. */
+  .sheet:has(.stack.ask) { top: max(64px, 18vh); }
+  .answer-dock { padding-bottom: 22px; }
+  .answer-dock .dock-field input { font-size: 1.3rem; }
   .gain { font-size: 1.25rem; }
   .gain.big { font-size: 1.75rem; }
   .where .alt-v, .where .alt-v.long span { font-size: 1.6rem; }
