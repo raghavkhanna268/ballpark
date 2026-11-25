@@ -1,28 +1,10 @@
-import { useEffect, useState } from "react";
-import {
-  NAME_CAP,
-  PACK_QUESTIONS,
-  canCompare,
-  classicStep,
-  type Guess,
-  type PackResponse,
-  type PackResult,
-  type PackSummary,
-  type PlusPlan,
-  type PlusStatus,
-  type PuzzleResponse,
-  type Reveal,
-} from "@ballpark/shared";
-import { ApiError, errorCopy, getPack, postPackGuess, postPlusOrder, postPlusVerify, postTestUnlock } from "./api";
-import { CountUp, Tally, currentCombo, trailOf } from "./game";
-import { haptic, shareText } from "./haptic";
-import { EarlyBlock } from "./rivals";
-import { QuestionScreen, RevealScreen } from "./screens";
-import type { SkyTrail } from "./sky";
-import { playBonk } from "./sound";
+import { useState } from "react";
+import { type PlusPlan, type PlusStatus } from "@ballpark/shared";
+import { ApiError, errorCopy, getRestoreCode, postPlusOrder, postPlusVerify, postRestore, postTestUnlock } from "./api";
+import { haptic } from "./haptic";
 
 /*
- * Ballpark+: themed packs and no ads. The daily game, the league and streaks stay free.
+ * Ballpark+: pack journeys, the whole archive, Unlimited, and no ads. The daily game, the league and streaks stay free.
  * Payment is Razorpay Checkout. The server creates the order and checks Razorpay's signature before a pass starts.
  */
 
@@ -142,8 +124,16 @@ export function PlusScreen({
       </header>
       <ul className="perks">
         <li>
-          <strong>Themed packs, any day</strong>
-          <span>Cricket Crazy, Screen Time and Space Nerd, with new packs on the way. Play them whenever you like.</span>
+          <strong>Pack journeys</strong>
+          <span>Cricket Crazy, Screen Time and Space Nerd, each a route of three chapters, with more on the way.</span>
+        </li>
+        <li>
+          <strong>Unlimited rounds</strong>
+          <span>Fresh rounds of seven whenever you like, not just once a day.</span>
+        </li>
+        <li>
+          <strong>The whole archive</strong>
+          <span>Every past day, not just the last week.</span>
         </li>
         <li>
           <strong>No ads, anywhere</strong>
@@ -160,8 +150,9 @@ export function PlusScreen({
           <h2>You’re on Ballpark+</h2>
           <p>Your pass runs until {untilText(status.expiresAt)}.</p>
           <button className="primary" type="button" onClick={onPacks}>
-            Play a pack
+            Start a journey
           </button>
+          <RestoreCodeLine deviceId={deviceId} />
         </section>
       ) : (
         <>
@@ -195,9 +186,10 @@ export function PlusScreen({
             </button>
           ) : null}
           <p className="fine">
-            A one-time pass for this device. It doesn’t renew by itself. UPI, cards and netbanking through Razorpay.
+            A one-time pass. It doesn’t renew by itself, and a restore code moves it to a new device. UPI, cards and netbanking through Razorpay.
             {status.testUnlock ? " Prices are placeholders in this build." : ""}
           </p>
+          <RestoreForm deviceId={deviceId} onStatus={onStatus} />
         </>
       )}
       {error ? <p className="form-error">{error}</p> : null}
@@ -205,49 +197,95 @@ export function PlusScreen({
   );
 }
 
-/** Home card: the packs, locked or ready, and the way in to Ballpark+. */
-export function PacksCard({
-  packs,
-  status,
-  onPack,
-  onPlus,
-}: {
-  packs: PackSummary[];
-  status: PlusStatus | null;
-  onPack: (id: string) => void;
-  onPlus: () => void;
-}) {
-  if (packs.length === 0) return null;
-  const plus = status?.plus ?? false;
-  const cheapest = status?.prices.find((item) => item.plan === "month");
+/** For members: the code that moves this pass to a new phone or browser. */
+function RestoreCodeLine({ deviceId }: { deviceId: string }) {
+  const [code, setCode] = useState<string | null>(null);
+  const [state, setState] = useState<"idle" | "busy" | "copied" | "failed">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function show() {
+    setState("busy");
+    setError(null);
+    try {
+      setCode((await getRestoreCode(deviceId)).code);
+      setState("idle");
+    } catch (caught) {
+      setError(errorCopy(caught));
+      setState("idle");
+    }
+  }
+
   return (
-    <section className="card packs-card" aria-label="Themed packs">
-      <div className="mode-top">
-        <h2>Themed packs</h2>
-        <p className="plus-tag">{plus ? "Ballpark+" : "Ballpark+ only"}</p>
-      </div>
-      <ul className="pack-list">
-        {packs.map((pack) => (
-          <li key={pack.id}>
-            <button type="button" className={pack.locked ? "pack-row locked" : "pack-row"} onClick={() => (pack.locked ? onPlus() : onPack(pack.id))}>
-              <span className="pack-emoji" aria-hidden="true">
-                {pack.emoji}
-              </span>
-              <span className="pack-text">
-                <strong>{pack.title}</strong>
-                <small>{pack.blurb}</small>
-              </span>
-              <span className="pack-state">{pack.locked ? "🔒" : pack.score !== null ? `${pack.score} pts` : pack.answered > 0 ? `${pack.answered}/${pack.questions}` : "Play"}</span>
-            </button>
-          </li>
-        ))}
-      </ul>
-      {plus ? null : (
-        <button className="primary" type="button" onClick={onPlus}>
-          Get Ballpark+{cheapest ? ` · ${cheapest.price} a month` : ""}
+    <div className="restore">
+      <p className="restore-title">New phone or browser?</p>
+      {code ? (
+        <>
+          <p className="restore-code mono">{code}</p>
+          <p className="fine">Enter it on the new device, on this page. The pass moves there, and this device goes back to free. Keep it to yourself.</p>
+          <button
+            className="ghost-button"
+            type="button"
+            onClick={() =>
+              void navigator.clipboard
+                .writeText(code)
+                .then(() => setState("copied"))
+                .catch(() => setState("failed"))
+            }
+          >
+            {state === "copied" ? "Copied" : state === "failed" ? "Copy didn’t work" : "Copy the code"}
+          </button>
+        </>
+      ) : (
+        <button className="ghost-button" type="button" disabled={state === "busy"} onClick={() => void show()}>
+          {state === "busy" ? "Getting your code…" : "Show my restore code"}
         </button>
       )}
-    </section>
+      {error ? <p className="form-error">{error}</p> : null}
+    </div>
+  );
+}
+
+/** For a new device: bring a pass over with the code from the old one. */
+function RestoreForm({ deviceId, onStatus }: { deviceId: string; onStatus: (next: PlusStatus) => void }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  if (!open) {
+    return (
+      <button className="text-button restore-open" type="button" onClick={() => setOpen(true)}>
+        Already have Ballpark+ on another device?
+      </button>
+    );
+  }
+  return (
+    <form
+      className="restore"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const code = String(new FormData(event.currentTarget).get("code") ?? "");
+        setBusy(true);
+        setError(null);
+        void postRestore(deviceId, code)
+          .then((next) => {
+            haptic("good");
+            onStatus(next);
+          })
+          .catch((caught: unknown) => setError(errorCopy(caught)))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <label className="restore-title" htmlFor="restore-code">
+        Your restore code
+      </label>
+      <p className="fine">On the other device, open Ballpark+ and tap “Show my restore code”.</p>
+      <div className="restore-row">
+        <input id="restore-code" name="code" className="mono" placeholder="BP-XXXX-XXXX-XXXX" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={24} required />
+        <button className="primary" type="submit" disabled={busy}>
+          {busy ? "Moving…" : "Restore"}
+        </button>
+      </div>
+      {error ? <p className="form-error">{error}</p> : null}
+    </form>
   );
 }
 
@@ -262,205 +300,4 @@ export function AdSlot({ onPlus }: { onPlus: () => void }) {
       </button>
     </aside>
   );
-}
-
-type PackPhase = { name: "loading" } | { name: "ask"; index: number } | { name: "reveal"; index: number; reveal: Reveal } | { name: "end" };
-
-/** One themed pack, played with the same question and reveal screens as Classic. */
-export function PackRun({
-  deviceId,
-  packId,
-  onHome,
-  onFlight,
-  onHop,
-  onEnd,
-}: {
-  deviceId: string;
-  packId: string;
-  onHome: () => void;
-  /** How high the rocket already is when the pack opens, the points so far, the right answers in a row, and the climb so far. */
-  onFlight: (progress: number, score: number, combo: number, trail: SkyTrail[]) => void;
-  /** One answer scored: its points, its tier label when it scored any, and what the player typed. */
-  onHop: (points: number, label: string | null, answer: string) => void;
-  onEnd: () => void;
-}) {
-  const [pack, setPack] = useState<PackResponse | null>(null);
-  const [phase, setPhase] = useState<PackPhase>({ name: "loading" });
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
-
-  useEffect(() => {
-    let live = true;
-    void getPack(deviceId, packId)
-      .then((loaded) => {
-        if (!live) return;
-        setPack(loaded);
-        const points = loaded.questions.map((question) => question.reveal?.points ?? null);
-        onFlight(
-          flight(loaded),
-          points.reduce<number>((sum, value) => sum + (value ?? 0), 0),
-          currentCombo(points),
-          trailOf(loaded.questions, PACK_QUESTIONS),
-        );
-        if (loaded.result) {
-          setPhase({ name: "end" });
-          onEnd();
-          return;
-        }
-        const index = loaded.questions.findIndex((question) => question.reveal === null);
-        setPhase({ name: "ask", index: Math.max(0, index) });
-      })
-      .catch((caught: unknown) => live && setError(errorCopy(caught)));
-    return () => {
-      live = false;
-    };
-    // The pack loads once per open, so the parent's callbacks are left out of the dependencies on purpose.
-  }, [deviceId, packId]);
-
-  if (error && !pack) {
-    return (
-      <div className="stack">
-        <p className="form-error">{error}</p>
-        <button className="text-button" type="button" onClick={onHome}>
-          Back home
-        </button>
-      </div>
-    );
-  }
-  if (!pack || phase.name === "loading") return <p className="status">Loading the pack…</p>;
-
-  const puzzle = asPuzzle(pack);
-
-  async function submit(index: number, guess: Guess) {
-    const question = pack!.questions[index];
-    if (!question) return;
-    setBusy(true);
-    setError(null);
-    haptic("tap");
-    try {
-      const response = await postPackGuess(deviceId, packId, question.id, guess);
-      const questions = pack!.questions.map((item, itemIndex) => (itemIndex === index ? { ...item, reveal: response.reveal } : item));
-      setPack({ ...pack!, questions, result: response.result });
-      onHop(response.reveal.points, response.reveal.points > 0 ? response.reveal.label : null, guess.type === "name_one" ? guess.text : "");
-      haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
-      setPhase({ name: "reveal", index, reveal: response.reveal });
-    } catch (caught) {
-      if (caught instanceof ApiError && caught.code === "not_listed") {
-        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
-        playBonk();
-        haptic("bad");
-        return;
-      }
-      setError(errorCopy(caught));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  if (phase.name === "ask") {
-    return (
-      <QuestionScreen
-        puzzle={puzzle}
-        question={pack.questions[phase.index]!}
-        index={phase.index}
-        busy={busy}
-        error={error}
-        rejections={rejected.id === pack.questions[phase.index]?.id ? rejected.count : 0}
-        onHome={onHome}
-        onSubmit={(guess) => void submit(phase.index, guess)}
-      />
-    );
-  }
-  if (phase.name === "reveal") {
-    const last = phase.index === pack.questions.length - 1;
-    return (
-      <RevealScreen
-        puzzle={puzzle}
-        question={pack.questions[phase.index]!}
-        reveal={phase.reveal}
-        index={phase.index}
-        last={last}
-        lastLabel="See the pack"
-        onHome={onHome}
-        onNext={() => {
-          if (last) {
-            setPhase({ name: "end" });
-            onEnd();
-            return;
-          }
-          setPhase({ name: "ask", index: phase.index + 1 });
-        }}
-      />
-    );
-  }
-  return pack.result ? <PackEnd pack={pack} result={pack.result} onHome={onHome} /> : null;
-}
-
-function PackEnd({ pack, result, onHome }: { pack: PackResponse; result: PackResult; onHome: () => void }) {
-  const [shared, setShared] = useState<"idle" | "shared" | "copied" | "failed">("idle");
-  const { rank, players, next } = result.place;
-  return (
-    <div className="stack end">
-      <p className="kicker">
-        Ballpark+ · {pack.pack.emoji} {pack.pack.title}
-      </p>
-      <p className="mission">Pack complete</p>
-      <h2>You reached {result.reached}</h2>
-      <p className="score">
-        <CountUp value={result.score} pad={3} />
-        <span> pts</span>
-      </p>
-      <Tally rows={pack.questions.map((question) => question.reveal)} />
-      {canCompare(players) ? (
-        <div className="rank-block">
-          <h2>
-            You’re #{rank} <span>of {players} who played this pack</span>
-          </h2>
-          <p className="players">{next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher on this pack."}</p>
-        </div>
-      ) : (
-        <EarlyBlock players={players} what="this pack" />
-      )}
-      <p className="emoji-row" aria-label="Question bands">
-        {result.emojis.join("")}
-      </p>
-      <pre className="share-card">{result.shareText}</pre>
-      <button
-        className="primary"
-        type="button"
-        onClick={() => {
-          haptic("tap");
-          void shareText(result.shareText).then((outcome) => setShared(outcome === "cancelled" ? "idle" : outcome));
-        }}
-      >
-        {shared === "copied" ? "Copied" : shared === "shared" ? "Shared" : shared === "failed" ? "Copy didn’t work" : "Share"}
-      </button>
-      <button className="text-button" type="button" onClick={onHome}>
-        Back home
-      </button>
-    </div>
-  );
-}
-
-/** A pack in the shape the Classic screens read. */
-function asPuzzle(pack: PackResponse): PuzzleResponse {
-  return {
-    date: "",
-    puzzleNumber: 0,
-    theme: `${pack.pack.emoji} ${pack.pack.title}`,
-    blurb: pack.pack.blurb,
-    nextTheme: "",
-    mode: "classic",
-    shareHost: "",
-    devDate: false,
-    questions: pack.questions,
-    result: null,
-    field: { players: 0, averageProgress: null, bestProgress: null },
-    today: { climbing: null, board: null, you: null },
-  };
-}
-
-function flight(pack: PackResponse): number {
-  return pack.questions.reduce((sum, question) => (question.reveal ? sum + classicStep(question.reveal.points, NAME_CAP, PACK_QUESTIONS) : sum), 0);
 }

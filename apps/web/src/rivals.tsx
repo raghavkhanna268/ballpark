@@ -80,11 +80,12 @@ export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "pi
 }
 
 /** Before 20 players have finished, being early is the news, not a rank among a handful. */
-export function EarlyBlock({ players, what }: { players: number; what: "today" | "this pack" }) {
+/** `what` finishes "to finish …": "today", "this chapter", "that day". */
+export function EarlyBlock({ players, what }: { players: number; what: string }) {
   return (
     <div className="rank-block early">
       <h2>
-        Early player <span>#{players} {what === "today" ? "to finish today" : "to finish this pack"}</span>
+        Early player <span>#{players} to finish {what}</span>
       </h2>
       <p className="players">Ranks and averages start once {COMPARE_MIN_PLAYERS} players have finished. Share your climb to get there faster.</p>
     </div>

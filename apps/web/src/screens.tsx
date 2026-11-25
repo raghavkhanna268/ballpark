@@ -28,8 +28,11 @@ const BUCKETS = ["0–140", "141–280", "281–420", "421–560", "561+"];
 
 export type StreakView = { streak: number; shield: "ready" | "used" | "saved" };
 
-/** One small tile on the home screen that opens a panel in the card: the league, packs, logbook or stats. */
-export type HomePanel = { id: string; icon: string; title: string; note: string; content: ReactNode };
+/** One small tile on the home screen. It opens a panel in the card (the league, logbook or stats), or a page of its own. */
+export type HomePanel = { id: string; icon: string; title: string; note: string; content?: ReactNode; onOpen?: () => void };
+
+/** Cruise: today's Classic with no clock, kept for the streak but left off the board. Locked once the day has started. */
+export type CruiseView = { on: boolean; locked: boolean; onToggle: () => void };
 
 export function HomeScreen({
   puzzle,
@@ -38,6 +41,8 @@ export function HomeScreen({
   onPlay,
   onResult,
   challenge,
+  cruise = null,
+  more,
   panels,
   ad,
 }: {
@@ -49,6 +54,9 @@ export function HomeScreen({
   onResult: () => void;
   /** A friend's race link, shown above the play button. */
   challenge?: ReactNode;
+  cruise?: CruiseView | null;
+  /** Journeys, the archive and Unlimited, under today's Classic. */
+  more?: ReactNode;
   /** The league, packs, logbook and stats. Each is a tile that opens in the card, so the home screen never scrolls. */
   panels: HomePanel[];
   /** An ad space, for free players only. It sits at the bottom of the screen, outside the card. */
@@ -95,7 +103,7 @@ export function HomeScreen({
 
         <section className="mode-card">
           <div className="mode-top">
-            <h2>Classic</h2>
+            <h2>{cruise?.on ? "Cruise" : "Classic"}</h2>
             <StreakTag view={classicStreak} />
           </div>
           <p>Seven questions. Name any right answer: the fewer players who think of it, the higher you climb.</p>
@@ -105,10 +113,21 @@ export function HomeScreen({
             </button>
           ) : (
             <button className="primary" type="button" onClick={onPlay}>
-              {started ? "Continue Classic" : "Play today’s Classic"}
+              {started ? (cruise?.on ? "Continue your cruise" : "Continue Classic") : cruise?.on ? "Cruise today’s Classic" : "Play today’s Classic"}
             </button>
           )}
+          {cruise && !done && !cruise.locked ? (
+            <button type="button" className={`cruise-switch${cruise.on ? " on" : ""}`} role="switch" aria-checked={cruise.on} onClick={cruise.onToggle}>
+              <span className="knob" aria-hidden="true" />
+              <span>
+                <strong>Cruise</strong> {cruise.on ? "on: no clock, off the board" : "· no clock, not ranked"}
+              </span>
+            </button>
+          ) : null}
+          {cruise?.on && cruise.locked && !done ? <p className="cruise-note">⛵ Cruising today: no clock, off the board.</p> : null}
         </section>
+
+        {more}
 
         {headToHead ? (
           <section className="mode-card">
@@ -124,7 +143,7 @@ export function HomeScreen({
 
         <nav className="tiles" aria-label="More">
           {panels.map((item) => (
-            <button key={item.id} className="tile" type="button" onClick={() => setOpen(item.id)}>
+            <button key={item.id} className="tile" type="button" onClick={() => (item.onOpen ? item.onOpen() : setOpen(item.id))}>
               <span className="tile-icon" aria-hidden="true">
                 {item.icon}
               </span>
@@ -182,6 +201,7 @@ export function QuestionScreen({
   rejections = 0,
   rejectedText = "",
   afterburner = null,
+  clock = true,
   onNudge,
   onReport,
   onSubmit,
@@ -192,6 +212,8 @@ export function QuestionScreen({
   index: number;
   busy: boolean;
   error: string | null;
+  /** False in Cruise: no countdown, and no wait before typing. */
+  clock?: boolean;
   /** Names the server said are not on the list for this question. Each one costs 2 seconds. */
   rejections?: number;
   /** The last name that was not on the list, for "Should this count?". */
@@ -204,19 +226,24 @@ export function QuestionScreen({
   onSubmit: (guess: Guess) => void;
   onHome: () => void;
 }) {
-  const reading = useReadTime(question.id);
+  const readTime = useReadTime(question.id);
+  const reading = clock ? readTime : 0;
   const locked = busy || reading > 0;
   const stuck = useStuck(question.id, reading === 0 && !busy);
   return (
     <div className="stack ask">
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
-      <QuestionTimer
-        questionKey={question.id}
-        running={!busy && reading === 0}
-        penaltyMs={rejections * RETRY_PENALTY_MS}
-        waitLabel={`Clock starts in ${reading}`}
-        onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
-      />
+      {clock ? (
+        <QuestionTimer
+          questionKey={question.id}
+          running={!busy && reading === 0}
+          penaltyMs={rejections * RETRY_PENALTY_MS}
+          waitLabel={`Clock starts in ${reading}`}
+          onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
+        />
+      ) : (
+        <p className="cruise-clock">⛵ Cruise · take your time</p>
+      )}
       {question.type !== "name_one" ? <p className="type-kicker">{typeLabel(question.type)}</p> : null}
       <h2 className="prompt">{question.prompt}</h2>
       {question.type === "name_one" ? <p className="rarer">▲ Rarer answers climb higher ▲</p> : null}
@@ -253,7 +280,7 @@ export function QuestionScreen({
       ) : null}
       {rejections > 0 ? (
         <p className="retry-note" key={rejections} role="alert">
-          Not on our list. Try another. <b>−2 s</b>
+          Not on our list. Try another.{clock ? <b> −2 s</b> : null}
         </p>
       ) : null}
       {rejections > 0 && rejectedText && onReport ? <ReportButton key={`${question.id}-${rejections}`} text={rejectedText} onReport={onReport} /> : null}
@@ -451,7 +478,9 @@ export function EndScreen({
       <div className="stack end">
         <div className="end-head">
           <p className="mission">Mission complete</p>
-          <p className="kicker">Classic · #{puzzle.puzzleNumber}</p>
+          <p className="kicker">
+            {result.cruise ? "Cruise" : "Classic"} · #{puzzle.puzzleNumber}
+          </p>
         </div>
         <div className="end-tabs" role="tablist" aria-label="Today’s climb">
           {END_TABS.map((item) => (

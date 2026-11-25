@@ -10,6 +10,7 @@
     "seed:check": "tsx scripts/emit-seed.ts --check",
     "seed:update": "tsx scripts/emit-seed.ts --update",
     "vapid:keys": "tsx scripts/vapid-keys.ts",
+    "wikidata:lists": "tsx scripts/wikidata-lists.ts",
     "types": "wrangler types",
     "test": "vitest run",
     "typecheck": "wrangler types && tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.scripts.json && tsc --noEmit -p test/tsconfig.json",

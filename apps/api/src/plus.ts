@@ -1,4 +1,4 @@
-import { PLUS_PRICES, addUtcDays, plusPrice, type PlusOrder, type PlusPlan, type PlusStatus } from "@ballpark/shared";
+import { PLUS_PRICES, addUtcDays, plusPrice, type PlusOrder, type PlusPlan, type PlusStatus, type RestoreCode } from "@ballpark/shared";
 import { HttpError } from "./http.js";
 
 /**
@@ -169,6 +169,79 @@ async function grantPass(db: D1Database, deviceId: string, plan: PlusPlan, sourc
     )
     .bind(deviceId, plan, source, paymentId, expires, now.toISOString(), now.toISOString())
     .run();
+}
+
+/* ---------- restore on another device ---------- */
+
+/** No 0, 1, I, L or O, so a code read aloud or copied by hand comes out right. */
+const RESTORE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+const RESTORE_LENGTH = 12;
+
+function newRestoreCode(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(RESTORE_LENGTH));
+  const chars = [...bytes].map((byte) => RESTORE_ALPHABET[byte % RESTORE_ALPHABET.length]).join("");
+  return `BP-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+}
+
+/** "bp 7kq4 m2xd 9hta" and "BP-7KQ4-M2XD-9HTA" are the same code. Anything that cannot be one is null. */
+export function normalizeRestoreCode(raw: unknown): string | null {
+  if (typeof raw !== "string" || raw.length > 40) return null;
+  let chars = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+  if (chars.length === RESTORE_LENGTH + 2 && chars.startsWith("BP")) chars = chars.slice(2);
+  if (chars.length !== RESTORE_LENGTH || [...chars].some((char) => !RESTORE_ALPHABET.includes(char))) return null;
+  return `BP-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8)}`;
+}
+
+/** This device's restore code, made the first time a member asks for it. It stays the same until it is used. */
+export async function restoreCode(db: D1Database, deviceId: string): Promise<RestoreCode> {
+  await requirePlus(db, deviceId);
+  const existing = await db.prepare("SELECT code FROM restore_codes WHERE device_id = ?").bind(deviceId).first<{ code: string }>();
+  if (existing) return { code: existing.code };
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const code = newRestoreCode();
+    const made = await db
+      .prepare("INSERT OR IGNORE INTO restore_codes (code, device_id, created_at) VALUES (?, ?, ?)")
+      .bind(code, deviceId, new Date().toISOString())
+      .run();
+    if ((made.meta?.changes ?? 0) === 1) return { code };
+  }
+  throw new HttpError(500, "restore_code_failed");
+}
+
+/**
+ * Moves the pass behind a restore code to this device. The old device loses it, so one pass is one device at a time.
+ * If this device has a pass too, it keeps whichever ends later. Progress in packs and Unlimited stays with the old
+ * device, because answers are kept by device.
+ */
+export async function redeemRestore(db: D1Database, deviceId: string, env: PlusEnv, url: URL, body: unknown): Promise<PlusStatus> {
+  const code = normalizeRestoreCode((body as { code?: unknown } | null)?.code);
+  if (!code) throw new HttpError(400, "invalid_code");
+  const holder = await db.prepare("SELECT device_id FROM restore_codes WHERE code = ?").bind(code).first<{ device_id: string }>();
+  if (!holder) throw new HttpError(404, "unknown_code");
+  if (holder.device_id === deviceId) return plusStatus(db, deviceId, env, url);
+  const pass = await db
+    .prepare("SELECT plan, source, payment_id, expires_at FROM entitlements WHERE device_id = ?")
+    .bind(holder.device_id)
+    .first<{ plan: PlusPlan; source: "razorpay" | "test"; payment_id: string | null; expires_at: string }>();
+  if (!pass || Date.parse(pass.expires_at) <= Date.now()) throw new HttpError(410, "pass_expired");
+  const here = await activePass(db, deviceId);
+  const expires = here && here.expires_at > pass.expires_at ? here.expires_at : pass.expires_at;
+  const now = new Date().toISOString();
+  await db.batch([
+    db.prepare("DELETE FROM entitlements WHERE device_id = ?").bind(holder.device_id),
+    db
+      .prepare(
+        `INSERT INTO entitlements (device_id, plan, source, payment_id, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(device_id) DO UPDATE SET plan = excluded.plan, source = excluded.source, payment_id = excluded.payment_id,
+           expires_at = excluded.expires_at, updated_at = excluded.updated_at`,
+      )
+      .bind(deviceId, pass.plan, pass.source, pass.payment_id, expires, now, now),
+    db.prepare("DELETE FROM restore_codes WHERE device_id = ? AND code <> ?").bind(deviceId, code),
+    db.prepare("UPDATE restore_codes SET device_id = ?, used_at = ? WHERE code = ?").bind(deviceId, now, code),
+  ]);
+  console.log(JSON.stringify({ level: "info", event: "plus_restored" }));
+  return plusStatus(db, deviceId, env, url);
 }
 
 export async function hmacHex(secret: string, message: string): Promise<string> {

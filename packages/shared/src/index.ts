@@ -111,5 +111,18 @@ export type { H2HFact, H2HKind, H2HRound, MetricCopy, PublicH2HRound } from "./h
 export { parseShorthand } from "./parse.js";
 export { formatFactor, formatFactValue, formatNumber, roundSig } from "./format.js";
 export { sliderRange, sliderToValue, valueToSlider } from "./slider.js";
-export type { PackGuessResponse, PackResponse, PackResult, PackSummary, PlusOrder, PlusPlan, PlusPrice, PlusStatus } from "./plus.js";
+export type { PackSummary, PlusOrder, PlusPlan, PlusPrice, PlusStatus, RestoreCode } from "./plus.js";
+export { ARCHIVE_FREE_DAYS, ARCHIVE_PAGE, UNLIMITED_QUESTIONS } from "./rounds.js";
+export type {
+  ArchiveDay,
+  ArchiveResponse,
+  ChapterSummary,
+  JourneyResponse,
+  RoundGuessResponse,
+  RoundKind,
+  RoundResponse,
+  RoundResult,
+  RoundSummary,
+  UnlimitedStatus,
+} from "./rounds.js";
 export { PLUS_PRICES, plusPrice } from "./plus.js";

@@ -1,5 +1,3 @@
-import type { Band, PublicQuestion } from "./types.js";
-import type { Placement } from "./compete.js";
 
 /**
  * Ballpark+: themed packs and no ads. The daily game, the league and every streak stay free, so paying
@@ -51,33 +49,19 @@ export type PlusOrder = {
   description: string;
 };
 
+/** A themed pack in the list: a journey of chapters, played in order. */
 export type PackSummary = {
   id: string;
   title: string;
   emoji: string;
   blurb: string;
-  questions: number;
-  answered: number;
-  score: number | null;
+  /** Where the journey goes, such as "From gully cricket to Lord's". */
+  route: string;
+  chapters: number;
+  /** Chapters finished on this device. */
+  chaptersDone: number;
   locked: boolean;
 };
 
-export type PackResult = {
-  score: number;
-  bands: Band[];
-  emojis: string[];
-  reached: string;
-  place: Placement;
-  shareText: string;
-};
-
-export type PackResponse = {
-  pack: PackSummary;
-  questions: PublicQuestion[];
-  result: PackResult | null;
-};
-
-export type PackGuessResponse = {
-  reveal: import("./types.js").Reveal;
-  result: PackResult | null;
-};
+/** What a restore code does: moves this device's pass to the device that types it. */
+export type RestoreCode = { code: string };

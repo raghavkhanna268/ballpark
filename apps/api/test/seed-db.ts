@@ -1,5 +1,5 @@
 import type { Confidence, Guess } from "@ballpark/shared";
-import { facts, packs, puzzles, questions, type SeedQuestion } from "../seed/content.ts";
+import { facts, packs, puzzles, questions, unlimitedPool, type SeedQuestion } from "../seed/content.ts";
 
 export async function resetAndSeed(db: D1Database): Promise<void> {
   await db.batch([
@@ -11,7 +11,11 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     db.prepare("DELETE FROM submissions"),
     db.prepare("DELETE FROM rate_limits"),
     db.prepare("DELETE FROM puzzles"),
+    db.prepare("DELETE FROM pack_chapters"),
     db.prepare("DELETE FROM packs"),
+    db.prepare("DELETE FROM unlimited_pool"),
+    db.prepare("DELETE FROM unlimited_rounds"),
+    db.prepare("DELETE FROM restore_codes"),
     db.prepare("DELETE FROM entitlements"),
     db.prepare("DELETE FROM plus_orders"),
     db.prepare("DELETE FROM questions"),
@@ -84,10 +88,18 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
   for (const item of packs) {
     inserts.push(
       db
-        .prepare("INSERT INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES (?, ?, ?, ?, ?, ?)")
-        .bind(item.id, item.title, item.emoji, item.blurb, JSON.stringify(item.questionIds), item.sort),
+        .prepare("INSERT INTO packs (id, title, emoji, blurb, question_ids, sort, route) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(item.id, item.title, item.emoji, item.blurb, JSON.stringify(item.questionIds), item.sort, item.route),
     );
+    item.chapters.forEach((chapter, index) => {
+      inserts.push(
+        db
+          .prepare("INSERT INTO pack_chapters (pack_id, chapter, title, blurb, question_ids) VALUES (?, ?, ?, ?, ?)")
+          .bind(item.id, index + 1, chapter.title, chapter.blurb, JSON.stringify(chapter.questionIds)),
+      );
+    });
   }
+  for (const id of unlimitedPool) inserts.push(db.prepare("INSERT INTO unlimited_pool (question_id) VALUES (?)").bind(id));
   for (let index = 0; index < inserts.length; index += 40) {
     await db.batch(inserts.slice(index, index + 40));
   }

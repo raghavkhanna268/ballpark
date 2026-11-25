@@ -1,10 +1,10 @@
 import type {
+  ArchiveResponse,
   FieldStats,
   Guess,
   GuessResponse,
+  JourneyResponse,
   LeagueResponse,
-  PackGuessResponse,
-  PackResponse,
   PackSummary,
   Placement,
   PlusOrder,
@@ -12,6 +12,10 @@ import type {
   PlusStatus,
   PublicH2HRound,
   PuzzleResponse,
+  RestoreCode,
+  RoundGuessResponse,
+  RoundResponse,
+  UnlimitedStatus,
 } from "@ballpark/shared";
 
 export type HeadToHeadState = {
@@ -65,10 +69,14 @@ export class ApiError extends Error {
   }
 }
 
-function devQuery(): string {
-  if (!import.meta.env.DEV) return "";
-  const date = new URLSearchParams(window.location.search).get("date");
-  return date && /^\d{4}-\d{2}-\d{2}$/.test(date) ? `?date=${encodeURIComponent(date)}` : "";
+function devQuery(extra: Record<string, string> = {}): string {
+  const params = new URLSearchParams(extra);
+  if (import.meta.env.DEV) {
+    const date = new URLSearchParams(window.location.search).get("date");
+    if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) params.set("date", date);
+  }
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 async function read<T>(response: Response): Promise<T> {
@@ -117,12 +125,15 @@ export async function postPractice(deviceId: string): Promise<{ round: PublicH2H
   return read<{ round: PublicH2HRound }>(response);
 }
 
-/** `afterburner` spends today's Afterburner on this stage. `skin` is the Hangar paint job, for the board and race links. */
+/**
+ * `afterburner` spends today's Afterburner on this stage. `skin` is the Hangar paint job, for the board and race links.
+ * `cruise` plays the day with no clock and off the board; the first answer of a day decides it.
+ */
 export async function postGuess(
   deviceId: string,
   questionId: string,
   guess: Guess,
-  extras: { afterburner?: boolean; skin?: string } = {},
+  extras: { afterburner?: boolean; skin?: string; cruise?: boolean } = {},
 ): Promise<GuessResponse> {
   const response = await fetch(`/api/guess${devQuery()}`, {
     method: "POST",
@@ -185,12 +196,46 @@ export async function getPacks(deviceId: string): Promise<{ plus: boolean; packs
   return read<{ plus: boolean; packs: PackSummary[] }>(await fetch("/api/packs", { headers: { "x-device-id": deviceId } }));
 }
 
-export async function getPack(deviceId: string, id: string): Promise<PackResponse> {
-  return read<PackResponse>(await fetch(`/api/packs/${encodeURIComponent(id)}`, { headers: { "x-device-id": deviceId } }));
+/** A round outside the daily: a pack chapter, a past day, or an Unlimited round. */
+export type RoundRef = { kind: "pack"; id: string; chapter: number } | { kind: "archive"; date: string } | { kind: "unlimited"; id: string };
+
+function roundPath(ref: RoundRef): string {
+  if (ref.kind === "pack") return `/api/packs/${encodeURIComponent(ref.id)}/chapters/${ref.chapter}`;
+  if (ref.kind === "archive") return `/api/archive/${encodeURIComponent(ref.date)}`;
+  return `/api/unlimited/${encodeURIComponent(ref.id)}`;
 }
 
-export function postPackGuess(deviceId: string, id: string, questionId: string, guess: Guess): Promise<PackGuessResponse> {
-  return post<PackGuessResponse>(`/api/packs/${encodeURIComponent(id)}/guess`, deviceId, { questionId, guess });
+export async function getJourney(deviceId: string, id: string): Promise<JourneyResponse> {
+  return read<JourneyResponse>(await fetch(`/api/packs/${encodeURIComponent(id)}`, { headers: { "x-device-id": deviceId } }));
+}
+
+export async function getRound(deviceId: string, ref: RoundRef): Promise<RoundResponse> {
+  return read<RoundResponse>(await fetch(`${roundPath(ref)}${devQuery()}`, { headers: { "x-device-id": deviceId } }));
+}
+
+export function postRoundGuess(deviceId: string, ref: RoundRef, questionId: string, guess: Guess): Promise<RoundGuessResponse> {
+  return post<RoundGuessResponse>(`${roundPath(ref)}/guess${devQuery()}`, deviceId, { questionId, guess });
+}
+
+export async function getArchive(deviceId: string, before?: string): Promise<ArchiveResponse> {
+  return read<ArchiveResponse>(await fetch(`/api/archive${devQuery(before ? { before } : {})}`, { headers: { "x-device-id": deviceId } }));
+}
+
+export async function getUnlimited(deviceId: string): Promise<UnlimitedStatus> {
+  return read<UnlimitedStatus>(await fetch(`/api/unlimited${devQuery()}`, { headers: { "x-device-id": deviceId } }));
+}
+
+/** Starts an Unlimited round, or hands back the one still open. */
+export function postUnlimited(deviceId: string): Promise<{ id: string }> {
+  return post<{ id: string }>(`/api/unlimited${devQuery()}`, deviceId, {});
+}
+
+export async function getRestoreCode(deviceId: string): Promise<RestoreCode> {
+  return read<RestoreCode>(await fetch("/api/plus/restore-code", { headers: { "x-device-id": deviceId } }));
+}
+
+export function postRestore(deviceId: string, code: string): Promise<PlusStatus> {
+  return post<PlusStatus>("/api/plus/restore", deviceId, { code });
 }
 
 export function errorCopy(error: unknown): string {
@@ -203,7 +248,16 @@ export function errorCopy(error: unknown): string {
     if (error.code === "run_finished") return "Today's scored run is already finished.";
     if (error.code === "practice_locked") return "Finish today's scored run before practicing.";
     if (error.code === "invalid_guess") return "That guess doesn't fit this question.";
-    if (error.code === "plus_required") return "Packs come with Ballpark+.";
+    if (error.code === "plus_required") return "That comes with Ballpark+.";
+    if (error.code === "mode_locked") return "Today’s run started in the other mode. It finishes the way it began.";
+    if (error.code === "chapter_locked") return "Finish the chapter before this one first.";
+    if (error.code === "played_that_day") return "You played that day live, so it stays as you played it.";
+    if (error.code === "unknown_day") return "That day isn’t in the archive.";
+    if (error.code === "pool_too_small") return "Unlimited needs a few more days of questions first.";
+    if (error.code === "unknown_round") return "That round isn’t on this device.";
+    if (error.code === "invalid_code") return "That doesn’t look like a restore code. It reads BP-, then three groups of four.";
+    if (error.code === "unknown_code") return "We don’t know that code. Check it against the one on your other device.";
+    if (error.code === "pass_expired") return "The pass behind that code has run out.";
     if (error.code === "payments_not_configured") return "Payments aren’t set up on this build yet.";
     if (error.code === "invalid_signature" || error.code === "unknown_order") return "We couldn’t confirm that payment. If you were charged, keep your Razorpay receipt.";
     if (error.code === "payment_provider_error") return "Razorpay didn’t answer. Try again in a minute.";

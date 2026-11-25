@@ -1,0 +1,269 @@
+import { useEffect, useState } from "react";
+import { NAME_CAP, canCompare, classicStep, type Guess, type PuzzleResponse, type Reveal, type RoundResponse, type RoundResult } from "@ballpark/shared";
+import { ApiError, errorCopy, getRound, postRoundGuess, type RoundRef } from "./api";
+import { CountUp, Tally, currentCombo, trailOf } from "./game";
+import { haptic, shareText } from "./haptic";
+import { EarlyBlock } from "./rivals";
+import { QuestionScreen, RevealScreen } from "./screens";
+import type { SkyTrail } from "./sky";
+import { playBonk } from "./sound";
+
+/*
+ * Rounds outside the daily, played with the Classic question and reveal screens: a pack chapter, a past day from
+ * the archive, or an Unlimited round. None of them touch the streak, the rank or the league.
+ */
+
+type RoundPhase = { name: "loading" } | { name: "ask"; index: number } | { name: "reveal"; index: number; reveal: Reveal } | { name: "end" };
+
+const WORDS: Record<RoundRef["kind"], { loading: string; last: string; done: string }> = {
+  pack: { loading: "Loading the chapter…", last: "See the chapter", done: "Chapter complete" },
+  archive: { loading: "Loading that day…", last: "See the day", done: "Day complete" },
+  unlimited: { loading: "Dealing seven questions…", last: "See the round", done: "Round complete" },
+};
+
+export function RoundRun({
+  deviceId,
+  round: ref,
+  onHome,
+  onBack,
+  backLabel,
+  onAgain,
+  onFlight,
+  onHop,
+  onEnd,
+}: {
+  deviceId: string;
+  round: RoundRef;
+  onHome: () => void;
+  /** Back to where the round was picked: the route, the archive, or Unlimited. */
+  onBack: () => void;
+  backLabel: string;
+  /** Unlimited only: deal the next round. */
+  onAgain?: () => void;
+  /** How high the rocket already is when the round opens, the points so far, the right answers in a row, the climb so far, and how many questions the round has. */
+  onFlight: (progress: number, score: number, combo: number, trail: SkyTrail[], size: number) => void;
+  /** One answer scored: its points, its tier label when it scored any, and what the player typed. */
+  onHop: (points: number, label: string | null, answer: string) => void;
+  onEnd: () => void;
+}) {
+  const [round, setRound] = useState<RoundResponse | null>(null);
+  const [phase, setPhase] = useState<RoundPhase>({ name: "loading" });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
+  const words = WORDS[ref.kind];
+
+  useEffect(() => {
+    let live = true;
+    void getRound(deviceId, ref)
+      .then((loaded) => {
+        if (!live) return;
+        setRound(loaded);
+        const points = loaded.questions.map((question) => question.reveal?.points ?? null);
+        const size = loaded.questions.length;
+        onFlight(flight(loaded), points.reduce<number>((sum, value) => sum + (value ?? 0), 0), currentCombo(points), trailOf(loaded.questions, size), size);
+        if (loaded.result) {
+          setPhase({ name: "end" });
+          onEnd();
+          return;
+        }
+        const index = loaded.questions.findIndex((question) => question.reveal === null);
+        setPhase({ name: "ask", index: Math.max(0, index) });
+      })
+      .catch((caught: unknown) => live && setError(errorCopy(caught)));
+    return () => {
+      live = false;
+    };
+    // A round loads once per open, so the parent's callbacks are left out of the dependencies on purpose.
+  }, [deviceId, ref.kind, "id" in ref ? ref.id : ref.date, ref.kind === "pack" ? ref.chapter : 0]);
+
+  if (error && !round) {
+    return (
+      <div className="stack">
+        <p className="form-error">{error}</p>
+        <button className="text-button" type="button" onClick={onBack}>
+          {backLabel}
+        </button>
+      </div>
+    );
+  }
+  if (!round || phase.name === "loading") return <p className="status">{words.loading}</p>;
+
+  const puzzle = asPuzzle(round);
+
+  async function submit(index: number, guess: Guess) {
+    const question = round!.questions[index];
+    if (!question) return;
+    setBusy(true);
+    setError(null);
+    haptic("tap");
+    try {
+      const response = await postRoundGuess(deviceId, ref, question.id, guess);
+      const questions = round!.questions.map((item, itemIndex) => (itemIndex === index ? { ...item, reveal: response.reveal } : item));
+      setRound({ ...round!, questions, result: response.result });
+      onHop(response.reveal.points, response.reveal.points > 0 ? response.reveal.label : null, guess.type === "name_one" ? guess.text : "");
+      haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
+      setPhase({ name: "reveal", index, reveal: response.reveal });
+    } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "not_listed") {
+        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
+        playBonk();
+        haptic("bad");
+        return;
+      }
+      setError(errorCopy(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (phase.name === "ask") {
+    return (
+      <QuestionScreen
+        puzzle={puzzle}
+        question={round.questions[phase.index]!}
+        index={phase.index}
+        busy={busy}
+        error={error}
+        rejections={rejected.id === round.questions[phase.index]?.id ? rejected.count : 0}
+        onHome={onHome}
+        onSubmit={(guess) => void submit(phase.index, guess)}
+      />
+    );
+  }
+  if (phase.name === "reveal") {
+    const last = phase.index === round.questions.length - 1;
+    return (
+      <RevealScreen
+        puzzle={puzzle}
+        question={round.questions[phase.index]!}
+        reveal={phase.reveal}
+        index={phase.index}
+        last={last}
+        lastLabel={words.last}
+        onHome={onHome}
+        onNext={() => {
+          if (last) {
+            setPhase({ name: "end" });
+            onEnd();
+            return;
+          }
+          setPhase({ name: "ask", index: phase.index + 1 });
+        }}
+      />
+    );
+  }
+  return round.result ? (
+    <RoundEnd round={round} result={round.result} done={words.done} onBack={onBack} backLabel={backLabel} onAgain={onAgain} onHome={onHome} />
+  ) : null;
+}
+
+function RoundEnd({
+  round,
+  result,
+  done,
+  onBack,
+  backLabel,
+  onAgain,
+  onHome,
+}: {
+  round: RoundResponse;
+  result: RoundResult;
+  done: string;
+  onBack: () => void;
+  backLabel: string;
+  onAgain?: () => void;
+  onHome: () => void;
+}) {
+  const [shared, setShared] = useState<"idle" | "shared" | "copied" | "failed">("idle");
+  return (
+    <div className="stack end round-end">
+      <p className="kicker">
+        {round.round.emoji} {round.round.title}
+      </p>
+      <p className="mission">{done}</p>
+      <h2>You reached {result.reached}</h2>
+      <p className="score">
+        <CountUp value={result.score} pad={3} />
+        <span> pts</span>
+      </p>
+      <Tally rows={round.questions.map((question) => question.reveal)} />
+      <RoundPlace result={result} />
+      <p className="round-note">{round.round.kind === "pack" ? "Packs never touch your streak or the league." : "Played for fun: no streak, rank or league points."}</p>
+      <pre className="share-card">{result.shareText}</pre>
+      <button
+        className="primary"
+        type="button"
+        onClick={() => {
+          haptic("tap");
+          void shareText(result.shareText).then((outcome) => setShared(outcome === "cancelled" ? "idle" : outcome));
+        }}
+      >
+        {shared === "copied" ? "Copied" : shared === "shared" ? "Shared" : shared === "failed" ? "Copy didn’t work" : "Share"}
+      </button>
+      {onAgain ? (
+        <button className="ghost-button" type="button" onClick={onAgain}>
+          Another round ♾️
+        </button>
+      ) : null}
+      <div className="end-foot">
+        <button className="text-button" type="button" onClick={onBack}>
+          {backLabel}
+        </button>
+        <button className="text-button" type="button" onClick={onHome}>
+          Home
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function RoundPlace({ result }: { result: RoundResult }) {
+  if (!result.place) {
+    return <p className="players">Rarity here counts everyone who has ever answered these questions.</p>;
+  }
+  const { rank, players, next } = result.place;
+  if (!canCompare(players)) return <EarlyBlock players={players} what={result.hypothetical ? "that day" : "this chapter"} />;
+  if (result.hypothetical) {
+    return (
+      <div className="rank-block">
+        <h2>
+          You’d have been #{rank} <span>of {players} that day</span>
+        </h2>
+        <p className="players">{next ? `${next.gap} pts behind #${next.rank} on the day.` : "Nobody climbed higher that day."}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="rank-block">
+      <h2>
+        You’re #{rank} <span>of {players} {result.placeWhat}</span>
+      </h2>
+      <p className="players">{next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher here."}</p>
+    </div>
+  );
+}
+
+/** A round in the shape the Classic screens read. */
+function asPuzzle(round: RoundResponse): PuzzleResponse {
+  return {
+    date: "",
+    puzzleNumber: 0,
+    theme: `${round.round.emoji} ${round.round.title}`,
+    blurb: round.round.blurb,
+    nextTheme: "",
+    mode: "classic",
+    shareHost: "",
+    devDate: false,
+    cruise: null,
+    questions: round.questions,
+    result: null,
+    field: { players: 0, averageProgress: null, bestProgress: null },
+    today: { climbing: null, board: null, you: null },
+  };
+}
+
+function flight(round: RoundResponse): number {
+  const size = round.questions.length;
+  return round.questions.reduce((sum, question) => (question.reveal ? sum + classicStep(question.reveal.points, NAME_CAP, size) : sum), 0);
+}

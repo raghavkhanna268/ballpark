@@ -9,12 +9,22 @@
 import { CLASSIC_QUESTIONS, COUNTRIES, ELEMENTS, METRIC_COPY, PACK_QUESTIONS, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
-import { funDays, funNameOne, packNameOne, packs, type SeedPack } from "./fun.ts";
+import { funDays, funNameOne, packNameOne, packs as funPacks, type SeedPack as FunPack } from "./fun.ts";
+import { journeyChapters, journeyNameOne, type SeedChapter } from "./journeys.ts";
 import { nameOneById, type AcceptedSeed, type NameOneSeed } from "./name-one.ts";
 import { NUDGES } from "./nudges.ts";
 import { moreBase } from "./seven.ts";
 
-export { packs, type SeedPack };
+export type { SeedChapter };
+
+/** A Ballpark+ pack as a journey: chapter 1 is the pack's original five questions, then the chapters after it. */
+export type SeedPack = FunPack & { route: string; chapters: SeedChapter[] };
+
+export const packs: SeedPack[] = funPacks.map((pack) => {
+  const journey = journeyChapters[pack.id];
+  if (!journey) throw new Error(`Pack ${pack.id} has no journey`);
+  return { ...pack, route: journey.route, chapters: [{ ...journey.first, questionIds: pack.questionIds }, ...journey.more] };
+});
 
 export type SeedFact = {
   id: string;
@@ -369,6 +379,7 @@ export const questions: SeedQuestion[] = [
   ...Object.values(moreBase).flat().map(fromNameOne),
   ...funNameOne.map(fromNameOne),
   ...packNameOne.map(fromNameOne),
+  ...journeyNameOne.map(fromNameOne),
 ].map((item) => ({ ...item, nudge: NUDGES[item.id] ?? null }));
 
 /** The fun week opens the rotation. The older themes follow it. */
@@ -376,6 +387,9 @@ export const puzzles: SeedPuzzle[] = [
   ...funDays.map((day, slot) => ({ slot, ...day })),
   ...basePuzzles.map((item) => ({ ...item, slot: item.slot + funDays.length })),
 ];
+
+/** Unlimited draws from every daily question. The server holds back days that have not run yet. */
+export const unlimitedPool: string[] = puzzles.flatMap((puzzle) => puzzle.questionIds);
 
 export const facts: SeedFact[] = [
   ...baseFacts.map((item) => {
@@ -391,7 +405,8 @@ export function assertSeed(): void {
   if (factById.size !== facts.length) throw new Error("Duplicate fact id");
   const questionById = new Map(questions.map((item) => [item.id, item]));
   if (questionById.size !== questions.length) throw new Error("Duplicate question id");
-  const expectedQuestions = SEED_SLOTS * CLASSIC_QUESTIONS + packs.length * PACK_QUESTIONS;
+  const chapters = packs.flatMap((pack) => pack.chapters);
+  const expectedQuestions = SEED_SLOTS * CLASSIC_QUESTIONS + chapters.length * PACK_QUESTIONS;
   if (questions.length !== expectedQuestions) throw new Error(`Expected ${expectedQuestions} questions, found ${questions.length}`);
   if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
   if (packs.length !== 3) throw new Error("Expected 3 packs");
@@ -416,11 +431,19 @@ export function assertSeed(): void {
     if (!/^[a-z0-9-]{2,24}$/.test(pack.id)) throw new Error(`Pack id ${pack.id} must be short lowercase words`);
     if (seenPacks.has(pack.id)) throw new Error(`Duplicate pack ${pack.id}`);
     seenPacks.add(pack.id);
+    if (!pack.route) throw new Error(`Pack ${pack.id} needs a route`);
+    if (pack.chapters.length !== 3) throw new Error(`Pack ${pack.id} needs 3 chapters`);
+    if (pack.chapters[0]!.questionIds.join(",") !== pack.questionIds.join(",")) throw new Error(`Pack ${pack.id} chapter 1 must be its own questions`);
+    for (const chapter of pack.chapters) {
+      if (!chapter.title || chapter.title.length > 24) throw new Error(`Pack ${pack.id} has a bad chapter title "${chapter.title}"`);
+      if (chapter.blurb.length < 10 || chapter.blurb.length > 80) throw new Error(`Pack ${pack.id} chapter ${chapter.title} needs a blurb of 10 to 80 characters`);
+    }
   }
+  if (new Set(unlimitedPool).size !== unlimitedPool.length) throw new Error("Unlimited pool repeats a question");
   // Every question plays in exactly one daily puzzle or one pack, so a pack never repeats a daily question.
   const rounds = [
     ...puzzles.map((item) => ({ theme: item.theme, questionIds: item.questionIds, size: CLASSIC_QUESTIONS })),
-    ...packs.map((item) => ({ theme: item.title, questionIds: item.questionIds, size: PACK_QUESTIONS })),
+    ...packs.flatMap((pack) => pack.chapters.map((chapter) => ({ theme: `${pack.title} · ${chapter.title}`, questionIds: chapter.questionIds, size: PACK_QUESTIONS }))),
   ];
   const placed = new Set<string>();
   for (const puzzle of rounds) {
@@ -494,7 +517,7 @@ export function assertSeed(): void {
     // Classic is open answers only: every question is "name one", scored by how rare the answer is.
     if (types.size !== 1 || !types.has("name_one")) throw new Error(`${puzzle.theme} must be all name-one questions`);
   }
-  if (placed.size !== questions.length) throw new Error("Every question needs a puzzle or a pack");
+  if (placed.size !== questions.length) throw new Error("Every question needs a puzzle or a pack chapter");
   for (let slot = 0; slot < SEED_SLOTS; slot += 1) {
     if (!seenSlots.has(slot)) throw new Error(`Slots must be 0 through ${SEED_SLOTS - 1}`);
   }

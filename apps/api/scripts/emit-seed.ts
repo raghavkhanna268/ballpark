@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { assertSeed, facts, packs, puzzles, questions } from "../seed/content.ts";
+import { assertSeed, facts, packs, puzzles, questions, unlimitedPool } from "../seed/content.ts";
 
 assertSeed();
 
@@ -21,7 +21,7 @@ const HEADER = [
   // No BEGIN/COMMIT: remote D1 rejects explicit transactions in an executed file.
 ];
 
-/** Content rows only: facts, questions, puzzles and packs. `{VERB}` becomes INSERT or INSERT OR REPLACE. */
+/** Content rows only: facts, questions, puzzles, packs, their chapters and the Unlimited pool. `{VERB}` becomes INSERT or INSERT OR REPLACE. */
 const rows: string[] = [];
 
 for (const item of facts) {
@@ -84,16 +84,30 @@ for (const item of puzzles) {
 
 for (const item of packs) {
   rows.push(
-    `{VERB} INTO packs (id, title, emoji, blurb, question_ids, sort) VALUES (${[
+    `{VERB} INTO packs (id, title, emoji, blurb, question_ids, sort, route) VALUES (${[
       sqlString(item.id),
       sqlString(item.title),
       sqlString(item.emoji),
       sqlString(item.blurb),
       sqlString(JSON.stringify(item.questionIds)),
       String(item.sort),
+      sqlString(item.route),
     ].join(", ")});`,
   );
+  item.chapters.forEach((chapter, index) => {
+    rows.push(
+      `{VERB} INTO pack_chapters (pack_id, chapter, title, blurb, question_ids) VALUES (${[
+        sqlString(item.id),
+        String(index + 1),
+        sqlString(chapter.title),
+        sqlString(chapter.blurb),
+        sqlString(JSON.stringify(chapter.questionIds)),
+      ].join(", ")});`,
+    );
+  });
 }
+
+for (const id of unlimitedPool) rows.push(`{VERB} INTO unlimited_pool (question_id) VALUES (${sqlString(id)});`);
 
 const withVerb = (verb: string) => rows.map((row) => row.replace("{VERB}", verb));
 
@@ -104,17 +118,20 @@ const seed = [
   "DELETE FROM answer_reports;",
   "DELETE FROM h2h_picks;",
   "DELETE FROM h2h_runs;",
+  "DELETE FROM unlimited_rounds;",
   "DELETE FROM daily_results;",
   "DELETE FROM submissions;",
   "DELETE FROM puzzles;",
+  "DELETE FROM pack_chapters;",
   "DELETE FROM packs;",
+  "DELETE FROM unlimited_pool;",
   "DELETE FROM questions;",
   "DELETE FROM facts;",
   ...withVerb("INSERT"),
   "",
 ].join("\n");
 
-// A live database: replace the content rows in place and drop days or packs that no longer exist.
+// A live database: replace the content rows in place and drop days, packs, chapters or pool entries that no longer exist.
 // Submissions, results, league rows and passes are never touched. No table has a foreign key, so REPLACE is safe.
 const list = (values: string[]) => values.map(sqlString).join(", ");
 const update = [
@@ -123,6 +140,8 @@ const update = [
   ...withVerb("INSERT OR REPLACE"),
   `DELETE FROM puzzles WHERE slot NOT IN (${puzzles.map((item) => String(item.slot)).join(", ")});`,
   `DELETE FROM packs WHERE id NOT IN (${list(packs.map((item) => item.id))});`,
+  `DELETE FROM pack_chapters WHERE pack_id || ':' || chapter NOT IN (${list(packs.flatMap((item) => item.chapters.map((_, index) => `${item.id}:${index + 1}`)))});`,
+  `DELETE FROM unlimited_pool WHERE question_id NOT IN (${list(unlimitedPool)});`,
   "",
 ].join("\n");
 

@@ -174,8 +174,10 @@ export type DayResult = {
   shareText: string;
   reached: string;
   provisional: boolean;
-  /** Your rank among today's finishers, and the gap to the next rank up. */
-  place: import("./compete.js").Placement;
+  /** Your rank among today's finishers, and the gap to the next rank up. Null for a Cruise run, which is not ranked. */
+  place: import("./compete.js").Placement | null;
+  /** Played in Cruise: no clock, kept out of the rank, the board and the league. */
+  cruise: boolean;
   /** The race code in the share link, so the client can show it. */
   race: string;
   /** The stage that used today's Afterburner, by index, or null. */
@@ -221,6 +223,8 @@ export type PuzzleResponse = {
   field: import("./scale.js").FieldStats;
   /** How many are climbing today and the top ten, once 20 have played. */
   today: TodayStats;
+  /** How today is being played once the first answer is in: true for Cruise (no clock), null before any answer. */
+  cruise: boolean | null;
 };
 
 export type GuessResponse = {

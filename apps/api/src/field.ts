@@ -35,7 +35,7 @@ export async function classicClimbs(db: D1Database, date: string, questions: Pla
     .prepare(
       `SELECT s.device_id AS device_id, s.question_id AS question_id, s.points AS points, s.boost AS boost
        FROM submissions s
-       JOIN daily_results r ON r.device_id = s.device_id AND r.puzzle_date = s.puzzle_date AND r.mode = 'classic'
+       JOIN daily_results r ON r.device_id = s.device_id AND r.puzzle_date = s.puzzle_date AND r.mode = 'classic' AND r.cruise = 0
        WHERE s.puzzle_date = ? AND s.mode = 'classic'`,
     )
     .bind(date)
@@ -78,7 +78,7 @@ export async function todayStats(db: D1Database, date: string, deviceId: string,
   if (!canCompare(climbs.size)) return { climbing, board: null, you: null };
 
   const results = await db
-    .prepare("SELECT device_id, score, skin FROM daily_results WHERE puzzle_date = ? AND mode = 'classic'")
+    .prepare("SELECT device_id, score, skin FROM daily_results WHERE puzzle_date = ? AND mode = 'classic' AND cruise = 0")
     .bind(date)
     .all<{ device_id: string; score: number; skin: string | null }>();
   const extra = new Map((results.results ?? []).map((row) => [row.device_id, row]));

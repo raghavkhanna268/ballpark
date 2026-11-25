@@ -4,11 +4,13 @@ import { clientIp, HttpError, json, requireDevice, withCors } from "./http.js";
 import { resolvePlayDate } from "./play-date.js";
 import { loadHeadToHead, pickHeadToHead, startPractice } from "./headtohead.js";
 import { loadLeague } from "./league.js";
-import { listPacks, loadPack, submitPackGuess } from "./packs.js";
-import { createOrder, plusStatus, requirePlus, testUnlock, verifyPayment, type PlusEnv } from "./plus.js";
+import { listArchive, loadArchiveDay, submitArchiveGuess } from "./archive.js";
+import { listPacks, loadChapter, loadJourney, submitChapterGuess } from "./packs.js";
+import { createOrder, plusStatus, redeemRestore, requirePlus, restoreCode, testUnlock, verifyPayment, type PlusEnv } from "./plus.js";
 import { loadPuzzleResponse, openNudge, questionsForDate, reportAnswer, submitGuess } from "./puzzle.js";
 import { enforceRateLimit } from "./rate-limit.js";
 import { REMINDER_CRON, dropReminder, reminderStatus, saveReminder, sendReminders, type ReminderEnv } from "./reminders.js";
+import { loadUnlimited, startUnlimited, submitUnlimitedGuess, unlimitedStatus } from "./unlimited.js";
 
 const DEVICE_LIMIT = 40;
 const IP_LIMIT = 80;
@@ -53,6 +55,12 @@ export default {
       }
       if (url.pathname === "/api/packs" || url.pathname.startsWith("/api/packs/")) {
         return withCors(await handlePacks(request, env, url));
+      }
+      if (url.pathname === "/api/archive" || url.pathname.startsWith("/api/archive/")) {
+        return withCors(await handleArchive(request, env, url));
+      }
+      if (url.pathname === "/api/unlimited" || url.pathname.startsWith("/api/unlimited/")) {
+        return withCors(await handleUnlimited(request, env, url));
       }
       return withCors(json({ error: "not_found" }, 404));
     } catch (error) {
@@ -102,6 +110,7 @@ async function handleGuess(request: Request, env: Env, url: URL): Promise<Respon
   const result = await submitGuess(env.DB, date, deviceId, env.EPOCH, env.SHARE_HOST, questionId, guess.guess, {
     afterburner: guess.afterburner,
     skin: guess.skin,
+    cruise: guess.cruise,
   });
   return json(result);
 }
@@ -186,6 +195,10 @@ async function handlePlus(request: Request, env: PlusEnv, url: URL): Promise<Res
     await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
     return json(await plusStatus(env.DB, deviceId, env, url));
   }
+  if (url.pathname === "/api/plus/restore-code" && request.method === "GET") {
+    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+    return json(await restoreCode(env.DB, deviceId));
+  }
   if (request.method !== "POST") throw new HttpError(404, "not_found");
   // Payment calls get a tighter budget than guesses.
   await enforceRateLimit(env.DB, `pay:${deviceId}`, 10);
@@ -194,34 +207,109 @@ async function handlePlus(request: Request, env: PlusEnv, url: URL): Promise<Res
   if (url.pathname === "/api/plus/order") return json(await createOrder(env.DB, deviceId, env, body));
   if (url.pathname === "/api/plus/verify") return json(await verifyPayment(env.DB, deviceId, env, url, body));
   if (url.pathname === "/api/plus/test-unlock") return json(await testUnlock(env.DB, deviceId, env, url, body));
+  if (url.pathname === "/api/plus/restore") {
+    // Codes cannot be guessed in any useful number of tries, and this keeps it that way.
+    await enforceRateLimit(env.DB, `restore-ip:${ip}`, 5);
+    return json(await redeemRestore(env.DB, deviceId, env, url, body));
+  }
   throw new HttpError(404, "not_found");
 }
 
-const PACK_PATH = /^\/api\/packs\/([a-z0-9-]{2,24})(\/guess)?$/;
+const PACK_PATH = /^\/api\/packs\/([a-z0-9-]{2,24})(?:\/chapters\/(\d{1,2})(\/guess)?)?$/;
+
+async function readBudget(env: Env, deviceId: string, ip: string): Promise<void> {
+  await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+  await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+}
+
+async function writeBudget(env: Env, deviceId: string, ip: string): Promise<void> {
+  await enforceRateLimit(env.DB, `post:${deviceId}`, DEVICE_LIMIT);
+  await enforceRateLimit(env.DB, `post-ip:${ip}`, IP_LIMIT);
+}
 
 async function handlePacks(request: Request, env: Env, url: URL): Promise<Response> {
   const deviceId = requireDevice(request);
   const ip = clientIp(request);
   if (url.pathname === "/api/packs" && request.method === "GET") {
-    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
-    await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+    await readBudget(env, deviceId, ip);
     return json(await listPacks(env.DB, deviceId));
   }
   const match = PACK_PATH.exec(url.pathname);
   if (!match) throw new HttpError(404, "not_found");
   const id = match[1]!;
-  if (!match[2] && request.method === "GET") {
-    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
-    await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+  const chapter = match[2] ? Number(match[2]) : null;
+  if (chapter === null && request.method === "GET") {
+    await readBudget(env, deviceId, ip);
     await requirePlus(env.DB, deviceId);
-    return json(await loadPack(env.DB, id, deviceId, env.SHARE_HOST));
+    return json(await loadJourney(env.DB, id, deviceId));
   }
-  if (match[2] && request.method === "POST") {
-    await enforceRateLimit(env.DB, `post:${deviceId}`, DEVICE_LIMIT);
-    await enforceRateLimit(env.DB, `post-ip:${ip}`, IP_LIMIT);
+  if (chapter !== null && !match[3] && request.method === "GET") {
+    await readBudget(env, deviceId, ip);
+    await requirePlus(env.DB, deviceId);
+    return json(await loadChapter(env.DB, id, chapter, deviceId, env.SHARE_HOST));
+  }
+  if (chapter !== null && match[3] && request.method === "POST") {
+    await writeBudget(env, deviceId, ip);
     await requirePlus(env.DB, deviceId);
     const guess = await readGuess(request);
-    return json(await submitPackGuess(env.DB, id, deviceId, env.SHARE_HOST, guess.questionId, guess.guess));
+    return json(await submitChapterGuess(env.DB, id, chapter, deviceId, env.SHARE_HOST, guess.questionId, guess.guess));
+  }
+  throw new HttpError(404, "not_found");
+}
+
+const ARCHIVE_PATH = /^\/api\/archive\/(\d{4}-\d{2}-\d{2})(\/guess)?$/;
+
+/** Past days. The last seven are free, so the list and those days need no pass; older days check inside. */
+async function handleArchive(request: Request, env: Env, url: URL): Promise<Response> {
+  const deviceId = requireDevice(request);
+  const ip = clientIp(request);
+  const { date: today } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
+  if (url.pathname === "/api/archive" && request.method === "GET") {
+    await readBudget(env, deviceId, ip);
+    return json(await listArchive(env.DB, deviceId, today, env.EPOCH, url.searchParams.get("before")));
+  }
+  const match = ARCHIVE_PATH.exec(url.pathname);
+  if (!match) throw new HttpError(404, "not_found");
+  const day = match[1]!;
+  if (!match[2] && request.method === "GET") {
+    await readBudget(env, deviceId, ip);
+    return json(await loadArchiveDay(env.DB, day, deviceId, today, env.EPOCH, env.SHARE_HOST));
+  }
+  if (match[2] && request.method === "POST") {
+    await writeBudget(env, deviceId, ip);
+    const guess = await readGuess(request);
+    return json(await submitArchiveGuess(env.DB, day, deviceId, today, env.EPOCH, env.SHARE_HOST, guess.questionId, guess.guess));
+  }
+  throw new HttpError(404, "not_found");
+}
+
+const UNLIMITED_PATH = /^\/api\/unlimited\/([0-9a-f-]{36})(\/guess)?$/;
+
+async function handleUnlimited(request: Request, env: Env, url: URL): Promise<Response> {
+  const deviceId = requireDevice(request);
+  const ip = clientIp(request);
+  if (url.pathname === "/api/unlimited") {
+    const { date: today } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
+    if (request.method === "GET") {
+      await readBudget(env, deviceId, ip);
+      return json(await unlimitedStatus(env.DB, deviceId, today, env.EPOCH));
+    }
+    if (request.method === "POST") {
+      await writeBudget(env, deviceId, ip);
+      await enforceRateLimit(env.DB, `unlimited:${deviceId}`, 10);
+      return json(await startUnlimited(env.DB, deviceId, today, env.EPOCH));
+    }
+  }
+  const match = UNLIMITED_PATH.exec(url.pathname);
+  if (!match) throw new HttpError(404, "not_found");
+  if (!match[2] && request.method === "GET") {
+    await readBudget(env, deviceId, ip);
+    return json(await loadUnlimited(env.DB, match[1]!, deviceId, env.SHARE_HOST));
+  }
+  if (match[2] && request.method === "POST") {
+    await writeBudget(env, deviceId, ip);
+    const guess = await readGuess(request);
+    return json(await submitUnlimitedGuess(env.DB, match[1]!, deviceId, env.SHARE_HOST, guess.questionId, guess.guess));
   }
   throw new HttpError(404, "not_found");
 }
@@ -239,10 +327,10 @@ async function readJson(request: Request): Promise<unknown> {
 /** A rocket paint job id from the Hangar: short, lowercase. Anything else is dropped. */
 const SKIN = /^[a-z0-9-]{1,24}$/;
 
-async function readGuess(request: Request): Promise<{ questionId: string; guess: Guess; afterburner: boolean; skin: string | null }> {
+async function readGuess(request: Request): Promise<{ questionId: string; guess: Guess; afterburner: boolean; skin: string | null; cruise: boolean }> {
   const body = await readJson(request);
   if (!body || typeof body !== "object") throw new HttpError(400, "invalid_guess");
-  const record = body as { questionId?: unknown; guess?: unknown; afterburner?: unknown; skin?: unknown };
+  const record = body as { questionId?: unknown; guess?: unknown; afterburner?: unknown; skin?: unknown; cruise?: unknown };
   if (typeof record.questionId !== "string" || !record.questionId) throw new HttpError(400, "invalid_guess");
   if (!record.guess || typeof record.guess !== "object") throw new HttpError(400, "invalid_guess");
   const guess = record.guess as { type?: unknown };
@@ -254,5 +342,6 @@ async function readGuess(request: Request): Promise<{ questionId: string; guess:
     guess: record.guess as Guess,
     afterburner: record.afterburner === true,
     skin: typeof record.skin === "string" && SKIN.test(record.skin) ? record.skin : null,
+    cruise: record.cruise === true,
   };
 }

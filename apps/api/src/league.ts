@@ -29,7 +29,7 @@ export async function joinLeague(db: D1Database, deviceId: string, date: string)
   const existing = await memberFor(db, week, deviceId);
   if (existing) return existing;
   const played = await db
-    .prepare("SELECT 1 AS hit FROM daily_results WHERE device_id = ? AND puzzle_date BETWEEN ? AND ? LIMIT 1")
+    .prepare("SELECT 1 AS hit FROM daily_results WHERE device_id = ? AND puzzle_date BETWEEN ? AND ? AND cruise = 0 LIMIT 1")
     .bind(deviceId, week, addUtcDays(week, 6))
     .first<{ hit: number }>();
   if (!played) return null;
@@ -117,7 +117,7 @@ async function standings(db: D1Database, week: string, tier: number, grp: number
       `SELECT m.device_id AS device_id,
               COALESCE(SUM(CASE WHEN r.mode = 'head-to-head' THEN r.score * ? ELSE r.score END), 0) AS points
        FROM league_members m
-       LEFT JOIN daily_results r ON r.device_id = m.device_id AND r.puzzle_date BETWEEN ? AND ?
+       LEFT JOIN daily_results r ON r.device_id = m.device_id AND r.puzzle_date BETWEEN ? AND ? AND r.cruise = 0
        WHERE m.week = ? AND m.tier = ? AND m.grp = ?
        GROUP BY m.device_id, m.joined_at
        ORDER BY points DESC, m.joined_at ASC`,
