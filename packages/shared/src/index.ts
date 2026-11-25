@@ -43,7 +43,6 @@ export {
 export { classicShareText, headToHeadShareText } from "./share.js";
 export type { LeagueResponse, LeagueStanding, Placement, Race, RaceMode, StreakState } from "./compete.js";
 export {
-  COMPARE_MIN_PLAYERS,
   H2H_LEAGUE_POINTS,
   LEAGUES,
   LEAGUE_DEMOTION_MIN_GROUP,
@@ -52,7 +51,6 @@ export {
   LEAGUE_MOVE_UP,
   advanceStreak,
   callsign,
-  canCompare,
   leagueName,
   liveStreak,
   nextTier,

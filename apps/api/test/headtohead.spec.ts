@@ -112,14 +112,22 @@ describe("head-to-head API", () => {
     expect(ended.result.shareText).toContain("?race=h1-");
 
     const league = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
-    const table = (await league.json()) as { joined: boolean; name: string; open: boolean; players: number; you: { rank: number; points: number } | null; standings: unknown[] };
+    const table = (await league.json()) as {
+      joined: boolean;
+      name: string;
+      players: number;
+      bots: number;
+      you: { rank: number; points: number; bot: boolean } | null;
+      standings: Array<{ bot: boolean; you: boolean }>;
+    };
     expect(table.joined).toBe(true);
     expect(table.name).toBe("Cadet league");
-    expect(table.you).toMatchObject({ rank: 1, points: 50 });
-    // One player is too few to compare: the table stays hidden.
-    expect(table.open).toBe(false);
-    expect(table.players).toBe(1);
-    expect(table.standings).toHaveLength(0);
+    expect(table.you).toMatchObject({ points: 50, bot: false });
+    // One player still gets a full table: the group's bots, each marked as one.
+    expect(table.bots).toBe(20);
+    expect(table.players).toBe(21);
+    expect(table.standings).toHaveLength(21);
+    expect(table.standings.filter((row) => row.bot)).toHaveLength(20);
 
     const again = await pick(DEVICE, { index: 2, choiceId: sequence[2].answer });
     expect(again.status).toBe(409);
@@ -189,13 +197,15 @@ async function answerRound(deviceId: string, round: { index: number; kind: strin
 }
 
 describe("weekly league", () => {
-  it("moves last week's top five up a league once the group had 20 players", async () => {
+  it("moves last week's top five up a league, ranked against the group's bots", async () => {
     const at = new Date().toISOString();
-    const others = Array.from({ length: 19 }, (_, index) => `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`);
+    const week = Array.from({ length: 7 }, (_, index) => `2025-12-${22 + index}`);
     await env.DB.batch([
       env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(DEVICE, at),
-      ...others.map((device) => env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(device, at)),
-      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 300, 300, '[]', 1, ?)").bind(DEVICE, at),
+      // A perfect week beats any bot.
+      ...week.map((date) =>
+        env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 700, 700, '[]', 1, ?)").bind(DEVICE, date, at),
+      ),
       env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 120, 120, '[]', 0, ?)").bind(DEVICE, DAY, at),
     ]);
     const before = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(OTHER) });
@@ -209,17 +219,16 @@ describe("weekly league", () => {
     expect(table.you.points).toBe(120);
   });
 
-  it("moves nobody when last week's group was under 20 players", async () => {
+  it("moves the bottom five down when the bots outscore them", async () => {
     const at = new Date().toISOString();
     await env.DB.batch([
-      env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 0, 0, 0, ?)").bind(DEVICE, at),
-      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 300, 300, '[]', 1, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO league_members (week, device_id, tier, grp, moved, joined_at) VALUES ('2025-12-22', ?, 1, 0, 0, ?)").bind(DEVICE, at),
+      env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, '2025-12-24', 'classic', 10, 10, '[]', 1, ?)").bind(DEVICE, at),
       env.DB.prepare("INSERT INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at) VALUES (?, ?, 'classic', 120, 120, '[]', 0, ?)").bind(DEVICE, DAY, at),
     ]);
     const response = await exports.default.fetch(`http://localhost/api/league?date=${DAY}`, { headers: headers(DEVICE) });
-    const table = (await response.json()) as { tier: number; moved: string; open: boolean };
+    const table = (await response.json()) as { tier: number; moved: string };
     expect(table.tier).toBe(0);
-    expect(table.moved).toBe("same");
-    expect(table.open).toBe(false);
+    expect(table.moved).toBe("down");
   });
 });

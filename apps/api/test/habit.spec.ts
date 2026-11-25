@@ -148,30 +148,41 @@ describe("should this count?", () => {
 });
 
 describe("today's board and the flight log", () => {
-  it("waits for 20 players, then lists the top ten climbs and draws the curve", async () => {
-    const early = (await (await call("/api/puzzle", DEVICE)).json()) as { today: { climbing: number | null; board: unknown } };
-    expect(early.today).toEqual({ climbing: null, board: null, you: null });
+  it("fills the board with labelled bots from the first player, and draws the curve", async () => {
+    type Today = { climbing: number | null; bots: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean; bot: boolean }>; you: unknown };
+    // Before anyone plays, today's bots are already on the board.
+    const early = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today; field: { players: number; averageProgress: number | null } };
+    expect(early.today.bots).toBeGreaterThan(10);
+    // Bots are never counted as people climbing, and a handful of people is not announced.
+    expect(early.today.climbing).toBeNull();
+    expect(early.today.board).toHaveLength(10);
+    expect(early.today.board.every((row) => row.bot && !row.you)).toBe(true);
+    // Bots pick different answers, so their climbs spread out.
+    expect(new Set(early.today.board.map((row) => row.progress)).size).toBeGreaterThan(3);
+    expect(early.field.averageProgress).not.toBeNull();
+    // The same bots, with the same climbs, on every request.
+    const again = (await (await call("/api/puzzle", OTHER)).json()) as { today: Today };
+    expect(again.today.board).toEqual(early.today.board);
 
-    await finishRuns(24);
+    await finishRuns(4);
     let result: Result | null = null;
     for (const question of spaceDay()) {
       const response = await call("/api/guess", DEVICE, { questionId: question.id, guess: correctGuess(question), skin: "aurora" });
       result = ((await response.json()) as { result: Result | null }).result;
     }
     const curve = result!.curve as { bins: number[]; top: number; you: number; higherThan: number };
-    expect(curve.bins.reduce((sum, count) => sum + count, 0)).toBe(25);
+    expect(curve.bins.reduce((sum, count) => sum + count, 0)).toBe(5 + early.today.bots);
     expect(curve.higherThan).toBeGreaterThanOrEqual(0);
     expect(curve.higherThan).toBeLessThanOrEqual(100);
 
-    const day = (await (await call("/api/puzzle", DEVICE)).json()) as {
-      today: { climbing: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean }>; you: unknown };
-    };
-    expect(day.today.climbing).toBe(25);
+    const day = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today };
+    expect(day.today.climbing).toBeNull();
     expect(day.today.board).toHaveLength(10);
     const heights = day.today.board.map((row) => row.progress);
     expect([...heights].sort((left, right) => right - left)).toEqual(heights);
-    const mine = day.today.board.find((row) => row.you) ?? (day.today.you as { skin: string | null; you: boolean });
+    const mine = day.today.board.find((row) => row.you) ?? (day.today.you as { skin: string | null; you: boolean; bot: boolean });
     expect(mine.you).toBe(true);
+    expect(mine.bot).toBe(false);
     expect(mine.skin).toBe("aurora");
     expect(JSON.stringify(day.today)).not.toContain(OTHER.slice(0, 8));
   });

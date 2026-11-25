@@ -3,10 +3,10 @@ import { advanceStreak, callsign, liveStreak, nextTier, parseRace, placement, ra
 
 describe("placement", () => {
   it("ranks by score with shared ranks for ties, and names the gap to the next rank up", () => {
-    expect(placement(300, [500, 400, 400, 300, 100])).toEqual({ rank: 4, players: 5, next: { rank: 2, gap: 100 } });
-    expect(placement(500, [500, 400])).toEqual({ rank: 1, players: 2, next: null });
-    expect(placement(400, [500, 400, 400])).toEqual({ rank: 2, players: 3, next: { rank: 1, gap: 100 } });
-    expect(placement(7, [])).toEqual({ rank: 1, players: 1, next: null });
+    expect(placement(300, [500, 400, 400, 300, 100])).toEqual({ rank: 4, players: 5, bots: 0, next: { rank: 2, gap: 100 } });
+    expect(placement(500, [500, 400])).toEqual({ rank: 1, players: 2, bots: 0, next: null });
+    expect(placement(400, [500, 400, 400], 2)).toEqual({ rank: 2, players: 3, bots: 2, next: { rank: 1, gap: 100 } });
+    expect(placement(7, [])).toEqual({ rank: 1, players: 1, bots: 0, next: null });
   });
 });
 
@@ -39,9 +39,9 @@ describe("league weeks", () => {
     expect(nextTier(2, 26, 30, 10)).toBe(1);
     expect(nextTier(0, 30, 30, 0)).toBe(0);
     expect(nextTier(1, 1, 1, 0)).toBe(1);
-    // Under 20 players the table was never shown, so nobody moves.
-    expect(nextTier(0, 1, 19, 500)).toBe(0);
-    expect(nextTier(2, 19, 19, 0)).toBe(2);
+    // Bots fill every group, so a small group of people still moves.
+    expect(nextTier(0, 1, 19, 500)).toBe(1);
+    expect(nextTier(2, 19, 19, 0)).toBe(1);
   });
 
   it("gives every device a stable callsign", () => {

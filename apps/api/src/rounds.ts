@@ -13,7 +13,8 @@ import {
   type RoundSummary,
 } from "@ballpark/shared";
 import { BAND_EMOJI } from "@ballpark/shared/scoring";
-import { RETRY_LIMIT, checkName, nameRejection, scoreClassicQuestion } from "./classic-score.js";
+import { crewRuns } from "./bots.js";
+import { RETRY_LIMIT, checkName, nameRejection, scoreClassicQuestion, type PlayQuestion } from "./classic-score.js";
 import { HttpError } from "./http.js";
 import { enforceRateLimit } from "./rate-limit.js";
 import { loadQuestions, otherGuesses, parseGuess, revealFor, toPublic, validateGuess, type AnswerScope, type CrowdScope } from "./puzzle.js";
@@ -47,6 +48,8 @@ export type RoundBoard = {
   /** A past day: the rank is where you would have been. */
   hypothetical: boolean;
   scores: () => Promise<number[]>;
+  /** The bots ranked alongside: a past day's are that day's bots, with their Afterburners; a chapter's play without. */
+  bots: { seed: string; afterburner: boolean };
 };
 
 type Answer = { question_id: string; guess_json: string; band: Band; points: number };
@@ -82,7 +85,7 @@ export async function loadRound(db: D1Database, def: RoundDef, deviceId: string,
     const existing = answered.get(question.id);
     shown.push(toPublic(question, existing ? await revealFor(db, def.crowd, question, parseGuess(existing.guess_json)) : null));
   }
-  return { round: summary(def, answered), questions: shown, result: await roundResult(db, def, deviceId, shareHost, answered) };
+  return { round: summary(def, answered), questions: shown, result: await roundResult(db, def, deviceId, shareHost, answered, questions) };
 }
 
 export async function submitRoundGuess(
@@ -118,11 +121,18 @@ export async function submitRoundGuess(
   console.log(JSON.stringify({ level: "info", event: "round_guess_scored", kind: def.kind, round: def.id, questionId: question.id, band: scored.band, points: scored.points }));
   return {
     reveal: await revealFor(db, def.crowd, question, guess),
-    result: await roundResult(db, def, deviceId, shareHost, await roundAnswers(db, def.store, deviceId)),
+    result: await roundResult(db, def, deviceId, shareHost, await roundAnswers(db, def.store, deviceId), questions),
   };
 }
 
-async function roundResult(db: D1Database, def: RoundDef, deviceId: string, shareHost: string, answered: Map<string, Answer>): Promise<RoundResult | null> {
+async function roundResult(
+  db: D1Database,
+  def: RoundDef,
+  deviceId: string,
+  shareHost: string,
+  answered: Map<string, Answer>,
+  questions: PlayQuestion[],
+): Promise<RoundResult | null> {
   if (def.questionIds.some((id) => !answered.has(id))) return null;
   const ordered = def.questionIds.map((id) => answered.get(id)!);
   const score = ordered.reduce((sum, item) => sum + item.points, 0);
@@ -134,12 +144,21 @@ async function roundResult(db: D1Database, def: RoundDef, deviceId: string, shar
     bands,
     emojis,
     reached: climbedPhrase(climbed),
-    // A past day's scores are other players'; yours joins them to say where you would have been.
-    place: def.board ? placement(score, def.board.hypothetical ? [...(await def.board.scores()), score] : await def.board.scores()) : null,
+    place: def.board ? await boardPlace(def.board, def.questionIds, questions, score) : null,
     placeWhat: def.board?.what ?? "",
     hypothetical: def.board?.hypothetical ?? false,
     shareText: `${def.shareTitle}\n${emojis.join("")} ${score} pts\n${climbShareLine(climbed)}\n${shareHost}`,
   };
+}
+
+/** Where a finished round's score sits among the players' scores and the round's bots. */
+async function boardPlace(board: RoundBoard, questionIds: string[], questions: PlayQuestion[], score: number) {
+  const byId = new Map(questions.map((question) => [question.id, question]));
+  const ordered = questionIds.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
+  const bots = crewRuns(board.bots.seed, ordered, { afterburner: board.bots.afterburner }).map((bot) => bot.score);
+  // A past day's scores are other players'; yours joins them to say where you would have been.
+  const players = board.hypothetical ? [...(await board.scores()), score] : await board.scores();
+  return placement(score, [...players, ...bots], bots.length);
 }
 
 /** Finished scores in one stored set: everyone who answered all of its questions. */

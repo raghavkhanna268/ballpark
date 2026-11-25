@@ -372,14 +372,14 @@ export function App() {
               id: "today",
               icon: "🏁",
               title: "Today",
-              note: puzzle.today.climbing ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten at 20 players",
+              note: puzzle.today.climbing ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten climbs",
               content: (
                 <section className="card today-card" aria-label="Today’s board">
                   <div className="mode-top">
                     <h2>Today’s top climbs</h2>
                     <p className="streak">#{puzzle.puzzleNumber}</p>
                   </div>
-                  <TodayBoard today={puzzle.today} players={puzzle.field.players} />
+                  <TodayBoard today={puzzle.today} />
                 </section>
               ),
             },

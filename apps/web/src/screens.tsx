@@ -7,8 +7,7 @@ import { haptic } from "./haptic";
 import { CurveChart, FlightPath, TheCatch, TodayBoard } from "./flightlog";
 import { sharePostcard, type PostcardInput } from "./postcard";
 import {
-  COMPARE_MIN_PLAYERS,
-  canCompare,
+  COLD_START_RESPONSES,
   formatFactValue,
   formatNumber,
   nextDayStart,
@@ -523,11 +522,11 @@ export function EndScreen({
         {tab === "log" ? (
           <>
             <FlightPath questions={puzzle.questions} />
-            <CurveChart curve={result.curve} players={puzzle.field.players} />
+            <CurveChart curve={result.curve} />
           </>
         ) : null}
         {tab === "catch" ? <TheCatch questions={puzzle.questions} /> : null}
-        {tab === "today" ? <TodayBoard today={puzzle.today} players={puzzle.field.players} /> : null}
+        {tab === "today" ? <TodayBoard today={puzzle.today} /> : null}
         <button
           className="primary"
           type="button"
@@ -846,12 +845,12 @@ function estimateShare(percent: number): string {
 function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: PublicQuestion["type"]; compact?: boolean }) {
   // Over the scene after a climb there is room for one line about the crowd and the rare answers, no tables.
   if (compact && crowd.kind === "named") {
-    const early = !canCompare(crowd.submissions);
+    // Until enough people have answered, the share is the prior blended with them: an estimate, said as one.
     const line = !crowd.answer
       ? null
-      : early
+      : crowd.fromPrior
         ? crowd.blendedPercent !== null
-          ? `${estimateShare(crowd.blendedPercent)} would say ${crowd.answer}. That is our estimate until ${COMPARE_MIN_PLAYERS} players.`
+          ? `${estimateShare(crowd.blendedPercent)} would say ${crowd.answer}.`
           : null
         : crowd.percent < 1
           ? `Under 1% of players said ${crowd.answer}.`
@@ -865,17 +864,17 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
       </div>
     );
   }
-  // Under 20 answers, crowd shares say more about who happened to play first than about the crowd.
-  if (!canCompare(crowd.submissions)) {
+  // With only a few answers in, live shares say more about who played first than about the crowd: show the estimate.
+  if (crowd.kind === "named" ? crowd.fromPrior : crowd.submissions < COLD_START_RESPONSES) {
+    const line =
+      crowd.kind === "named" && !crowd.answer
+        ? "That answer was not accepted."
+        : crowd.kind === "named" && crowd.blendedPercent !== null
+          ? `${estimateShare(crowd.blendedPercent)} would say ${crowd.answer}.`
+          : null;
     return (
       <div className="crowd">
-        <p>
-          {crowd.kind === "named" && !crowd.answer
-            ? "That answer was not accepted."
-            : crowd.kind === "named" && crowd.blendedPercent !== null
-              ? `Our estimate: ${estimateShare(crowd.blendedPercent).toLowerCase()} would say ${crowd.answer}. Real crowd shares start at ${COMPARE_MIN_PLAYERS} players.`
-              : `Crowd stats start at ${COMPARE_MIN_PLAYERS} players.`}
-        </p>
+        {line ? <p>{line}</p> : null}
         {crowd.kind === "named" && crowd.rare.length > 0 ? <p>Rare right answers: {crowd.rare.join(", ")}</p> : null}
       </div>
     );
@@ -890,9 +889,6 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
               : `${crowd.percent}% of players said ${crowd.answer}.`
             : "That answer was not accepted."}
         </p>
-        {crowd.fromPrior && crowd.blendedPercent !== null ? (
-          <p>Rarity points blend a prior until 20 answers (effective share {crowd.blendedPercent}%).</p>
-        ) : null}
         {crowd.top.length > 0 ? (
           <ul className="name-list">
             {crowd.top.map((item) => (

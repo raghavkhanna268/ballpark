@@ -1209,3 +1209,8 @@
   .stop.current .stop-dot { animation: none; }
   .cruise-switch .knob, .cruise-switch .knob::after { transition: none; }
 }
+
+/* Bot rivals on today's board: a robot instead of a rocket, and a softer row. */
+.board li.bot { background: rgba(143, 211, 255, 0.04); }
+.board li.bot .board-name strong { color: #c9d6ea; }
+.board-bot { display: grid; place-items: center; width: 20px; font-size: 1rem; line-height: 1; }

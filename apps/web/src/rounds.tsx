@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { NAME_CAP, canCompare, classicStep, type Guess, type PuzzleResponse, type Reveal, type RoundResponse, type RoundResult } from "@ballpark/shared";
+import { NAME_CAP, classicStep, type Guess, type PuzzleResponse, type Reveal, type RoundResponse, type RoundResult } from "@ballpark/shared";
 import { ApiError, errorCopy, getRound, postRoundGuess, type RoundRef } from "./api";
 import { CountUp, Tally, currentCombo, trailOf } from "./game";
 import { haptic, shareText } from "./haptic";
-import { EarlyBlock } from "./rivals";
+import { fieldLine } from "./rivals";
 import { QuestionScreen, RevealScreen, type Correction } from "./screens";
 import type { SkyTrail } from "./sky";
 import { playBonk } from "./sound";
@@ -232,14 +232,15 @@ function RoundPlace({ result }: { result: RoundResult }) {
     return <p className="players">Rarity here counts everyone who has ever answered these questions.</p>;
   }
   const { rank, players, next } = result.place;
-  if (!canCompare(players)) return <EarlyBlock players={players} what={result.hypothetical ? "that day" : "this chapter"} />;
   if (result.hypothetical) {
     return (
       <div className="rank-block">
         <h2>
           You’d have been #{rank} <span>of {players} that day</span>
         </h2>
-        <p className="players">{next ? `${next.gap} pts behind #${next.rank} on the day.` : "Nobody climbed higher that day."}</p>
+        <p className="players">
+          {next ? `${next.gap} pts behind #${next.rank} on the day.` : "Nobody climbed higher that day."} {fieldLine(result.place)}
+        </p>
       </div>
     );
   }
@@ -248,7 +249,9 @@ function RoundPlace({ result }: { result: RoundResult }) {
       <h2>
         You’re #{rank} <span>of {players} {result.placeWhat}</span>
       </h2>
-      <p className="players">{next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher here."}</p>
+      <p className="players">
+        {next ? `${next.gap} pts behind #${next.rank}.` : "Nobody has climbed higher here."} {fieldLine(result.place)}
+      </p>
     </div>
   );
 }
@@ -268,7 +271,7 @@ function asPuzzle(round: RoundResponse): PuzzleResponse {
     questions: round.questions,
     result: null,
     field: { players: 0, averageProgress: null, bestProgress: null },
-    today: { climbing: null, board: null, you: null },
+    today: { climbing: null, bots: 0, board: [], you: null },
   };
 }
 

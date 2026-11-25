@@ -1,9 +1,19 @@
-import { COMPARE_MIN_PLAYERS, canCompare, formatAltitude, milestoneAt, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
+import { formatAltitude, milestoneAt, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
 
 /*
  * The competitive layer: your rank after a game, racing a friend's climb from a shared link,
- * and the weekly league. Nothing here needs an account.
+ * and the weekly league. Nothing here needs an account. Bot rivals fill every field and table, and are
+ * always shown as bots.
  */
+
+/** Who else is in a ranked field: "Racing 18 🤖 bots and 3 players." */
+export function fieldLine(place: Placement): string {
+  const people = Math.max(0, place.players - place.bots - 1);
+  const bots = place.bots > 0 ? `${place.bots} 🤖 ${place.bots === 1 ? "bot" : "bots"}` : "";
+  const players = people > 0 ? `${people} ${people === 1 ? "player" : "players"}` : "";
+  const both = [bots, players].filter(Boolean).join(" and ");
+  return both ? `Racing ${both}.` : "";
+}
 
 const RACE_KEY = "ballpark.race.v1";
 
@@ -63,9 +73,8 @@ export function FriendResult({ race, mine }: { race: Race; mine: number }) {
   return <p className={diff > 0.05 ? "friend-line won" : "friend-line"}>{text}</p>;
 }
 
-/** "You're #2 of 4 today", and what it takes to climb one more place. */
+/** "You're #2 of 4 today", what it takes to climb one more place, and who is in the field. */
 export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "picks" }) {
-  if (!canCompare(place.players)) return <EarlyBlock players={place.players} what="today" />;
   const gap = place.next ? (unit === "pts" ? `${place.next.gap} pts` : `${place.next.gap} right ${place.next.gap === 1 ? "answer" : "answers"}`) : "";
   return (
     <div className="rank-block">
@@ -73,21 +82,8 @@ export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "pi
         You’re #{place.rank} <span>of {place.players} today</span>
       </h2>
       <p className="players">
-        {place.next ? `${gap} behind #${place.next.rank}.` : "Nobody climbed higher today."}
+        {place.next ? `${gap} behind #${place.next.rank}.` : "Nobody climbed higher today."} {fieldLine(place)}
       </p>
-    </div>
-  );
-}
-
-/** Before 20 players have finished, being early is the news, not a rank among a handful. */
-/** `what` finishes "to finish …": "today", "this chapter", "that day". */
-export function EarlyBlock({ players, what }: { players: number; what: string }) {
-  return (
-    <div className="rank-block early">
-      <h2>
-        Early player <span>#{players} to finish {what}</span>
-      </h2>
-      <p className="players">Ranks and averages start once {COMPARE_MIN_PLAYERS} players have finished. Share your climb to get there faster.</p>
     </div>
   );
 }
@@ -110,19 +106,6 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
       </section>
     );
   }
-  if (!league.open) {
-    return (
-      <section className="card league" aria-label="Weekly league">
-        <div className="mode-top">
-          <h2>{league.name}</h2>
-          <p className="streak">{ends}</p>
-        </div>
-        <p className="hint">
-          You’re in, with {league.you?.points ?? 0} pts this week. The table opens once {COMPARE_MIN_PLAYERS} players are in your group ({league.players} so far). Until then nobody moves up or down.
-        </p>
-      </section>
-    );
-  }
   const rows = league.standings;
   const mine = rows.findIndex((row) => row.you);
   const shown = rows.slice(0, 8);
@@ -139,7 +122,7 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
         {shown.map((row, index) => (
           <li key={`${row.callsign}-${index}`} className={[row.you ? "you" : "", league.above && index === league.moveUp - 1 && rows.length > league.moveUp ? "cut" : ""].join(" ")}>
             <span className="mono">{row.rank}</span>
-            <strong>{row.you ? `You · ${row.callsign}` : row.callsign}</strong>
+            <strong>{row.you ? `You · ${row.callsign}` : row.bot ? `🤖 ${row.callsign}` : row.callsign}</strong>
             <span className="mono">{row.points}</span>
           </li>
         ))}
@@ -147,6 +130,7 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
       <p className="hint">
         {league.above ? `Top ${league.moveUp} move up to the ${league.above}.` : "This is the top league. Stay in the top 5 to keep your rank."}
         {league.moveDown > 0 ? ` Bottom ${league.moveDown} move down.` : ""} Your Classic points count.
+        {league.bots > 0 ? ` 🤖 marks a bot rival.` : ""}
       </p>
     </section>
   );
@@ -155,13 +139,6 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
 /** One line on the end screen: where this week stands now. */
 export function LeagueLine({ league }: { league: LeagueResponse | null }) {
   if (!league?.joined || !league.you) return null;
-  if (!league.open) {
-    return (
-      <p className="league-line">
-        {league.name}: {league.you.points} pts this week. The table opens at {COMPARE_MIN_PLAYERS} players ({league.players} so far).
-      </p>
-    );
-  }
   const zone = league.above && league.you.rank <= league.moveUp ? ` · in the top ${league.moveUp}, on course for the ${league.above}` : "";
   return (
     <p className="league-line">

@@ -1,4 +1,4 @@
-import { classicClimbs, climbCurve, stageStep, todayStats } from "./field.js";
+import { climbCurve, dayBots, fieldClimbs, stageStep, todayStats } from "./field.js";
 import { joinLeague } from "./league.js";
 import {
   beatPercent,
@@ -139,7 +139,7 @@ export async function loadPuzzleResponse(
     publicQuestions.push(toPublic(question, reveal, true));
   }
   const number = puzzleNumber(date, epoch);
-  const climbs = await classicClimbs(db, date, questions);
+  const climbs = await fieldClimbs(db, date, questions);
   return {
     date,
     puzzleNumber: number,
@@ -152,7 +152,7 @@ export async function loadPuzzleResponse(
     questions: publicQuestions,
     result: await dayResult(db, date, deviceId, number, shareHost, epoch, questions),
     field: fieldStats([...climbs.values()]),
-    today: await todayStats(db, date, deviceId, climbs),
+    today: await todayStats(db, date, deviceId, climbs, dayBots(date, questions)),
     cruise: submissions.size > 0 ? [...submissions.values()].some((row) => row.cruise === 1) : null,
   };
 }
@@ -580,7 +580,9 @@ async function dayResult(
     .prepare("SELECT score FROM daily_results WHERE puzzle_date = ? AND mode = ? AND cruise = 0")
     .bind(date, MODE)
     .all<{ score: number }>();
-  const scores = board.results.map((row) => row.score);
+  // Today's bots are ranked alongside, so there is a field from the first finish.
+  const bots = dayBots(date, questions);
+  const scores = [...board.results.map((row) => row.score), ...bots.map((bot) => bot.score)];
   const bands = parseStringArray(mine.bands) as Band[];
   // The height in the result is the one the scene flew to, so it adds up the same per-answer climbs.
   const mineRows = await submissionsFor(db, date, deviceId);
@@ -601,11 +603,11 @@ async function dayResult(
     shareText: classicShareText(number, emojis, mine.score, shareHost, climbShareLine(climbed), race, cruise),
     reached: climbedPhrase(climbed),
     provisional: date >= playToday(),
-    place: cruise ? null : placement(mine.score, scores),
+    place: cruise ? null : placement(mine.score, scores, bots.length),
     cruise,
     race,
     boosted: boosted >= 0 ? boosted : null,
-    curve: climbCurve(await classicClimbs(db, date, questions), deviceId),
+    curve: climbCurve(await fieldClimbs(db, date, questions), deviceId),
   };
 }
 

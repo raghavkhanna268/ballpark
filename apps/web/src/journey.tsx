@@ -346,7 +346,7 @@ export function Journey({
   const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : ""].join(" ");
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
-  // "Above everyone" only when the crowd ghosts are in play. Under 20 players only your best and a friend fly.
+  // "Above everyone" only when the crowd ghosts are in play: today's average and best, bots included.
   const crowdGhost = ghosts.some((ghost) => ghost.id === "average" || ghost.id === "top");
   const next = nextMilestone(landed);
   const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "replay" && !overview;

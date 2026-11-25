@@ -92,6 +92,7 @@ async function archiveDef(db: D1Database, date: string, deviceId: string, today:
           .all<{ score: number }>();
         return (rows.results ?? []).map((row) => row.score);
       },
+      bots: { seed: date, afterburner: true },
     },
   };
 }

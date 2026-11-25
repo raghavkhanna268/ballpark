@@ -1,8 +1,6 @@
 import {
-  COMPARE_MIN_PLAYERS,
   CLASSIC_QUESTIONS,
   MILESTONES,
-  canCompare,
   formatAltitude,
   milestoneAt,
   type BoardRow,
@@ -16,7 +14,7 @@ import { MISS_COLOR, tierColor } from "./sky";
 
 /**
  * The flight log on the end screen: your climb stage by stage past the landmarks, where it sits among today's
- * climbs, and The catch (what you answered and how many others said the same). Crowd numbers wait for 20 players.
+ * climbs (bots included), and The catch (what you answered and how many others said the same).
  */
 
 type Stage = { index: number; from: number; to: number; tier: number; boosted: boolean };
@@ -84,15 +82,9 @@ export function FlightPath({ questions }: { questions: PublicQuestion[] }) {
   );
 }
 
-/** Today's finished climbs as bars, with yours marked. */
-export function CurveChart({ curve, players }: { curve: ClimbCurve | null; players: number }) {
-  if (!curve) {
-    return (
-      <p className="hint">
-        The curve of today’s climbs opens at {COMPARE_MIN_PLAYERS} finishers. {players > 0 ? `${players} so far.` : ""}
-      </p>
-    );
-  }
+/** Today's finished climbs, bots included, as bars with yours marked. */
+export function CurveChart({ curve }: { curve: ClimbCurve | null }) {
+  if (!curve) return <p className="hint">Finish today’s climb to see where it lands.</p>;
   const most = Math.max(1, ...curve.bins);
   const youAt = Math.min(0.999, curve.you / curve.top);
   return (
@@ -128,11 +120,15 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
         const crowd = reveal.crowd.kind === "named" ? reveal.crowd : null;
         const said =
           crowd && crowd.answer
-            ? canCompare(crowd.submissions)
+            ? !crowd.fromPrior
               ? crowd.count <= 1
                 ? "Only you said it"
                 : `${crowd.count} of ${crowd.submissions} said it`
-              : `Counts at ${COMPARE_MIN_PLAYERS} players`
+              : crowd.blendedPercent !== null
+                ? crowd.blendedPercent < 1
+                  ? "Fewer than 1 in 100 would say it"
+                  : `About ${crowd.blendedPercent}% would say it`
+                : ""
             : "";
         return (
           <li key={question.id} style={{ ["--c" as string]: tier >= 0 ? tierColor(tier) : MISS_COLOR }}>
@@ -154,15 +150,9 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
   );
 }
 
-/** The ten highest climbs today, by callsign, each in its rocket's paint job. Opens at 20 finishers. */
-export function TodayBoard({ today, players }: { today: TodayStats; players: number }) {
-  if (!today.board) {
-    return (
-      <p className="hint">
-        Today’s board opens when {COMPARE_MIN_PLAYERS} players have finished. {players > 0 ? `${players} so far.` : "Be one of the first."}
-      </p>
-    );
-  }
+/** The ten highest climbs today, by callsign, each in its rocket's paint job. Bots fly with a 🤖. */
+export function TodayBoard({ today }: { today: TodayStats }) {
+  if (today.board.length === 0) return <p className="hint">No finished climbs yet today.</p>;
   return (
     <ol className="board">
       {today.board.map((row) => (
@@ -183,12 +173,21 @@ export function TodayBoard({ today, players }: { today: TodayStats; players: num
 function BoardLine({ row }: { row: BoardRow }) {
   const paint = skinById(row.skin) ?? SKINS[0]!;
   return (
-    <li className={row.you ? "you" : undefined}>
+    <li className={row.you ? "you" : row.bot ? "bot" : undefined}>
       <span className="board-rank">{row.rank}</span>
-      <RocketIcon paint={paint} size={26} />
+      {row.bot ? (
+        <span className="board-bot" aria-hidden="true">
+          🤖
+        </span>
+      ) : (
+        <RocketIcon paint={paint} size={26} />
+      )}
       <span className="board-name">
         <strong>{row.you ? `${row.callsign} (you)` : row.callsign}</strong>
-        <small>{milestoneAt(row.progress).at > 0 ? `past ${milestoneAt(row.progress).name}` : "off the pad"}</small>
+        <small>
+          {row.bot ? "Bot · " : ""}
+          {milestoneAt(row.progress).at > 0 ? `past ${milestoneAt(row.progress).name}` : "off the pad"}
+        </small>
       </span>
       <span className="board-height">
         <strong>{formatAltitude(row.progress)}</strong>

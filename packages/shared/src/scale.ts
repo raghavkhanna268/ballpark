@@ -1,4 +1,3 @@
-import { canCompare } from "./compete.js";
 
 export type ScaleLevel = {
   id: string;
@@ -178,7 +177,7 @@ export function climbShareLine(progress: number): string {
 export type FieldStats = { players: number; averageProgress: number | null; bestProgress: number | null };
 
 export function fieldStats(progresses: number[]): FieldStats {
-  if (!canCompare(progresses.length)) return { players: progresses.length, averageProgress: null, bestProgress: null };
+  if (progresses.length === 0) return { players: 0, averageProgress: null, bestProgress: null };
   const total = progresses.reduce((sum, value) => sum + value, 0);
   return {
     players: progresses.length,

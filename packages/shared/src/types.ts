@@ -197,13 +197,18 @@ export type ClimbCurve = {
 };
 
 /** One finished climb on today's board. */
-export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean };
+export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean; bot: boolean };
 
 export type TodayStats = {
-  /** Players who have answered at least one question today, or null below 20. */
+  /**
+   * People who have answered at least one question today, from PEOPLE_SHOWN_FROM of them. Below that the count
+   * is left out instead of saying how few, and today's bots keep the board full.
+   */
   climbing: number | null;
-  /** The ten highest finished climbs, or null below 20 finishers. */
-  board: BoardRow[] | null;
+  /** Today's bots on the board. */
+  bots: number;
+  /** The ten highest finished climbs, bots included. */
+  board: BoardRow[];
   /** Your row when you finished outside the top ten. */
   you: BoardRow | null;
 };

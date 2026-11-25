@@ -126,7 +126,11 @@ describe("submissions", () => {
       expect(body.reveal.crowd.submissions).toBe(1);
       result = body.result;
     }
-    expect(result).toMatchObject({ beatPercent: 100, players: 1, place: { rank: 1, players: 1, next: null } });
+    // The only player today is ranked among today's bots, who are counted apart.
+    const place = result!.place as { rank: number; players: number; bots: number };
+    expect(place.bots).toBeGreaterThan(10);
+    expect(place.players).toBe(place.bots + 1);
+    expect(result!.players).toBe(place.players);
     // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
     expect(result!.emojis).toHaveLength(7);
     expect(result!.emojis).not.toContain("⬛");

@@ -2,33 +2,26 @@ import { addUtcDays } from "./dates.js";
 
 /* ---------- rank after every game ---------- */
 
-/**
- * Ranks, today's average and best, crowd shares and league tables stay hidden until this many
- * players have finished, so nobody is compared against a handful of early players.
- */
-export const COMPARE_MIN_PLAYERS = 20;
-
-export function canCompare(players: number): boolean {
-  return players >= COMPARE_MIN_PLAYERS;
-}
-
 export type Placement = {
   /** 1 is the top. Players on the same score share a rank. */
   rank: number;
+  /** Everyone ranked, bots included. */
   players: number;
+  /** How many of `players` are bots. */
+  bots: number;
   /** The next rank up and how many points it is ahead, or null when you are at the top. */
   next: { rank: number; gap: number } | null;
 };
 
-/** Where `mine` sits among today's finished scores (`all` includes `mine`). */
-export function placement(mine: number, all: number[]): Placement {
+/** Where `mine` sits among today's finished scores (`all` includes `mine`, and `bots` of them are bots). */
+export function placement(mine: number, all: number[], bots = 0): Placement {
   const scores = all.length === 0 ? [mine] : all;
   const above = scores.filter((score) => score > mine);
   const rank = above.length + 1;
-  if (above.length === 0) return { rank, players: scores.length, next: null };
+  if (above.length === 0) return { rank, players: scores.length, bots, next: null };
   const nextScore = Math.min(...above);
   const nextRank = scores.filter((score) => score > nextScore).length + 1;
-  return { rank, players: scores.length, next: { rank: nextRank, gap: nextScore - mine } };
+  return { rank, players: scores.length, bots, next: { rank: nextRank, gap: nextScore - mine } };
 }
 
 /* ---------- race a friend ---------- */
@@ -91,8 +84,6 @@ export function leagueName(tier: number): string {
 
 /** Next week's tier for someone who finished `rank` of `size` with `points` this week. */
 export function nextTier(tier: number, rank: number, size: number, points: number): number {
-  // A group too small to compare in moves nobody: its table was never shown.
-  if (!canCompare(size)) return tier;
   if (points > 0 && rank <= LEAGUE_MOVE_UP) return Math.min(LEAGUES.length - 1, tier + 1);
   if (size >= LEAGUE_DEMOTION_MIN_GROUP && rank > size - LEAGUE_MOVE_DOWN) return Math.max(0, tier - 1);
   return tier;
@@ -114,7 +105,8 @@ export function callsign(seed: string): string {
   return `${first} ${second} ${number}`;
 }
 
-export type LeagueStanding = { rank: number; callsign: string; points: number; you: boolean };
+/** One row of a league table. `bot` marks a bot rival, shown as one and never counted as a person. */
+export type LeagueStanding = { rank: number; callsign: string; points: number; you: boolean; bot: boolean };
 
 export type LeagueResponse = {
   /** Monday and Sunday of this league week. */
@@ -129,10 +121,10 @@ export type LeagueResponse = {
   moveUp: number;
   /** 0 when this group is too small to send anyone down. */
   moveDown: number;
-  /** False until the group has COMPARE_MIN_PLAYERS players. Until then standings are empty and nobody moves. */
-  open: boolean;
-  /** Players in your group this week. */
+  /** Everyone in your group this week, bots included. */
   players: number;
+  /** How many of `players` are bots. */
+  bots: number;
   /** Where last week sent you: up a league, down one, or the same. Null on your first week. */
   moved: "up" | "down" | "same" | null;
   you: LeagueStanding | null;

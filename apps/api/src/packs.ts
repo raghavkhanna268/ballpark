@@ -111,7 +111,12 @@ async function chapterDef(db: D1Database, id: string, chapter: number, deviceId:
     store,
     crowd: store,
     shareTitle: `Ballpark+ · ${pack.emoji} ${pack.title}${many ? ` · Chapter ${chapter}` : ""}`,
-    board: { what: many ? "who played this chapter" : "who played this pack", hypothetical: false, scores: () => finishedScores(db, store, questionIds.length) },
+    board: {
+      what: many ? "who played this chapter" : "who played this pack",
+      hypothetical: false,
+      scores: () => finishedScores(db, store, questionIds.length),
+      bots: { seed: store.key, afterburner: false },
+    },
   };
 }
 
