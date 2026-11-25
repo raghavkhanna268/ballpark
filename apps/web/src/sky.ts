@@ -394,7 +394,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // Weather balloon
     let y = sy(4.6);
     if (y > -60 && y < H + 60) {
-      const x = W * (wide ? 0.45 : 0.24) + Math.sin(T * 0.001) * 4;
+      const x = W * (wide ? 0.2 : 0.24) + Math.sin(T * 0.001) * 4;
       ctx.fillStyle = "#f4f4f8";
       circ(x, y - 30, 15);
       ctx.strokeStyle = "rgba(255,255,255,.6)";
@@ -437,7 +437,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // The Moon
     y = sy(12.6);
     if (y > -90 && y < H + 90) {
-      const x = W * (wide ? 0.46 : 0.3);
+      const x = W * (wide ? 0.78 : 0.3);
       const g = ctx.createRadialGradient(x - 18, y - 18, 8, x, y, 58);
       g.addColorStop(0, "#fbf8ef");
       g.addColorStop(1, "#bdb6a6");
@@ -459,7 +459,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // Saturn
     y = sy(17.4);
     if (y > -70 && y < H + 70) {
-      const x = W * (wide ? 0.47 : 0.32);
+      const x = W * (wide ? 0.22 : 0.32);
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(-0.35);
@@ -1330,7 +1330,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       H = Math.max(1, height);
       P = H * 0.95;
       wide = isWide;
-      RX = wide ? W * 0.62 : W / 2;
+      RX = W / 2;
       const dpr = options.pixelRatio ?? Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);

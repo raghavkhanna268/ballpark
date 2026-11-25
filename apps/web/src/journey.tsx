@@ -172,7 +172,7 @@ export function Journey({
       const card = sheet.getBoundingClientRect();
       const top = focusRef.current ? HUD_H : Math.max(0, Math.round(card.bottom - stage.getBoundingClientRect().top));
       stage.style.setProperty("--sheet-bottom", `${top}px`);
-      const under = focusRef.current || wide ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
+      const under = focusRef.current ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
       sky.setAnchor(under);
     };
     measureRef.current = measure;

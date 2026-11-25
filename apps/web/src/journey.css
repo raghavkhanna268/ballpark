@@ -894,20 +894,17 @@
 .sheet .reveal .flavour { margin: 4px 0 0; font-size: 0.9rem; font-weight: 600; }
 
 /* ---------- wide screens ---------- */
-/* The card sits on the left and the rocket climbs on the right, at 62% of the width. */
+/* Like a Krillion dive on a computer: the card sits in the middle at the top, and the rocket climbs straight below it. */
 @media (min-width: 900px) {
   .hud { left: 36px; right: 36px; top: 12px; }
-  .sheet { top: 64px; padding: 0 0 0 56px; }
-  .stage main { width: 440px; margin: 0; }
-  .stage.is-focus .sheet { padding: 0 0 0 56px; }
+  .sheet { top: 64px; padding: 0 16px; }
+  .stage.is-focus .sheet { padding: 0 16px; }
   .stage.is-focus .sheet .stack.result { padding-top: 104px; }
-  .sky-tags { left: 56px; right: auto; width: 440px; }
-  .toasts { left: 24%; }
+  .sky-tags { left: calc(50% - 230px); right: auto; width: 460px; }
   .gain { font-size: 1.25rem; }
   .gain.big { font-size: 1.75rem; }
   .where .alt-v, .where .alt-v.long span { font-size: 1.6rem; }
   .where .alt-v small { font-size: 0.8rem; }
-  .sheet .ad-slot { left: 56px; width: 440px; }
   .altimeter { top: 64px; }
 }
 
