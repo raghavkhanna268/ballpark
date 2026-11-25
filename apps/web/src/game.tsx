@@ -150,13 +150,24 @@ export function trailOf(questions: Array<{ type: QuestionType; reveal: Scored | 
   return trail;
 }
 
+/**
+ * What a "name one" answer makes you, by tier, from the most said to the rarest: the big word on the result card.
+ * The tier name (Liftoff … Supernova) still sits under it, and on the tiles, the ladder and the share card.
+ */
+const NAME_TITLE = ["Space Tourist", "Wingman", "Pathfinder", "Lone Voyager", "One of a Kind"];
 const NAME_FLAVOUR = [
-  "Most people said this. A small hop.",
-  "A solid pick. Steady lift.",
+  "Rush hour on the launch pad. A small hop.",
+  "You flew with the pack. Steady lift.",
   "Off the beaten track. Big lift!",
-  "Rare air. Few players went here.",
-  "Full burn! Almost nobody said this.",
+  "Hardly anyone came this way. Rare air.",
+  "Nobody saw that coming. Full burn!",
 ];
+
+/** The big word on a name-one result: what the answer makes you. Misses and timeouts keep the rocket on the ground. */
+export function answerTitle(label: string, tier: number): string {
+  if (tier < 0) return label === "Out of time" ? "Stuck on the Pad" : "Grounded";
+  return NAME_TITLE[Math.min(4, tier)]!;
+}
 const GUESS_FLAVOUR = ["In the ballpark. A small hop.", "Not bad. Steady lift.", "Good call. Big lift!", "Very close. Rare air.", "Spot on! Full burn."];
 
 /** One line under the result on what the answer did for the climb. */

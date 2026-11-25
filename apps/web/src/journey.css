@@ -712,7 +712,6 @@
 /* The question card: just the question. */
 .sheet .stack.ask { animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
 .sheet .play-head p span { color: var(--muted); font-size: 0.8rem; }
-.sheet .rarer { margin: -2px 0 0; font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; text-align: center; color: var(--line-art); opacity: 0.8; }
 
 /* Your answer, rising through the sky with the climber under it. */
 .answer-tag {
@@ -801,13 +800,14 @@
   margin: 4px 0 0;
   font-family: var(--display);
   font-weight: 900;
-  font-size: 1.85rem;
+  font-size: clamp(1.35rem, 7vw, 1.85rem);
   line-height: 1.05;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--tier);
   text-shadow: 0 0 10px var(--tier-glow), 0 0 30px var(--tier-glow);
 }
+.stage.is-focus .sheet .result .result-rank { margin: 0; font-family: var(--display); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--tier); opacity: 0.75; }
 .stage.is-focus .sheet .result .result-answer { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
 .stage.is-focus .sheet .result .points { margin: 2px 0 0; display: flex; flex-direction: column; align-items: center; font-size: 1.4rem; line-height: 1.1; }
 .stage.is-focus .sheet .result.band-black .points, .stage.is-focus .sheet .result .reveal.band-black .points { color: var(--muted); text-shadow: none; }

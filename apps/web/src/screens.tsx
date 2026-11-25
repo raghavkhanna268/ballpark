@@ -1,7 +1,7 @@
 import { QuestionTimer } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CountUp, Tally, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
+import { CountUp, Tally, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
 import { tierStyle, useFocusMode, useJourney } from "./journey";
 import { haptic } from "./haptic";
 import { CurveChart, FlightPath, TheCatch, TodayBoard } from "./flightlog";
@@ -246,7 +246,6 @@ export function QuestionScreen({
       )}
       {question.type !== "name_one" ? <p className="type-kicker">{typeLabel(question.type)}</p> : null}
       <h2 className="prompt">{question.prompt}</h2>
-      {question.type === "name_one" ? <p className="rarer">▲ Rarer answers climb higher ▲</p> : null}
       {afterburner && (afterburner.ready || afterburner.armed) ? (
         <button
           type="button"
@@ -388,7 +387,14 @@ export function RevealScreen({
         <p className="result-icon" aria-hidden="true">
           {named ? resultIcon(reveal.label, reveal.emoji) : reveal.emoji}
         </p>
-        <h2 className="result-tier">{reveal.label}</h2>
+        {named ? (
+          <>
+            <h2 className="result-tier">{answerTitle(reveal.label, tier)}</h2>
+            <p className="result-rank">{tier < 0 ? reveal.label : `${reveal.label} tier`}</p>
+          </>
+        ) : (
+          <h2 className="result-tier">{reveal.label}</h2>
+        )}
         {named && scored && reveal.answerText ? <p className="result-answer">“{reveal.answerText}”</p> : null}
         {!named && reveal.answerText && reveal.answerText !== reveal.label ? <p className="result-answer">{reveal.answerText}</p> : null}
         <p className="flavour">{flavourLine(reveal.label, tier, named)}</p>
@@ -1020,11 +1026,6 @@ function NameForm({
           ))}
         </datalist>
       ) : null}
-      <p className="hint">
-        {suggestions.length > 0
-          ? "Suggestions are the whole list. They do not tell you which names score."
-          : "No list for this one. Small spelling slips are fine."}
-      </p>
       {localError ? <p className="form-error">{localError}</p> : null}
       <button className="primary" type="submit" disabled={busy || locked}>
         {busy ? "Checking…" : "Lock in answer"}
