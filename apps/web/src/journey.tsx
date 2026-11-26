@@ -1,8 +1,9 @@
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MILESTONES, altitudeKm, formatAltitude, formatDistance, nextMilestone } from "@ballpark/shared";
 import { useCountUp } from "./game";
-import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, replayMs, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
-import { playBurner, playChime, playSparkle, playSputter, readSound, setSound, unlockAudio } from "./sound";
+import { haptic } from "./haptic";
+import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
+import { playBurner, playChime, playChute, playPop, playSparkle, playSputter, playThud, readSound, setSound, unlockAudio } from "./sound";
 import "./journey.css";
 
 /** One answer's climb. */
@@ -29,13 +30,13 @@ export type TrailSegment = SkyTrail;
 function passedLine(ghosts: Ghost[]): string {
   return ghosts.map((ghost) => ghost.label.charAt(0).toLowerCase() + ghost.label.slice(1)).join(" and ");
 }
-type Motion = "idle" | "climb" | "replay";
+type Motion = "idle" | "climb" | "land";
 type Toast = { id: number; born: number; title: string; detail: string };
 
 /**
  * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, a slot at the
- * bottom of the screen for the answer bar, whether a climb is still playing (so a result waits for it), and a switch
- * that clears the card away so the climb has the whole screen.
+ * bottom of the screen for the answer bar, whether a climb is still playing (so a result waits for it), a switch
+ * that clears the card away so the climb has the whole screen, and the trip home after the last stage.
  */
 type JourneyContextValue = {
   hudSlot: HTMLElement | null;
@@ -43,8 +44,10 @@ type JourneyContextValue = {
   holding: boolean;
   setFocus: (on: boolean) => void;
   setFloat: (on: boolean) => void;
+  /** The capsule parachutes down to the launch pad, then `onHome` runs. A tap skips it. */
+  land: (onHome: () => void) => void;
 };
-const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {}, setFloat: () => {} });
+const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {}, setFloat: () => {}, land: (onHome) => onHome() });
 
 export function useJourney(): JourneyContextValue {
   return useContext(JourneyContext);
@@ -111,7 +114,7 @@ export function Journey({
   /** 0 is the launch pad and 10 the centre of the Milky Way. Height follows points. */
   progress: number;
   hop: Hop;
-  /** The end screen: the whole climb replays from the launch pad. */
+  /** An end screen: the capsule is home on the launch pad. */
   overview: boolean;
   /** Changes whenever the card shows a new screen, so it starts scrolled to the top. */
   page: string;
@@ -171,10 +174,11 @@ export function Journey({
   const floatRef = useRef(float);
   floatRef.current = float;
 
-  function pushToast(title: string, detail: string) {
+  /** `alone` replaces whatever is showing, for the landmarks rushing past on the way home. */
+  function pushToast(title: string, detail: string, alone = false) {
     toastId.current += 1;
     const toast = { id: toastId.current, born: Date.now(), title, detail };
-    setToasts((list) => [...list, toast].slice(-3));
+    setToasts((list) => (alone ? [toast] : [...list, toast].slice(-3)));
   }
 
   useEffect(() => {
@@ -251,8 +255,12 @@ export function Journey({
       }
       lastProgress.current = frame.progress;
     };
-    sky.onMilestone = (index) => {
+    sky.onMilestone = (index, down) => {
       const milestone = MILESTONES[index];
+      if (down) {
+        pushToast(`Back past ${milestone.phrase}`, formatDistance(milestone.km), true);
+        return;
+      }
       pushToast(`Passed ${milestone.phrase}`, formatDistance(milestone.km));
       playChime(index);
     };
@@ -344,30 +352,51 @@ export function Journey({
     });
   }, [progress, hop.id]);
 
-  /** The end screen replays the whole climb from the launch pad to where the run landed. */
-  useEffect(() => {
+  /**
+   * The last result's Land button: the capsule pops off, falls and parachutes onto the pad, then the end screen
+   * comes in. A tap anywhere skips to the pad.
+   */
+  const land = useCallback((onHome: () => void) => {
     const sky = skyRef.current;
-    if (!sky || !overview) return;
-    const to = progress;
-    climbTier.current = -1;
-    if (to < 0.05) {
-      sky.jump(to);
-      setLanded(to);
+    if (!sky) {
+      onHome();
       return;
     }
-    const best = trail.reduce((top, segment) => (segment.to > segment.from ? Math.max(top, segment.tier) : top), 0);
-    setMotion("replay");
-    playBurner(Math.min(2, best), replayMs(to), 0);
-    sky.climb({
-      from: 0,
-      to,
-      tier: best,
-      replay: true,
+    climbTier.current = -1;
+    setToasts([]);
+    setMotion("land");
+    if (!reduced) playPop();
+    sky.land({
+      onChute: () => playChute(),
+      onTouchdown: () => {
+        playThud();
+        haptic("ok");
+      },
       onLand: () => {
         setMotion("idle");
-        setLanded(to);
+        setLanded(0);
+        lastProgress.current = 0;
+        onHome();
       },
     });
+  }, [reduced]);
+
+  /** An end screen shows the capsule home on the pad. Leaving it puts the rocket back at the run's height. */
+  const wasOverview = useRef(false);
+  useEffect(() => {
+    const sky = skyRef.current;
+    if (!sky) return;
+    if (overview) {
+      climbTier.current = -1;
+      sky.settle();
+      setLanded(0);
+    } else if (wasOverview.current) {
+      sky.jump(progress);
+      lastProgress.current = progress;
+      setLanded(progress);
+      setMotion("idle");
+    }
+    wasOverview.current = overview;
   }, [overview]);
 
   useEffect(() => {
@@ -384,7 +413,7 @@ export function Journey({
   // "Above everyone" only when the crowd ghosts are in play: today's average and best, bots included.
   const crowdGhost = ghosts.some((ghost) => ghost.id === "average" || ghost.id === "top");
   const next = nextMilestone(landed);
-  const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "replay" && !overview;
+  const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "land" && !overview;
 
   return (
     <div className={stageClass} ref={stageRef}>
@@ -476,10 +505,15 @@ export function Journey({
           {sound ? "Sound on" : "Sound off"}
         </button>
       </div>
-      <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef}>
-        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus, setFloat }}>{children}</JourneyContext.Provider>
+      <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef} inert={motion === "land" ? true : undefined}>
+        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus, setFloat, land }}>{children}</JourneyContext.Provider>
       </div>
       <div className="dock-slot" ref={bindDock} />
+      {motion === "land" ? (
+        <button className="land-skip" type="button" autoFocus onClick={() => skyRef.current?.settle()}>
+          <span>Tap to skip</span>
+        </button>
+      ) : null}
     </div>
   );
 }

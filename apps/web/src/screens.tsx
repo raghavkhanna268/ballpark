@@ -375,7 +375,6 @@ export function RevealScreen({
   reveal,
   index,
   last,
-  lastLabel = "See the day",
   onNext,
   onHome,
 }: {
@@ -383,15 +382,16 @@ export function RevealScreen({
   question: PublicQuestion;
   reveal: Reveal;
   index: number;
+  /** The last stage: its button lands the capsule back on the pad before `onNext` shows the end screen. */
   last: boolean;
-  lastLabel?: string;
   onNext: () => void;
   onHome: () => void;
 }) {
   // The card clears away: the climb plays on the whole screen, then this result floats over the scene with no card,
   // like a Krillion dive: what you got, your answer, the points and one line. The fact and the source are left out.
   useFocusMode();
-  const { holding } = useJourney();
+  const { holding, land } = useJourney();
+  const [leaving, setLeaving] = useState(false);
   const named = question.type === "name_one";
   const scored = reveal.points > 0;
   const tier = tierOf(basePoints(reveal), maxPoints(question.type));
@@ -447,8 +447,17 @@ export function RevealScreen({
         ) : null}
         <Crowd crowd={reveal.crowd} type={question.type} compact />
       </section>
-      <button className="primary next-stage" type="button" onClick={onNext}>
-        {last ? lastLabel : "Next stage"} <span aria-hidden="true">▲</span>
+      <button
+        className={last ? "primary next-stage land" : "primary next-stage"}
+        type="button"
+        disabled={leaving}
+        onClick={() => {
+          if (!last) return onNext();
+          setLeaving(true);
+          land(onNext);
+        }}
+      >
+        {last ? "Land" : "Next stage"} <span aria-hidden="true">{last ? "▼" : "▲"}</span>
       </button>
     </div>
   );

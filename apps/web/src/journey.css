@@ -1219,7 +1219,7 @@
   bottom: 0;
   height: auto;
   z-index: 7;
-  background: linear-gradient(180deg, rgba(5, 8, 24, 0.88) 0%, rgba(5, 8, 24, 0.76) 40%, rgba(5, 8, 24, 0.7) 75%, rgba(5, 8, 24, 0.84) 100%);
+  background: linear-gradient(180deg, rgba(5, 8, 24, 0.9) 0%, rgba(5, 8, 24, 0.8) 40%, rgba(5, 8, 24, 0.82) 70%, rgba(5, 8, 24, 0.9) 100%);
 }
 .stage.is-float .sheet { top: 0; bottom: 0; max-height: none; padding: 0 16px; pointer-events: auto; }
 .stage.is-float .sheet main { width: min(600px, 100%); padding-bottom: calc(var(--dock-h, 84px) + 28px); }
@@ -1329,4 +1329,49 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .log-stage, .end-dock { animation: none; }
+}
+
+/* ---------- the way home ---------- */
+/* After Land, the result clears away and the capsule has the whole screen. A tap anywhere skips to the pad. */
+.stage.is-land .sheet { opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0s linear 0.3s; }
+.stage.is-land .sky-tags,
+.stage.is-land .answer-tag,
+.stage.is-land .gain { display: none; }
+.stage.is-land .toasts { bottom: auto; top: 76px; }
+.land-skip {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 0 0 calc(22px + env(safe-area-inset-bottom, 0px));
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.land-skip span {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: rgba(232, 241, 255, 0.62);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+  animation: land-hint 0.4s ease 1.1s both;
+}
+.land-skip:focus { outline: none; }
+.land-skip:focus-visible span { outline: 2px solid rgba(255, 179, 71, 0.7); outline-offset: 6px; border-radius: 4px; }
+.next-stage.land:disabled { opacity: 0.6; }
+@keyframes land-hint { from { opacity: 0; } to { opacity: 1; } }
+/* Once home, the end screen comes in over the pad: the scene dims and the content rises in. */
+.stage.is-float .scene::after { animation: float-dim 0.6s ease both; }
+.stage.is-float .sheet main { animation: float-in 0.5s ease 0.15s both; }
+@keyframes float-dim { from { opacity: 0; } to { opacity: 1; } }
+@keyframes float-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .land-skip span, .stage.is-float .scene::after, .stage.is-float .sheet main { animation: none; }
 }

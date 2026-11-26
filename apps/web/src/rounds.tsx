@@ -18,10 +18,10 @@ import { playBonk } from "./sound";
 
 type RoundPhase = { name: "loading" } | { name: "ask"; index: number } | { name: "reveal"; index: number; reveal: Reveal } | { name: "end" };
 
-const WORDS: Record<RoundRef["kind"], { loading: string; last: string; done: string }> = {
-  pack: { loading: "Loading the chapter…", last: "See the chapter", done: "Chapter complete" },
-  archive: { loading: "Loading that day…", last: "See the day", done: "Day complete" },
-  unlimited: { loading: "Dealing seven questions…", last: "See the round", done: "Round complete" },
+const WORDS: Record<RoundRef["kind"], { loading: string; done: string }> = {
+  pack: { loading: "Loading the chapter…", done: "Chapter complete" },
+  archive: { loading: "Loading that day…", done: "Day complete" },
+  unlimited: { loading: "Dealing seven questions…", done: "Round complete" },
 };
 
 export function RoundRun({
@@ -152,7 +152,6 @@ export function RoundRun({
         reveal={phase.reveal}
         index={phase.index}
         last={last}
-        lastLabel={words.last}
         onHome={onHome}
         onNext={() => {
           if (last) {

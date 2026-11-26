@@ -1,6 +1,7 @@
 /**
  * The game's sounds, made with WebAudio so there are no files to load: a burner that roars louder and longer for
- * rarer answers, a chime for each landmark passed, a sputter for a miss, and a bonk for a name that is not on the list.
+ * rarer answers, a chime for each landmark passed, a sputter for a miss, a bonk for a name that is not on the list,
+ * and a pop, a parachute and a thud for the trip home.
  * Sound is on unless the player turns it off. Browsers only allow sound after a tap or a key press, so the page calls
  * unlockAudio from one.
  */
@@ -191,6 +192,67 @@ export function playSputter(delayMs = 250) {
   fall.connect(low).connect(gain).connect(context.destination);
   fall.start(start);
   fall.stop(start + 0.9);
+}
+
+/** The capsule popping off the booster: a short bright snap and a puff of air. */
+export function playPop() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime + 0.45;
+  const puff = context.createBufferSource();
+  puff.buffer = noiseBuffer(context);
+  const band = context.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = 1400;
+  band.Q.value = 0.8;
+  puff.connect(band).connect(envelope(context, start, 0.22, 0.004, 0.02, 0.18)).connect(context.destination);
+  puff.start(start, Math.random());
+  puff.stop(start + 0.3);
+  const snap = context.createOscillator();
+  snap.type = "triangle";
+  snap.frequency.setValueAtTime(880, start);
+  snap.frequency.exponentialRampToValueAtTime(330, start + 0.08);
+  snap.connect(envelope(context, start, 0.07, 0.003, 0.01, 0.1)).connect(context.destination);
+  snap.start(start);
+  snap.stop(start + 0.15);
+}
+
+/** The parachute opening: a soft whump of cloth catching the air. */
+export function playChute() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const whoosh = context.createBufferSource();
+  whoosh.buffer = noiseBuffer(context);
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(1800, start);
+  filter.frequency.exponentialRampToValueAtTime(240, start + 0.35);
+  whoosh.connect(filter).connect(envelope(context, start, 0.26, 0.02, 0.05, 0.32)).connect(context.destination);
+  whoosh.start(start, Math.random());
+  whoosh.stop(start + 0.5);
+}
+
+/** Touchdown on the pad: a low, soft thud. */
+export function playThud() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const body = context.createOscillator();
+  body.type = "sine";
+  body.frequency.setValueAtTime(120, start);
+  body.frequency.exponentialRampToValueAtTime(42, start + 0.22);
+  body.connect(envelope(context, start, 0.3, 0.005, 0.04, 0.3)).connect(context.destination);
+  body.start(start);
+  body.stop(start + 0.4);
+  const scuff = context.createBufferSource();
+  scuff.buffer = noiseBuffer(context);
+  const low = context.createBiquadFilter();
+  low.type = "lowpass";
+  low.frequency.value = 600;
+  scuff.connect(low).connect(envelope(context, start, 0.12, 0.005, 0.03, 0.25)).connect(context.destination);
+  scuff.start(start, Math.random());
+  scuff.stop(start + 0.35);
 }
 
 /** "Not on our list": a short low bonk, so the player knows to try again. */
