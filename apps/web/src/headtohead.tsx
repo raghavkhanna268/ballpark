@@ -171,10 +171,6 @@ export function HeadToHeadScreen({
               </li>
             ))}
           </ul>
-          <p className="context">{showing.reveal.context}</p>
-          <a className="source" href={showing.reveal.sourceUrl} target="_blank" rel="noreferrer">
-            {showing.reveal.sourceName}
-          </a>
           <button
             className="text-button"
             type="button"

@@ -387,7 +387,8 @@ export function RevealScreen({
   onNext: () => void;
   onHome: () => void;
 }) {
-  // The card clears away: the climb plays on the whole screen, then this result appears over the scene.
+  // The card clears away: the climb plays on the whole screen, then this result floats over the scene with no card,
+  // like a Krillion dive: what you got, your answer, the points and one line. The fact and the source are left out.
   useFocusMode();
   const { holding } = useJourney();
   const named = question.type === "name_one";
@@ -423,7 +424,6 @@ export function RevealScreen({
             {holding ? reveal.points : <CountUp value={reveal.points} delay={250} duration={600} />}
             <span> pts</span>
           </b>
-          {reveal.provisional && scored ? <small>final at reset</small> : null}
         </p>
         {reveal.bonusPoints > 0 ? <p className="delta">Crowd bonus +{reveal.bonusPoints}</p> : null}
         {reveal.confidenceDelta !== 0 ? (
@@ -445,10 +445,6 @@ export function RevealScreen({
           </ol>
         ) : null}
         <Crowd crowd={reveal.crowd} type={question.type} compact />
-        <p className="context">{reveal.context}</p>
-        <a className="source" href={reveal.sourceUrl} target="_blank" rel="noreferrer">
-          {reveal.sourceName}
-        </a>
       </section>
       <button className="primary next-stage" type="button" onClick={onNext}>
         {last ? lastLabel : "Next stage"} <span aria-hidden="true">▲</span>
@@ -848,7 +844,7 @@ function estimateShare(percent: number): string {
 }
 
 function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: PublicQuestion["type"]; compact?: boolean }) {
-  // Over the scene after a climb there is room for one line about the crowd and the rare answers, no tables.
+  // Over the scene after a climb there is room for one short line about the crowd, no tables and no rare answers.
   if (compact && crowd.kind === "named") {
     // Until enough people have answered, the share is the prior blended with them: an estimate, said as one.
     const line = !crowd.answer
@@ -862,12 +858,11 @@ function Crowd({ crowd, type, compact = false }: { crowd: CrowdStat; type: Publi
           : crowd.percent < 50
             ? `Only ${crowd.percent}% of players said ${crowd.answer}.`
             : `${crowd.percent}% of players said ${crowd.answer}.`;
-    return (
+    return line ? (
       <div className="crowd">
-        {line ? <p>{line}</p> : null}
-        {crowd.rare.length > 0 ? <p>Rare right answers: {crowd.rare.join(", ")}</p> : null}
+        <p>{line}</p>
       </div>
-    );
+    ) : null;
   }
   // With only a few answers in, live shares say more about who played first than about the crowd: show the estimate.
   if (crowd.kind === "named" ? crowd.fromPrior : crowd.submissions < COLD_START_RESPONSES) {

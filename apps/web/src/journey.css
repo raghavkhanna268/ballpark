@@ -849,27 +849,48 @@
 }
 /* Only the stage strip of the header shows, up in the heads-up display. Home is on the next question's card. */
 .stage.is-focus .sheet .result .play-head { display: none; }
+/* No card: the result floats over the sky in the middle of the screen, like a Krillion dive. A soft shade with no
+   edge sits behind it so the words read on a bright sunset as well as in deep space. The bottom padding keeps it
+   clear of the rocket, which waits low on the screen. */
 .stage.is-focus .sheet .result .reveal {
   --tier: #e8f6ff;
   --tier-glow: rgba(143, 211, 255, 0.55);
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 auto;
   width: 100%;
-  max-width: 380px;
+  max-width: 420px;
   margin: 0;
-  padding: 18px 18px 22px;
+  padding: 0 8px 24vh;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   text-align: center;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(10, 14, 34, 0.78);
-  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  -webkit-backdrop-filter: blur(16px) saturate(140%);
-  backdrop-filter: blur(16px) saturate(140%);
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   color: var(--ink);
+  text-shadow: 0 1px 1px rgba(6, 8, 22, 0.7), 0 0 14px rgba(6, 8, 22, 0.55);
   animation: none;
 }
+.stage.is-focus .sheet .result .reveal::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: calc(50% - 12vh);
+  width: min(820px, 200%);
+  height: min(520px, 70vh);
+  transform: translate(-50%, -50%);
+  background: radial-gradient(closest-side, rgba(8, 11, 30, 0.34), rgba(8, 11, 30, 0.24) 35%, rgba(8, 11, 30, 0.1) 65%, rgba(8, 11, 30, 0.03) 85%, transparent);
+  pointer-events: none;
+}
+.stage.is-focus .sheet .result .reveal .points span:not(.count) { color: var(--ink); opacity: 0.85; text-shadow: inherit; }
 .stage.is-focus .sheet .result .reveal.band-green { --tier: #c2ffe4; --tier-glow: rgba(142, 240, 196, 0.6); }
 .stage.is-focus .sheet .result .reveal.band-yellow { --tier: #ffe6a0; --tier-glow: rgba(255, 211, 106, 0.6); }
 .stage.is-focus .sheet .result .reveal.band-blue { --tier: #d4efff; --tier-glow: rgba(143, 211, 255, 0.6); }
@@ -886,16 +907,14 @@
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--tier);
-  text-shadow: 0 0 10px var(--tier-glow), 0 0 30px var(--tier-glow);
+  text-shadow: 0 2px 0 rgba(6, 8, 22, 0.55), 0 0 10px var(--tier-glow), 0 0 26px rgba(6, 8, 22, 0.5);
 }
-.stage.is-focus .sheet .result .result-rank { margin: 0; font-family: var(--display); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--tier); opacity: 0.75; }
+.stage.is-focus .sheet .result .result-rank { margin: 0; font-family: var(--display); font-weight: 700; font-size: 0.62rem; letter-spacing: 0.22em; text-transform: uppercase; color: var(--tier); opacity: 0.9; }
 .stage.is-focus .sheet .result .result-answer { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
 .stage.is-focus .sheet .result .points { margin: 2px 0 0; display: flex; flex-direction: column; align-items: center; font-size: 1.4rem; line-height: 1.1; }
 .stage.is-focus .sheet .result.band-black .points, .stage.is-focus .sheet .result .reveal.band-black .points { color: var(--muted); text-shadow: none; }
-.stage.is-focus .sheet .result .crowd { margin: 4px 0 0; font-size: 0.82rem; line-height: 1.4; color: var(--ink); opacity: 0.92; }
-.stage.is-focus .sheet .result .context { margin: 2px 0 0; max-width: 36ch; font-size: 0.8rem; line-height: 1.4; color: #b9c6dc; }
-.stage.is-focus .sheet .result .source { font-size: 0.68rem; color: var(--line-art); opacity: 0.8; }
-.stage.is-focus .sheet .result .next-stage { margin-top: auto; align-self: center; width: min(200px, 56%); }
+.stage.is-focus .sheet .result .crowd { margin: 2px 0 0; font-size: 0.8rem; line-height: 1.4; color: var(--ink); opacity: 0.78; }
+.stage.is-focus .sheet .result .next-stage { flex: none; margin-top: 0; align-self: center; width: min(200px, 56%); }
 .next-stage span { margin-left: 4px; }
 
 @keyframes card-in { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
@@ -953,14 +972,11 @@
 .did-you-mean b { color: #8fd3ff; }
 .did-you-mean small { font-size: 0.72rem; font-weight: 500; opacity: 0.75; }
 
-/* The result glows in its tier's colour. Deep space and Supernova get a ring of light. */
+/* The result glows in its tier's colour. Deep space and Supernova get a bigger, brighter icon. */
 .stage.is-focus .sheet .result .reveal[class*="tier-"] { --tier: var(--tier-c); --tier-glow: color-mix(in srgb, var(--tier-c) 60%, transparent); }
 .stage.is-focus .sheet .result .reveal.tier-miss { --tier: #d6dbe8; --tier-glow: rgba(139, 147, 168, 0.4); }
-.stage.is-focus .sheet .result .reveal.tier-3,
-.stage.is-focus .sheet .result .reveal.tier-4 {
-  border-color: color-mix(in srgb, var(--tier-c) 70%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--tier-c) 40%, transparent), 0 0 46px color-mix(in srgb, var(--tier-c) 40%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.15);
-}
+.stage.is-focus .sheet .result .reveal.tier-3 .result-icon,
+.stage.is-focus .sheet .result .reveal.tier-4 .result-icon { font-size: 3.2rem; filter: drop-shadow(0 0 22px var(--tier-glow)) drop-shadow(0 0 8px var(--tier-glow)); }
 .stage.is-focus .sheet .result .reveal .flavour { margin: 2px 0 0; font-size: 0.9rem; font-weight: 600; line-height: 1.35; color: #e6eaf7; }
 .sheet .reveal .flavour { margin: 4px 0 0; font-size: 0.9rem; font-weight: 600; }
 
