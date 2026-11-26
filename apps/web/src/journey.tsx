@@ -37,8 +37,14 @@ type Toast = { id: number; born: number; title: string; detail: string };
  * bottom of the screen for the answer bar, whether a climb is still playing (so a result waits for it), and a switch
  * that clears the card away so the climb has the whole screen.
  */
-type JourneyContextValue = { hudSlot: HTMLElement | null; dockSlot: HTMLElement | null; holding: boolean; setFocus: (on: boolean) => void };
-const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {} });
+type JourneyContextValue = {
+  hudSlot: HTMLElement | null;
+  dockSlot: HTMLElement | null;
+  holding: boolean;
+  setFocus: (on: boolean) => void;
+  setFloat: (on: boolean) => void;
+};
+const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {}, setFloat: () => {} });
 
 export function useJourney(): JourneyContextValue {
   return useContext(JourneyContext);
@@ -56,10 +62,24 @@ export function useFocusMode() {
   }, [setFocus]);
 }
 
+/**
+ * Like a Krillion dive's last screen: no card and no heads-up display. The screen's content floats over the dimmed
+ * scene and scrolls on its own, with room at the bottom for a bar in the dock slot. The end screens call this.
+ */
+export function useFloatMode() {
+  const { setFloat } = useContext(JourneyContext);
+  useLayoutEffect(() => {
+    setFloat(true);
+    return () => setFloat(false);
+  }, [setFloat]);
+}
+
 /** At this width and up, the card sits on the left and the rocket climbs on the right. */
 const WIDE_MIN = 900;
 /** Where the rocket rests, as a share of the screen height from the top. */
 const ANCHOR = 0.84;
+/** On an end screen the rocket rests this low, mostly behind the bottom bar, so it never sits behind the text. */
+const FLOAT_ANCHOR = 0.985;
 /** The rocket never rests lower than this, even under a tall card. */
 const ANCHOR_MAX = 0.92;
 /** The rocket's nose and a little air need this much room under the card, in pixels. */
@@ -136,6 +156,7 @@ export function Journey({
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [sound, setSoundOn] = useState(() => readSound());
   const [focus, setFocus] = useState(false);
+  const [float, setFloat] = useState(false);
   const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
   const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLDivElement | null>(null);
@@ -146,7 +167,9 @@ export function Journey({
   /** The last answer whose climb has finished. Until the current one lands, a result waits off screen. */
   const [settledHop, setSettledHop] = useState(hop.id);
   const focusRef = useRef(focus);
-  focusRef.current = focus;
+  focusRef.current = focus || float;
+  const floatRef = useRef(float);
+  floatRef.current = float;
 
   function pushToast(title: string, detail: string) {
     toastId.current += 1;
@@ -183,7 +206,8 @@ export function Journey({
       const dock = dockRef.current?.offsetHeight ?? 0;
       stage.style.setProperty("--dock-h", `${dock}px`);
       const under = focusRef.current ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
-      sky.setAnchor(dock > 0 ? Math.min(under, (h - dock - 10) / h) : under);
+      // On an end screen the content floats over the scene, so the rocket waits down behind the bottom bar.
+      sky.setAnchor(floatRef.current ? FLOAT_ANCHOR : dock > 0 ? Math.min(under, (h - dock - 10) / h) : under);
     };
     measureRef.current = measure;
     measure();
@@ -248,7 +272,7 @@ export function Journey({
 
   useLayoutEffect(() => {
     measureRef.current();
-  }, [focus]);
+  }, [focus, float]);
 
   useEffect(() => {
     skyRef.current?.setScene(scenery);
@@ -354,7 +378,7 @@ export function Journey({
   const pending = settledHop !== hop.id;
   const flying = motion !== "idle" || pending;
   const holding = focus && pending;
-  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : ""].join(" ");
+  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : "", float ? "is-float" : ""].join(" ");
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
   // "Above everyone" only when the crowd ghosts are in play: today's average and best, bots included.
@@ -453,7 +477,7 @@ export function Journey({
         </button>
       </div>
       <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef}>
-        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus }}>{children}</JourneyContext.Provider>
+        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus, setFloat }}>{children}</JourneyContext.Provider>
       </div>
       <div className="dock-slot" ref={bindDock} />
     </div>

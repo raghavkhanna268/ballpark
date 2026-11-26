@@ -445,7 +445,7 @@ export function App() {
           result={puzzle.result}
           stats={stats}
           streak={classicStreak}
-          standing={puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
+          standing={puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" big /> : null}
           rivals={
             <>
               {puzzle.result.cruise ? <p className="cruise-note">⛵ A cruise: no clock, so it stays off the board and the league. Your streak still counts.</p> : null}

@@ -75,6 +75,7 @@ export function RankBlock({
   who = "today’s players",
   among = "today",
   wouldHave = false,
+  big = false,
 }: {
   place: Placement;
   unit: "pts" | "picks";
@@ -84,10 +85,29 @@ export function RankBlock({
   among?: string;
   /** A past day: where you would have been. */
   wouldHave?: boolean;
+  /** The end screen's version, like Krillion's: a wide curve with a scale, then the share in capitals under it. */
+  big?: boolean;
 }) {
   const gap = place.next ? (unit === "pts" ? `${place.next.gap} pts` : `${place.next.gap} right ${place.next.gap === 1 ? "pick" : "picks"}`) : "";
   const rank = `${wouldHave ? "You’d have been" : "You’re"} #${place.rank} of ${place.players.toLocaleString("en-US")} ${among}.`;
   const chase = place.next ? `${gap} behind #${place.next.rank}.` : place.players > 1 ? "Nobody scored higher." : "";
+  if (big) {
+    return (
+      <section className="standing big" aria-label="Where you stand">
+        {place.betterThan !== null ? (
+          <>
+            <SpreadCurve place={place} unit={unit} big />
+            <p className="standing-head">
+              Better than {place.betterThan}% of {who}
+            </p>
+          </>
+        ) : null}
+        <p className="players">
+          {rank} {chase}
+        </p>
+      </section>
+    );
+  }
   return (
     <section className="standing" aria-label="Where you stand">
       {place.betterThan !== null ? (
@@ -106,13 +126,17 @@ export function RankBlock({
   );
 }
 
-const W = 320;
-const BASE = 54;
-const RISE = 44;
-const H = 68;
+const SMALL = { W: 320, BASE: 54, RISE: 44, H: 68 };
+const BIG = { W: 360, BASE: 92, RISE: 78, H: 108 };
+
+/** A round step for the scale under the big curve, so it has at most seven marks. */
+function scaleStep(top: number): number {
+  return [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((step) => top / step <= 7) ?? Math.ceil(top / 7);
+}
 
 /** Everyone's scores as a smooth hill, the part you beat lit up, and a marker at your score. */
-function SpreadCurve({ place, unit }: { place: Placement; unit: "pts" | "picks" }) {
+function SpreadCurve({ place, unit, big = false }: { place: Placement; unit: "pts" | "picks"; big?: boolean }) {
+  const { W, BASE, RISE, H } = big ? BIG : SMALL;
   const id = useId().replace(/:/g, "");
   const { bins, top, you } = place.spread;
   // A light blur so a small field reads as a hill rather than a comb.
@@ -149,6 +173,45 @@ function SpreadCurve({ place, unit }: { place: Placement; unit: "pts" | "picks" 
     }
   }
   const labelX = Math.max(16, Math.min(W - 16, x));
+  if (big) {
+    const step = scaleStep(top);
+    const marks = Array.from({ length: Math.floor(top / step) + 1 }, (_, index) => index * step);
+    return (
+      <svg className="spread big" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Everyone’s scores, with yours at ${you} ${unit === "pts" ? "points" : "right picks"}`}>
+        <defs>
+          <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffb347" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#ffb347" stopOpacity="0.02" />
+          </linearGradient>
+          <clipPath id={`${id}-beaten`}>
+            <rect x="0" y="0" width={x} height={H} />
+          </clipPath>
+        </defs>
+        <path d={area} className="spread-rest" />
+        <path d={area} fill={`url(#${id}-fill)`} clipPath={`url(#${id}-beaten)`} />
+        <path d={line} className="spread-line" />
+        <line x1="0" y1={BASE} x2={W} y2={BASE} className="spread-base" />
+        {marks.map((mark) => {
+          const at = (mark / Math.max(1, top)) * W;
+          return (
+            <g key={mark}>
+              <line x1={at} x2={at} y1={BASE} y2={BASE + 4} className="spread-base" />
+              {Math.abs(at - x) > 26 ? (
+                <text x={at} y={BASE + 15} textAnchor={mark === 0 ? "start" : at >= W - 1 ? "end" : "middle"} className="spread-axis">
+                  {mark}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+        <line x1={x} y1={y} x2={x} y2={BASE + 4} className="spread-you-line" />
+        <circle cx={x} cy={y} r="4" className="spread-you-dot" />
+        <text x={labelX} y={BASE + 15} textAnchor="middle" className="spread-you">
+          YOU
+        </text>
+      </svg>
+    );
+  }
   return (
     <svg className="spread" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Everyone’s scores, with yours at ${you} ${unit === "pts" ? "points" : "right picks"}`}>
       <defs>

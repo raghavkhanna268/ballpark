@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { NAME_CAP, classicStep, type Guess, type PuzzleResponse, type Reveal, type RoundResponse, type RoundResult } from "@ballpark/shared";
 import { ApiError, errorCopy, getRound, postRoundGuess, type RoundRef } from "./api";
-import { CountUp, Tally, currentCombo, trailOf } from "./game";
+import { BigScore, ClimbLog, EndDock, EndRule, EndTop } from "./endview";
+import { TheCatch } from "./flightlog";
+import { currentCombo, trailOf } from "./game";
 import { haptic, shareText } from "./haptic";
+import { useFloatMode } from "./journey";
 import { RankBlock } from "./rivals";
 import { QuestionScreen, RevealScreen, type Correction } from "./screens";
 import type { SkyTrail } from "./sky";
@@ -184,46 +187,51 @@ function RoundEnd({
   onAgain?: () => void;
   onHome: () => void;
 }) {
+  // The same open layout as the daily's end screen: no card, the score big, the curve, then the climb log.
+  useFloatMode();
   const [shared, setShared] = useState<"idle" | "shared" | "copied" | "failed">("idle");
   return (
-    <div className="stack end round-end">
-      <p className="kicker">
-        {round.round.emoji} {round.round.title}
-      </p>
-      <p className="mission">{done}</p>
-      <h2>You reached {result.reached}</h2>
-      <p className="score">
-        <CountUp value={result.score} pad={3} />
-        <span> pts</span>
-      </p>
-      <Tally rows={round.questions.map((question) => question.reveal)} />
-      <RoundPlace result={result} />
-      <p className="round-note">{round.round.kind === "pack" ? "Packs never touch your streak or the league." : "Played for fun: no streak, rank or league points."}</p>
-      <pre className="share-card">{result.shareText}</pre>
-      <button
-        className="primary"
-        type="button"
-        onClick={() => {
-          haptic("tap");
-          void shareText(result.shareText).then((outcome) => setShared(outcome === "cancelled" ? "idle" : outcome));
-        }}
-      >
-        {shared === "copied" ? "Copied" : shared === "shared" ? "Shared" : shared === "failed" ? "Copy didn’t work" : "Share"}
-      </button>
-      {onAgain ? (
-        <button className="ghost-button" type="button" onClick={onAgain}>
-          Another round ♾️
-        </button>
-      ) : null}
-      <div className="end-foot">
+    <>
+      <div className="stack end round-end">
+        <EndTop title={done} kicker={`${round.round.emoji} ${round.round.title}`} />
+        <BigScore score={result.score} reached={result.reached} />
+        <RoundPlace result={result} />
+        <section className="end-section">
+          <EndRule title="Climb log" note="Higher = rarer" />
+          <ClimbLog questions={round.questions} />
+        </section>
+        <section className="end-section">
+          <EndRule title="Your answers" />
+          <TheCatch questions={round.questions} />
+        </section>
+        <section className="end-section end-more">
+          <p className="round-note">{round.round.kind === "pack" ? "Packs never touch your streak or the league." : "Played for fun: no streak, rank or league points."}</p>
+          <button className="text-button" type="button" onClick={onHome}>
+            Back home
+          </button>
+        </section>
+      </div>
+      <EndDock>
         <button className="text-button" type="button" onClick={onBack}>
           {backLabel}
         </button>
-        <button className="text-button" type="button" onClick={onHome}>
-          Home
+        {onAgain ? (
+          <button className="ghost-button" type="button" onClick={onAgain}>
+            Another ♾️
+          </button>
+        ) : null}
+        <button
+          className="dock-go"
+          type="button"
+          onClick={() => {
+            haptic("tap");
+            void shareText(result.shareText).then((outcome) => setShared(outcome === "cancelled" ? "idle" : outcome));
+          }}
+        >
+          {shared === "copied" ? "Copied" : shared === "shared" ? "Shared" : shared === "failed" ? "Copy didn’t work" : "Share"}
         </button>
-      </div>
-    </div>
+      </EndDock>
+    </>
   );
 }
 
@@ -231,8 +239,8 @@ function RoundPlace({ result }: { result: RoundResult }) {
   if (!result.place) {
     return <p className="players">Rarity here counts everyone who has ever answered these questions.</p>;
   }
-  if (result.hypothetical) return <RankBlock place={result.place} unit="pts" who="that day’s players" among="that day" wouldHave />;
-  return <RankBlock place={result.place} unit="pts" who={`everyone ${result.placeWhat}`} among={result.placeWhat} />;
+  if (result.hypothetical) return <RankBlock place={result.place} unit="pts" who="that day’s players" among="that day" wouldHave big />;
+  return <RankBlock place={result.place} unit="pts" who={`everyone ${result.placeWhat}`} among={result.placeWhat} big />;
 }
 
 /** A round in the shape the Classic screens read. */

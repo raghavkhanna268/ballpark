@@ -1,10 +1,11 @@
 import { ClockFuse, ClockRing, QuestionTimer, useQuestionClock } from "./timer";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { CountUp, Tally, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
-import { tierStyle, useFocusMode, useJourney } from "./journey";
+import { CountUp, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
+import { tierStyle, useFloatMode, useFocusMode, useJourney } from "./journey";
 import { haptic } from "./haptic";
-import { FlightPath, TheCatch, TodayBoard } from "./flightlog";
+import { BigScore, ClimbLog, EndDock, EndRule, EndTop, FlightRating, maxScore } from "./endview";
+import { TheCatch, TodayBoard } from "./flightlog";
 import { sharePostcard, type PostcardInput } from "./postcard";
 import {
   COLD_START_RESPONSES,
@@ -453,14 +454,6 @@ export function RevealScreen({
   );
 }
 
-type EndTab = "result" | "log" | "catch" | "today";
-const END_TABS: Array<{ id: EndTab; label: string }> = [
-  { id: "result", label: "Result" },
-  { id: "log", label: "Flight log" },
-  { id: "catch", label: "The catch" },
-  { id: "today", label: "Today" },
-];
-
 export function EndScreen({
   puzzle,
   result,
@@ -489,47 +482,47 @@ export function EndScreen({
   ad?: ReactNode;
   onHome: () => void;
 }) {
+  // Like the end of a Krillion dive: no card, the score big, the curve, then the climb log, all over the scene.
+  useFloatMode();
   const [shareState, setShareState] = useState<"idle" | "busy" | "shared" | "saved" | "failed">("idle");
-  const [tab, setTab] = useState<EndTab>("result");
   return (
     <>
       <div className="stack end">
-        <div className="end-head">
-          <p className="mission">Mission complete</p>
-          <p className="kicker">
-            {result.cruise ? "Cruise" : "Classic"} · #{puzzle.puzzleNumber}
+        <EndTop title="Mission complete" kicker={`${result.cruise ? "Cruise" : "Classic"} #${puzzle.puzzleNumber}`} />
+        <BigScore score={result.score} reached={result.reached} note={result.provisional ? "Points so far, final at reset" : undefined} />
+        {standing}
+        <section className="end-section">
+          <EndRule title="Climb log" note="Higher = rarer" />
+          <ClimbLog questions={puzzle.questions} />
+        </section>
+        <section className="end-section">
+          <EndRule title="Flight rating" />
+          <FlightRating score={result.score} max={maxScore(puzzle.questions)} />
+        </section>
+        <section className="end-section">
+          <EndRule title="Your answers" />
+          <TheCatch questions={puzzle.questions} />
+        </section>
+        <section className="end-section">
+          <EndRule title="Today’s top climbs" />
+          <TodayBoard today={puzzle.today} limit={5} />
+        </section>
+        <section className="end-section end-more">
+          {rivals}
+          {extras}
+          {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
+          <p className="streak-line">
+            Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
           </p>
-        </div>
-        <div className="end-tabs" role="tablist" aria-label="Today’s climb">
-          {END_TABS.map((item) => (
-            <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={tab === item.id ? "on" : ""} onClick={() => setTab(item.id)}>
-              {item.label}
-            </button>
-          ))}
-        </div>
-        {tab === "result" ? (
-          <>
-            <div className="end-score">
-              <h2>You climbed {result.reached}</h2>
-              <p className="score">
-                <CountUp value={result.score} pad={3} />
-                <span> pts</span>
-              </p>
-            </div>
-            {standing}
-            <Tally rows={puzzle.questions.map((question) => question.reveal)} />
-            {result.provisional ? <p className="players">Points so far, final at reset.</p> : null}
-            {rivals}
-            {extras}
-          </>
-        ) : null}
-        {tab === "log" ? (
-          <FlightPath questions={puzzle.questions} />
-        ) : null}
-        {tab === "catch" ? <TheCatch questions={puzzle.questions} /> : null}
-        {tab === "today" ? <TodayBoard today={puzzle.today} /> : null}
+        </section>
+        {ad}
+      </div>
+      <EndDock>
+        <button className="text-button" type="button" onClick={onHome}>
+          Home
+        </button>
         <button
-          className="primary"
+          className="dock-go"
           type="button"
           disabled={shareState === "busy"}
           onClick={() => {
@@ -548,17 +541,7 @@ export function EndScreen({
                   ? "Couldn’t share. Try again"
                   : "Share postcard"}
         </button>
-        {streak.savedToday ? <p className="shield-line">Your streak shield covered the day you missed.</p> : null}
-        <div className="end-foot">
-          <p className="streak-line">
-            Streak {streak.streak} · Best {stats.maxStreak} · Played {stats.played}
-          </p>
-          <button className="text-button" type="button" onClick={onHome}>
-            Back home
-          </button>
-        </div>
-      </div>
-      {ad}
+      </EndDock>
     </>
   );
 }

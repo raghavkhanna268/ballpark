@@ -51,55 +51,6 @@ export function CountUp({ value, delay = 250, duration = 900, pad = 0 }: { value
   );
 }
 
-/** Stage by stage points as one row of tiles that pop in one after another, then the best combo. Shared with the pack end screen. */
-export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; points: number; boosted?: boolean } | null> }) {
-  const combo = bestCombo(rows.map((row) => row?.points ?? null));
-  return (
-    <div className="tally-block">
-      <ol className="tally">
-        {rows.map((row, index) =>
-          row ? (
-            <li key={index} style={{ animationDelay: `${300 + index * 120}ms` }}>
-              <span className="tally-stage" aria-hidden="true">
-                {index + 1}
-              </span>
-              <span className="tally-emoji" aria-hidden="true">
-                {row.emoji}
-              </span>
-              <b aria-hidden="true">{row.points > 0 ? `+${row.points}` : "0"}</b>
-              {row.boosted ? (
-                <i className="tally-boost" aria-hidden="true">
-                  ×2
-                </i>
-              ) : null}
-              <span className="sr">
-                Stage {index + 1}: {row.label}, {row.points} points{row.boosted ? ", Afterburner" : ""}
-              </span>
-            </li>
-          ) : (
-            <li key={index} className="empty" aria-hidden="true">
-              <span className="tally-stage">{index + 1}</span>
-            </li>
-          ),
-        )}
-      </ol>
-      {combo >= 2 ? <p className="best-combo">Best combo x{combo}</p> : null}
-    </div>
-  );
-}
-
-/** The longest run of answers that scored, for the combo meter and the end screen. */
-export function bestCombo(points: Array<number | null>): number {
-  let best = 0;
-  let run = 0;
-  for (const value of points) {
-    if (value === null) break;
-    run = value > 0 ? run + 1 : 0;
-    best = Math.max(best, run);
-  }
-  return best;
-}
-
 /** Right answers in a row at the end of what has been answered so far. */
 export function currentCombo(points: Array<number | null>): number {
   let run = 0;
