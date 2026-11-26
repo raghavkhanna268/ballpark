@@ -496,7 +496,7 @@ export function assertSeed(): void {
             spellings.set(key, answer.canonical);
           }
         }
-        // Free-text questions have no autocomplete. A list of only the right answers would give them away.
+        // A countries or elements question must use the group's own spellings. Players never see the group as a list.
         const suggestions = item.entitySet ? new Set(suggestionsFor(item.entitySet)) : null;
         if (suggestions) {
           const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
@@ -505,7 +505,7 @@ export function assertSeed(): void {
         const promptWords = ` ${normalizeAnswer(item.prompt)} `;
         for (const answer of item.accepted) {
           if (!(answer.prior > 0)) throw new Error(`${item.id} needs a positive prior`);
-          if (suggestions && !suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
+          if (suggestions && !suggestions.has(answer.canonical)) throw new Error(`${item.id} has ${answer.canonical}, which is not in its ${item.entitySet} list`);
           if (promptWords.includes(` ${normalizeAnswer(answer.canonical)} `)) {
             throw new Error(`${item.id} prompt contains ${answer.canonical}`);
           }

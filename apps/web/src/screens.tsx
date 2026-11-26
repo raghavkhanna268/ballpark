@@ -287,7 +287,6 @@ export function QuestionScreen({
       ) : null}
       {naming ? (
         <NameForm
-          suggestions={question.suggestions}
           busy={busy}
           locked={reading > 0}
           rejections={rejections}
@@ -958,7 +957,6 @@ function countdownLabel(now: Date): string {
  * it. On a phone the bar rides on top of the keyboard.
  */
 function NameForm({
-  suggestions,
   busy,
   locked = false,
   rejections = 0,
@@ -966,7 +964,6 @@ function NameForm({
   clock,
   onSubmit,
 }: {
-  suggestions: string[];
   busy: boolean;
   /** A listed spelling to fill the box with, for the player to confirm or edit. */
   correction?: Correction | null;
@@ -1038,7 +1035,7 @@ function NameForm({
         onSubmit={(event) => {
           event.preventDefault();
           if (text.trim().length < 1) {
-            setLocalError(suggestions.length > 0 ? "Type an answer. The list is everyone in that group, not a hint." : "Type an answer first.");
+            setLocalError("Type an answer first.");
             return;
           }
           onSubmit(text.trim());
@@ -1056,7 +1053,6 @@ function NameForm({
           <input
             ref={inputRef}
             disabled={locked}
-            list={suggestions.length > 0 ? "name-suggestions" : undefined}
             value={text}
             onChange={(event) => {
               setText(event.target.value);
@@ -1074,13 +1070,6 @@ function NameForm({
           {busy ? "…" : "Lock in"}
         </button>
       </form>
-      {suggestions.length > 0 ? (
-        <datalist id="name-suggestions">
-          {suggestions.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-      ) : null}
     </div>
   );
   return dockSlot ? createPortal(dock, dockSlot) : dock;

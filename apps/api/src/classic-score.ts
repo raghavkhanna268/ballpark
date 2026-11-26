@@ -8,7 +8,6 @@ import {
   nameTier,
   priorShare,
   suggestAccepted,
-  suggestionsFor,
   type AcceptedAnswer,
   type Band,
   type CrowdStat,
@@ -125,10 +124,6 @@ export function nameRejection(check: NameCheck): HttpError | null {
   if (check.kind === "suggest") return new HttpError(422, "did_you_mean", { suggestion: check.name });
   if (check.kind === "unlisted") return new HttpError(422, "not_listed");
   return null;
-}
-
-export function suggestionsForQuestion(question: PlayQuestion): string[] {
-  return suggestionsFor(question.entitySet);
 }
 
 function plain(band: Band, points: number): ClassicScore {

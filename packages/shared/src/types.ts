@@ -82,8 +82,6 @@ export type PublicQuestion = {
   topic: string;
   difficulty: number;
   slider: { min: number; max: number } | null;
-  /** Empty unless the question is name-one. A broad list, not the scoring key. */
-  suggestions: string[];
   /** True when a stuck player can ask for a nudge on this question. The nudge itself comes from the API on request. */
   hasNudge: boolean;
   reveal: Reveal | null;

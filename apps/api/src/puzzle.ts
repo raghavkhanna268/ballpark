@@ -31,7 +31,7 @@ import {
   type ServerQuestion,
   type SliderScale,
 } from "@ballpark/shared";
-import { RETRY_LIMIT, checkName, isUnlistedName, nameRejection, scoreStage, suggestionsForQuestion, type PlayQuestion, type StageOptions } from "./classic-score.js";
+import { RETRY_LIMIT, checkName, isUnlistedName, nameRejection, scoreStage, type PlayQuestion, type StageOptions } from "./classic-score.js";
 import { finalizeDay } from "./finalize.js";
 import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/shared/scoring";
 import { HttpError } from "./http.js";
@@ -399,7 +399,6 @@ export function toPublic(question: PlayQuestion, reveal: Reveal | null, nudges =
     topic: question.topic,
     difficulty: question.difficulty,
     slider: question.slider ? sliderRange(question.slider) : null,
-    suggestions: question.type === "name_one" ? suggestionsForQuestion(question) : [],
     hasNudge: nudges && question.type === "name_one" && Boolean(question.nudge),
     reveal,
   };

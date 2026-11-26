@@ -53,12 +53,8 @@ describe("today's questions hide the answers", () => {
     expect(raw).not.toContain("\"accepted\"");
     expect(raw).not.toContain("Ganymede");
     expect(raw).not.toContain("Cassiopeia");
-    const free = body.questions[0] as unknown as { suggestions?: string[] };
-    expect(free.suggestions).toEqual([]);
-    const named = body.questions.find((question) => (question as { suggestions?: string[] }).suggestions?.length) as { suggestions?: string[] };
-    expect(named.suggestions).toContain("India");
-    expect(named.suggestions).toContain("Iceland");
-    expect(named.suggestions).not.toContain("Bharat");
+    // No pick list either: the box is plain typing, even for countries and elements.
+    expect(raw).not.toContain("suggestions");
     for (const question of body.questions) {
       expect(question.reveal).toBeNull();
       for (const item of question.items) {
