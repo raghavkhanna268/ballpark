@@ -1,4 +1,4 @@
-import { SEED_SLOTS, UNLIMITED_QUESTIONS, puzzleNumber, puzzleSlot, type Guess, type RoundGuessResponse, type RoundResponse, type UnlimitedStatus } from "@ballpark/shared";
+import { UNLIMITED_QUESTIONS, firstPlayOf, puzzleNumber, puzzleSlot, type Guess, type RoundGuessResponse, type RoundResponse, type UnlimitedStatus } from "@ballpark/shared";
 import { HttpError } from "./http.js";
 import { hasPlus, requirePlus } from "./plus.js";
 import { parseStringArray } from "./puzzle.js";
@@ -40,11 +40,11 @@ async function roundsOf(db: D1Database, deviceId: string) {
 async function openPool(db: D1Database, today: string, epoch: string): Promise<string[]> {
   const pool = await db.prepare("SELECT question_id FROM unlimited_pool").all<{ question_id: string }>();
   const slots = await db.prepare("SELECT slot, question_ids FROM puzzles").all<{ slot: number; question_ids: string }>();
-  const ran = Math.max(0, puzzleNumber(today, epoch) - 1);
+  const todayNumber = puzzleNumber(today, epoch);
   const todaySlot = puzzleSlot(today, epoch);
   const held = new Set<string>();
   for (const row of slots.results ?? []) {
-    if (row.slot === todaySlot || (ran < SEED_SLOTS && row.slot >= ran)) for (const id of parseStringArray(row.question_ids)) held.add(id);
+    if (row.slot === todaySlot || firstPlayOf(row.slot, epoch) >= todayNumber) for (const id of parseStringArray(row.question_ids)) held.add(id);
   }
   return (pool.results ?? []).map((row) => row.question_id).filter((id) => !held.has(id));
 }

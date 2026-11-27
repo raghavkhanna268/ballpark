@@ -1,7 +1,8 @@
 import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { assertSeed } from "../seed/content.ts";
+import { LEGACY_SLOTS, NEW_DAYS_FROM, addUtcDays, puzzleSlot } from "@ballpark/shared";
+import { assertSeed, puzzles } from "../seed/content.ts";
 import { resolvePlayDate } from "../src/play-date.ts";
 import { crewSize } from "../src/bots.ts";
 import { HttpError } from "../src/http.ts";
@@ -84,6 +85,19 @@ describe("today's questions hide the answers", () => {
       date: "2026-01-12",
       devDate: true,
     });
+  });
+});
+
+describe("the added days", () => {
+  it("start on NEW_DAYS_FROM and leave the days before on the old cycle", async () => {
+    const eve = addUtcDays(NEW_DAYS_FROM, -1);
+    const before = (await (await puzzle(DEVICE, eve)).json()) as { theme: string };
+    const oldSlot = puzzleSlot(eve);
+    expect(oldSlot).toBeLessThan(LEGACY_SLOTS);
+    expect(before.theme).toBe(puzzles.find((item) => item.slot === oldSlot)!.theme);
+    const first = (await (await puzzle(DEVICE, NEW_DAYS_FROM)).json()) as { theme: string; questions: Array<{ id: string }> };
+    expect(first.theme).toBe("Around the House");
+    expect(first.questions.map((question) => question.id)).toEqual(puzzles.find((item) => item.slot === LEGACY_SLOTS)!.questionIds);
   });
 });
 

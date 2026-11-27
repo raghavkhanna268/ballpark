@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { beatPercent, distributionBucket, puzzleNumber, puzzleSlot } from "./dates.js";
+import { LEGACY_SLOTS, NEW_DAYS_FROM, SEED_SLOTS, addUtcDays, beatPercent, distributionBucket, firstPlayOf, puzzleNumber, puzzleSlot } from "./dates.js";
 import { formatFactor } from "./format.js";
 import { parseShorthand } from "./parse.js";
 import { classicShareText } from "./share.js";
@@ -137,6 +137,19 @@ describe("shorthand, share text, and the daily number", () => {
     expect(puzzleSlot("2026-01-10")).toBe(9);
     expect(puzzleSlot("2026-01-17")).toBe(16);
     expect(puzzleSlot("2026-01-18")).toBe(0);
+  });
+
+  it("keeps past dates on the 17-day cycle and starts the added days on NEW_DAYS_FROM", () => {
+    expect(puzzleSlot("2026-11-28")).toBe(331 % 17);
+    expect(puzzleSlot("2026-11-30")).toBe(333 % 17);
+    expect(puzzleSlot(NEW_DAYS_FROM)).toBe(LEGACY_SLOTS);
+    expect(puzzleSlot(addUtcDays(NEW_DAYS_FROM, SEED_SLOTS - LEGACY_SLOTS - 1))).toBe(SEED_SLOTS - 1);
+    expect(puzzleSlot(addUtcDays(NEW_DAYS_FROM, SEED_SLOTS - LEGACY_SLOTS))).toBe(0);
+    expect(puzzleSlot(addUtcDays(NEW_DAYS_FROM, 2 * SEED_SLOTS - LEGACY_SLOTS))).toBe(0);
+    for (let slot = 0; slot < SEED_SLOTS; slot += 1) {
+      const first = addUtcDays("2026-01-01", firstPlayOf(slot) - 1);
+      expect(puzzleSlot(first)).toBe(slot);
+    }
   });
 
   it("reports a percentile for a single player and ignores ties", () => {
