@@ -12,8 +12,15 @@ export default defineConfig({
       return {
         wrangler: { configPath: "./wrangler.jsonc" },
         miniflare: {
-          // Fake Razorpay keys so signature checks can be tested. No test calls Razorpay.
-          bindings: { TEST_MIGRATIONS: migrations, RAZORPAY_KEY_ID: "rzp_test_local", RAZORPAY_KEY_SECRET: "local-test-secret" },
+          // Fake Razorpay keys so signature checks can be tested. No test calls Razorpay. Reminder keys start empty,
+          // so a local .dev.vars never changes a test; the reminder tests pass their own pair.
+          bindings: {
+            TEST_MIGRATIONS: migrations,
+            RAZORPAY_KEY_ID: "rzp_test_local",
+            RAZORPAY_KEY_SECRET: "local-test-secret",
+            VAPID_PUBLIC_KEY: "",
+            VAPID_PRIVATE_KEY: "",
+          },
         },
       };
     }),

@@ -34,21 +34,27 @@ export function placement(mine: number, all: number[]): Placement {
 /* ---------- race a friend ---------- */
 
 export type RaceMode = "classic" | "h2h";
-export type Race = { mode: RaceMode; puzzleNumber: number; progress: number };
+/** `skin` is the rocket paint job the friend flew, from the Hangar, so their ghost looks like their rocket. */
+export type Race = { mode: RaceMode; puzzleNumber: number; progress: number; skin?: string };
 
-/** "c326-735": Classic puzzle #326, climbed 7.35 stops. Carries no answers. */
-export function raceCode(mode: RaceMode, puzzleNumber: number, progress: number): string {
-  const height = Math.max(0, Math.min(1000, Math.round(progress * 100)));
-  return `${mode === "classic" ? "c" : "h"}${puzzleNumber}-${height}`;
+/** "c326-735": Classic puzzle #326, climbed 7.35 stops; "c326-735.gold" in the gold paint job. Carries no answers. */
+export function raceCode(mode: RaceMode, puzzleNumber: number, progress: number, skin?: string | null): string {
+  const height = Math.max(0, Math.min(1200, Math.round(progress * 100)));
+  const paint = skin && SKIN_CODE.test(skin) ? `.${skin}` : "";
+  return `${mode === "classic" ? "c" : "h"}${puzzleNumber}-${height}${paint}`;
 }
+
+const SKIN_CODE = /^[a-z0-9]{1,12}$/;
 
 export function parseRace(code: string | null | undefined): Race | null {
   if (!code) return null;
-  const match = /^([ch])(\d{1,6})-(\d{1,4})$/.exec(code.trim());
+  const match = /^([ch])(\d{1,6})-(\d{1,4})(?:\.([a-z0-9]{1,12}))?$/.exec(code.trim());
   if (!match) return null;
   const progress = Number(match[3]) / 100;
-  if (progress > 10) return null;
-  return { mode: match[1] === "c" ? "classic" : "h2h", puzzleNumber: Number(match[2]), progress };
+  if (progress > 12) return null;
+  const race: Race = { mode: match[1] === "c" ? "classic" : "h2h", puzzleNumber: Number(match[2]), progress };
+  if (match[4]) race.skin = match[4];
+  return race;
 }
 
 export function raceUrl(host: string, code: string): string {

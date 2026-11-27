@@ -1,5 +1,7 @@
 import {
+  AFTERBURNER,
   COLD_START_RESPONSES,
+  NAME_TIERS,
   blendShare,
   matchAccepted,
   nameTier,
@@ -9,6 +11,7 @@ import {
   type Band,
   type CrowdStat,
   type Guess,
+  type NameTier,
   type ServerQuestion,
 } from "@ballpark/shared";
 import { compareScore, estimateScore, rankScore } from "@ballpark/shared/scoring";
@@ -16,6 +19,8 @@ import { compareScore, estimateScore, rankScore } from "@ballpark/shared/scoring
 export type PlayQuestion = ServerQuestion & {
   accepted: AcceptedAnswer[] | null;
   entitySet: string | null;
+  /** A line that points a stuck player at a corner of the answers. Null when the question has none. */
+  nudge: string | null;
 };
 
 export type ClassicScore = {
@@ -32,7 +37,23 @@ export type ClassicScore = {
   tier: string | null;
 };
 
-export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, others: Guess[]): ClassicScore {
+/** How a stage was played: with today's Afterburner on, and whether the player asked for a nudge first. */
+export type StageOptions = { boost?: boolean; nudged?: boolean };
+
+/** After a nudge, a name-one answer scores at most this tier. */
+export const NUDGE_CAP = "Moonshot";
+
+/**
+ * One stage's score with the day's extras applied: a nudge caps a name-one answer at a Moonshot, and the
+ * Afterburner doubles whatever is left. Rarity is still worked out from everyone's plain answers.
+ */
+export function scoreStage(question: PlayQuestion, guess: Guess, others: Guess[], options: StageOptions = {}): ClassicScore {
+  const scored = scoreClassicQuestion(question, guess, others, options.nudged === true);
+  if (!options.boost || scored.points <= 0) return scored;
+  return { ...scored, points: scored.points * AFTERBURNER, basePoints: scored.basePoints * AFTERBURNER };
+}
+
+export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, others: Guess[], nudged = false): ClassicScore {
   if (question.type === "estimate" && guess.type === "estimate") {
     const answer = question.items[0]?.value ?? 0;
     const full = estimateScore(guess.value, answer, guess.confidence);
@@ -63,7 +84,7 @@ export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, other
 
   if (question.type === "name_one" && guess.type === "name_one") {
     if (guess.timedOut) return { ...scoreName(question, "", others), answerText: "Out of time", detail: "The timer ran out before an answer was locked in.", tier: null };
-    return scoreName(question, guess.text, others);
+    return scoreName(question, guess.text, others, nudged);
   }
 
   return plain("black", 0);
@@ -100,7 +121,7 @@ function plain(band: Band, points: number): ClassicScore {
   };
 }
 
-function scoreName(question: PlayQuestion, text: string, others: Guess[]): ClassicScore {
+function scoreName(question: PlayQuestion, text: string, others: Guess[], nudged = false): ClassicScore {
   const accepted = question.accepted ?? [];
   const mine = matchAccepted(text, accepted);
   const matched = others.map((item) => (item.type === "name_one" ? matchAccepted(item.text, accepted) : null));
@@ -125,7 +146,7 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
       ...plain("black", 0),
       answerText: "Not on the list",
       detail: "That answer is not accepted.",
-      named: { kind: "named", answer: null, percent: 0, submissions: total, top, rare, blendedPercent: null, fromPrior },
+      named: { kind: "named", answer: null, percent: 0, count: 0, submissions: total, top, rare, blendedPercent: null, fromPrior },
     };
   }
 
@@ -136,7 +157,7 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
   const othersSaid = matched.filter((item) => item?.canonical === mine.canonical).length;
   const sample = others.length;
   const share = blendShare(sample > 0 ? othersSaid / sample : 0, sample, priorShare(mine, accepted));
-  const tier = nameTier(share);
+  const tier = nudged ? capTier(nameTier(share)) : nameTier(share);
   const points = tier.points;
   const blendedPercent = Math.round(share * 100);
   const headline =
@@ -150,6 +171,7 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
       kind: "named",
       answer: mine.canonical,
       percent: live,
+      count: said,
       submissions: total,
       top,
       rare,
@@ -162,4 +184,10 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
 function livePercent(count: number, total: number): number {
   if (total <= 0) return 0;
   return Math.round((100 * count) / total);
+}
+
+/** A nudged answer keeps its tier up to a Moonshot. Anything rarer counts as a Moonshot. */
+function capTier(tier: NameTier): NameTier {
+  const cap = NAME_TIERS.find((item) => item.name === NUDGE_CAP)!;
+  return tier.points > cap.points ? cap : tier;
 }

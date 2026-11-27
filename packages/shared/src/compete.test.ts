@@ -15,7 +15,11 @@ describe("race links", () => {
     expect(raceCode("classic", 326, 7.354)).toBe("c326-735");
     expect(parseRace("c326-735")).toEqual({ mode: "classic", puzzleNumber: 326, progress: 7.35 });
     expect(parseRace("h12-1000")).toEqual({ mode: "h2h", puzzleNumber: 12, progress: 10 });
-    expect(parseRace("h12-1001")).toBeNull();
+    expect(parseRace("h12-1143")).toEqual({ mode: "h2h", puzzleNumber: 12, progress: 11.43 });
+    expect(parseRace("h12-1201")).toBeNull();
+    expect(parseRace(raceCode("classic", 40, 6.5, "gold"))).toEqual({ mode: "classic", puzzleNumber: 40, progress: 6.5, skin: "gold" });
+    expect(raceCode("classic", 40, 6.5, "Not a skin!")).toBe("c40-650");
+    expect(parseRace("c40-650.<b>")).toBeNull();
     expect(parseRace("x12-100")).toBeNull();
     expect(parseRace("<script>")).toBeNull();
   });

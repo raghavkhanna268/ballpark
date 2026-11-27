@@ -457,6 +457,7 @@ function asPuzzle(pack: PackResponse): PuzzleResponse {
     questions: pack.questions,
     result: null,
     field: { players: 0, averageProgress: null, bestProgress: null },
+    today: { climbing: null, board: null, you: null },
   };
 }
 

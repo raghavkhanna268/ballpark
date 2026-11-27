@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { NAME_CAP, classicStep, type QuestionType } from "@ballpark/shared";
+import { AFTERBURNER, NAME_CAP, classicStep, type QuestionType } from "@ballpark/shared";
 import type { SkyTrail } from "./sky";
 
 /**
@@ -52,7 +52,7 @@ export function CountUp({ value, delay = 250, duration = 900, pad = 0 }: { value
 }
 
 /** Stage by stage points as one row of tiles that pop in one after another, then the best combo. Shared with the pack end screen. */
-export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; points: number } | null> }) {
+export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; points: number; boosted?: boolean } | null> }) {
   const combo = bestCombo(rows.map((row) => row?.points ?? null));
   return (
     <div className="tally-block">
@@ -67,8 +67,13 @@ export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; po
                 {row.emoji}
               </span>
               <b aria-hidden="true">{row.points > 0 ? `+${row.points}` : "0"}</b>
+              {row.boosted ? (
+                <i className="tally-boost" aria-hidden="true">
+                  ×2
+                </i>
+              ) : null}
               <span className="sr">
-                Stage {index + 1}: {row.label}, {row.points} points
+                Stage {index + 1}: {row.label}, {row.points} points{row.boosted ? ", Afterburner" : ""}
               </span>
             </li>
           ) : (
@@ -120,15 +125,26 @@ export function tierOf(points: number, max: number): number {
   return points > 0 ? gainLevel(points, max) - 1 : -1;
 }
 
+type Scored = { points: number; boosted?: boolean };
+
+/** A stage's points before the Afterburner doubled them, which is what sets its tier and colour. */
+export function basePoints(reveal: Scored): number {
+  return reveal.boosted ? reveal.points / AFTERBURNER : reveal.points;
+}
+
+/** How far one answered stage climbs: in proportion to its points, doubled by the Afterburner. */
+export function stageStep(type: QuestionType, reveal: Scored, count: number): number {
+  return classicStep(reveal.points, maxPoints(type), count, reveal.boosted ? AFTERBURNER : 1);
+}
+
 /** The climb so far as one stretch per scoring answer, in order, coloured by tier. */
-export function trailOf(questions: Array<{ type: QuestionType; reveal: { points: number } | null }>, count: number): SkyTrail[] {
+export function trailOf(questions: Array<{ type: QuestionType; reveal: Scored | null }>, count: number): SkyTrail[] {
   const trail: SkyTrail[] = [];
   let at = 0;
   for (const question of questions) {
     if (!question.reveal) continue;
-    const max = maxPoints(question.type);
-    const step = classicStep(question.reveal.points, max, count);
-    if (step > 0) trail.push({ from: at, to: at + step, tier: tierOf(question.reveal.points, max) });
+    const step = stageStep(question.type, question.reveal, count);
+    if (step > 0) trail.push({ from: at, to: at + step, tier: tierOf(basePoints(question.reveal), maxPoints(question.type)) });
     at += step;
   }
   return trail;

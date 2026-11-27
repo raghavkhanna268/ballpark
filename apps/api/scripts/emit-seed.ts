@@ -47,7 +47,7 @@ for (const item of facts) {
 
 for (const item of questions) {
   rows.push(
-    `{VERB} INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set) VALUES (${[
+    `{VERB} INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set, nudge) VALUES (${[
       sqlString(item.id),
       sqlString(item.prompt),
       sqlString(item.type),
@@ -66,6 +66,7 @@ for (const item of questions) {
       "0",
       item.accepted ? sqlString(JSON.stringify(item.accepted)) : "NULL",
       item.entitySet ? sqlString(item.entitySet) : "NULL",
+      item.nudge ? sqlString(item.nudge) : "NULL",
     ].join(", ")});`,
   );
 }
@@ -99,6 +100,8 @@ const withVerb = (verb: string) => rows.map((row) => row.replace("{VERB}", verb)
 // A fresh database: wipe everything, results included, then load. Never run this on a database people have played on.
 const seed = [
   ...HEADER,
+  "DELETE FROM nudges;",
+  "DELETE FROM answer_reports;",
   "DELETE FROM h2h_picks;",
   "DELETE FROM h2h_runs;",
   "DELETE FROM daily_results;",

@@ -11,6 +11,7 @@ import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
 import { funDays, funNameOne, packNameOne, packs, type SeedPack } from "./fun.ts";
 import { nameOneById, type AcceptedSeed, type NameOneSeed } from "./name-one.ts";
+import { NUDGES } from "./nudges.ts";
 import { moreBase } from "./seven.ts";
 
 export { packs, type SeedPack };
@@ -51,6 +52,8 @@ export type SeedQuestion = {
   verified: false;
   accepted: AcceptedSeed[] | null;
   entitySet: "countries" | "elements" | null;
+  /** A line for a stuck player. Every daily question has one; pack questions do not. */
+  nudge?: string | null;
 };
 
 export type SeedPuzzle = {
@@ -366,7 +369,7 @@ export const questions: SeedQuestion[] = [
   ...Object.values(moreBase).flat().map(fromNameOne),
   ...funNameOne.map(fromNameOne),
   ...packNameOne.map(fromNameOne),
-];
+].map((item) => ({ ...item, nudge: NUDGES[item.id] ?? null }));
 
 /** The fun week opens the rotation. The older themes follow it. */
 export const puzzles: SeedPuzzle[] = [
@@ -392,6 +395,7 @@ export function assertSeed(): void {
   if (questions.length !== expectedQuestions) throw new Error(`Expected ${expectedQuestions} questions, found ${questions.length}`);
   if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
   if (packs.length !== 3) throw new Error("Expected 3 packs");
+  assertNudges();
 
   for (const item of facts) {
     if (item.verified !== false) throw new Error(`${item.id} must stay unverified in the sample`);
@@ -494,4 +498,26 @@ export function assertSeed(): void {
   for (let slot = 0; slot < SEED_SLOTS; slot += 1) {
     if (!seenSlots.has(slot)) throw new Error(`Slots must be 0 through ${SEED_SLOTS - 1}`);
   }
+}
+
+/** Every daily question has a nudge, no pack question has one, and no nudge spells out an accepted answer. */
+function assertNudges(): void {
+  const daily = new Set(puzzles.flatMap((puzzle) => puzzle.questionIds));
+  for (const id of Object.keys(NUDGES)) {
+    if (!daily.has(id)) throw new Error(`Nudge for ${id}, which is not a daily question`);
+  }
+  const problems: string[] = [];
+  for (const item of questions) {
+    if (!daily.has(item.id)) continue;
+    const nudge = item.nudge ?? "";
+    if (nudge.length < 10 || nudge.length > 140) problems.push(`${item.id} needs a nudge of 10 to 140 characters`);
+    const words = ` ${normalizeAnswer(nudge).replace(/[^a-z0-9]+/g, " ").trim()} `;
+    for (const answer of item.accepted ?? []) {
+      for (const name of [answer.canonical, ...answer.aliases]) {
+        const key = normalizeAnswer(name).replace(/[^a-z0-9]+/g, " ").trim();
+        if (key.length >= 3 && words.includes(` ${key} `)) problems.push(`${item.id} nudge names "${name}"`);
+      }
+    }
+  }
+  if (problems.length > 0) throw new Error(problems.join("\n"));
 }

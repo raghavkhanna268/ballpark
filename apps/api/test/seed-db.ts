@@ -4,6 +4,9 @@ import { facts, packs, puzzles, questions, type SeedQuestion } from "../seed/con
 export async function resetAndSeed(db: D1Database): Promise<void> {
   await db.batch([
     db.prepare("DELETE FROM daily_results"),
+    db.prepare("DELETE FROM nudges"),
+    db.prepare("DELETE FROM answer_reports"),
+    db.prepare("DELETE FROM push_subs"),
     db.prepare("DELETE FROM league_members"),
     db.prepare("DELETE FROM submissions"),
     db.prepare("DELETE FROM rate_limits"),
@@ -46,8 +49,8 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
     inserts.push(
       db
         .prepare(
-          `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+          `INSERT INTO questions (id, prompt, type, unit, polarity, scale, fact_ids, display_ids, context, source_url, source_name, retrieved_at, license, topic, difficulty, verified, accepted_json, entity_set, nudge)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
         )
         .bind(
           item.id,
@@ -67,6 +70,7 @@ export async function resetAndSeed(db: D1Database): Promise<void> {
           item.difficulty,
           item.accepted ? JSON.stringify(item.accepted) : null,
           item.entitySet,
+          item.nudge ?? null,
         ),
     );
   }

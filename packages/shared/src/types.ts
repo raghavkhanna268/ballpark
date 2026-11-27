@@ -84,6 +84,8 @@ export type PublicQuestion = {
   slider: { min: number; max: number } | null;
   /** Empty unless the question is name-one. A broad list, not the scoring key. */
   suggestions: string[];
+  /** True when a stuck player can ask for a nudge on this question. The nudge itself comes from the API on request. */
+  hasNudge: boolean;
   reveal: Reveal | null;
 };
 
@@ -120,6 +122,8 @@ export type CrowdStat =
       /** Live share of players who gave `answer`. Same integer as that name's row in `top`. */
       answer: string | null;
       percent: number;
+      /** How many players gave `answer`, you included. */
+      count: number;
       submissions: number;
       top: { label: string; percent: number }[];
       rare: string[];
@@ -144,8 +148,12 @@ export type Reveal = {
   confidenceDelta: number;
   /** Extra points from the crowd. Zero when the guess was not close, or the question is not an estimate. */
   bonusPoints: number;
-  /** True until the UTC reset freezes the day's points. */
+  /** True until the reset at midnight India time freezes the day's points. */
   provisional: boolean;
+  /** The Afterburner was on for this stage: its points and its climb are doubled. */
+  boosted: boolean;
+  /** The player asked for a nudge before answering, so this stage scores at most a Moonshot. */
+  nudged: boolean;
   context: string;
   sourceUrl: string;
   sourceName: string;
@@ -170,6 +178,32 @@ export type DayResult = {
   place: import("./compete.js").Placement;
   /** The race code in the share link, so the client can show it. */
   race: string;
+  /** The stage that used today's Afterburner, by index, or null. */
+  boosted: number | null;
+  /** Today's finished climbs as a histogram of heights with yours marked. Null below 20 finishers. */
+  curve: ClimbCurve | null;
+};
+
+export type ClimbCurve = {
+  /** Finished climbs per height band, lowest first. Each band is `top / bins.length` tall. */
+  bins: number[];
+  top: number;
+  /** Your height. */
+  you: number;
+  /** The share of other finishers you climbed higher than, 0 to 100. */
+  higherThan: number;
+};
+
+/** One finished climb on today's board. */
+export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean };
+
+export type TodayStats = {
+  /** Players who have answered at least one question today, or null below 20. */
+  climbing: number | null;
+  /** The ten highest finished climbs, or null below 20 finishers. */
+  board: BoardRow[] | null;
+  /** Your row when you finished outside the top ten. */
+  you: BoardRow | null;
 };
 
 export type PuzzleResponse = {
@@ -185,6 +219,8 @@ export type PuzzleResponse = {
   result: DayResult | null;
   /** Finished Classic runs today, as distances along the journey. */
   field: import("./scale.js").FieldStats;
+  /** How many are climbing today and the top ten, once 20 have played. */
+  today: TodayStats;
 };
 
 export type GuessResponse = {

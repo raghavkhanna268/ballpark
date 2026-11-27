@@ -69,15 +69,20 @@ export function journeyProgress(correct: number, answered: number): number {
  * so a Supernova (100) climbs ten times as far as a Liftoff (10), and a miss or a timeout does not climb at all.
  * A perfect run reaches the centre of the Milky Way (10) however many questions it has.
  */
-export function classicStep(points: number, max: number, questions: number): number {
+export function classicStep(points: number, max: number, questions: number, boost = 1): number {
   if (points <= 0 || max <= 0) return 0;
-  return (10 * Math.min(1, points / max)) / Math.max(1, questions);
+  // An Afterburner stage scores double and climbs double, so it may go up to `boost` times the usual top step.
+  const lift = Math.max(1, boost);
+  return (10 * lift * Math.min(1, points / (max * lift))) / Math.max(1, questions);
 }
+
+/** Afterburner: once a day, one stage of the daily Classic scores double and climbs double. */
+export const AFTERBURNER = 2;
 
 /**
  * Real landmarks along the climb. `at` is the progress (0 to 10) where the climb passes it, and `km` its real height
  * or distance. Between two landmarks the height grows on a log scale, so each point moves the camera about as far.
- * 700 Classic points reach the last one.
+ * 700 Classic points reach the Milky Way. Only an Afterburner on top of that reaches Andromeda.
  */
 export type Milestone = { id: string; name: string; phrase: string; at: number; km: number };
 
@@ -98,7 +103,12 @@ export const MILESTONES: Milestone[] = [
   { id: "mars", name: "Mars", phrase: "Mars", at: 7.5, km: 2.25e8 },
   { id: "saturn", name: "Saturn", phrase: "Saturn", at: 8.7, km: 1.43e9 },
   { id: "galaxy", name: "Centre of the Milky Way", phrase: "the centre of the Milky Way", at: 10, km: 2.4599e17 },
+  // Only a perfect run with its Afterburner on a Supernova gets here: 10 + 10/7.
+  { id: "andromeda", name: "Andromeda", phrase: "the Andromeda galaxy", at: 11.4, km: 2.4e19 },
 ];
+
+/** The highest a Classic run can climb: every stage a Supernova, one of them with the Afterburner. */
+export const MAX_PROGRESS = 10 + 10 / 7;
 
 /** How high a progress value is, in km. Linear up to the first landmark, then log-scaled between landmarks. */
 export function altitudeKm(progress: number): number {
