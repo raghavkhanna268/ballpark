@@ -120,8 +120,8 @@ describe("shorthand, share text, and the daily number", () => {
   });
 
   it("builds the spoiler-free share card", () => {
-    expect(classicShareText(12, ["🟩", "🟨", "🟦", "🟩", "⬛"], 78, "ballpark.local", "⚛️→🧍→🌍 reached Earth")).toBe(
-      "Ballpark #12 · Classic\n🟩🟨🟦🟩⬛ 78 pts\n⚛️→🧍→🌍 reached Earth\nballpark.local",
+    expect(classicShareText(12, ["🟩", "🟨", "🟦", "🟩", "⬛"], 260, "ballpark.local", "🏁→🏙️→🎈 reached the stratosphere", "c12-520")).toBe(
+      "Ballpark #12 · Classic\n🟩🟨🟦🟩⬛ 260 pts\n🏁→🏙️→🎈 reached the stratosphere\nRace my climb: ballpark.local/?race=c12-520",
     );
   });
 
@@ -131,7 +131,8 @@ describe("shorthand, share text, and the daily number", () => {
     expect(puzzleNumber("2026-11-21")).toBe(325);
     expect(puzzleSlot("2026-01-01")).toBe(0);
     expect(puzzleSlot("2026-01-10")).toBe(9);
-    expect(puzzleSlot("2026-01-11")).toBe(0);
+    expect(puzzleSlot("2026-01-17")).toBe(16);
+    expect(puzzleSlot("2026-01-18")).toBe(0);
   });
 
   it("reports a percentile for a single player and ignores ties", () => {
@@ -143,9 +144,10 @@ describe("shorthand, share text, and the daily number", () => {
 
   it("buckets a day's score for the local distribution", () => {
     expect(distributionBucket(0)).toBe(0);
-    expect(distributionBucket(20)).toBe(0);
-    expect(distributionBucket(21)).toBe(1);
-    expect(distributionBucket(100)).toBe(4);
+    expect(distributionBucket(140)).toBe(0);
+    expect(distributionBucket(141)).toBe(1);
+    expect(distributionBucket(560)).toBe(3);
+    expect(distributionBucket(700)).toBe(4);
   });
 
   it("describes the factor without putting it on the share card", () => {

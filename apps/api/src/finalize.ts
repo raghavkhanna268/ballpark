@@ -1,5 +1,4 @@
 import { addUtcDays, utcToday } from "@ballpark/shared";
-import { blendShare, h2hPickPoints, h2hPriorWrongShare } from "@ballpark/shared";
 import { scoreClassicQuestion, type PlayQuestion } from "./classic-score.js";
 import type { Guess } from "@ballpark/shared";
 
@@ -70,33 +69,5 @@ async function finalizeClassic(db: D1Database, date: string, loadQuestions: (dat
 }
 
 async function finalizeHeadToHead(db: D1Database, date: string): Promise<void> {
-  const picks = await db
-    .prepare("SELECT device_id, step_index, correct FROM h2h_picks WHERE puzzle_date = ? AND kind = 'scored'")
-    .bind(date)
-    .all<{ device_id: string; step_index: number; correct: number }>();
-  const byStep = new Map<number, { device_id: string; correct: number }[]>();
-  for (const pick of picks.results) {
-    const list = byStep.get(pick.step_index) ?? [];
-    list.push(pick);
-    byStep.set(pick.step_index, list);
-  }
-  const points = new Map<string, number>();
-  for (const [index, group] of byStep) {
-    const wrongs = group.filter((pick) => pick.correct === 0).length;
-    const share = blendShare(wrongs / group.length, group.length, h2hPriorWrongShare(index));
-    for (const pick of group) {
-      const award = pick.correct === 1 ? h2hPickPoints(share) : 0;
-      points.set(pick.device_id, (points.get(pick.device_id) ?? 0) + award);
-    }
-  }
-  for (const [deviceId, total] of points) {
-    await db
-      .prepare("UPDATE h2h_runs SET points = ? WHERE device_id = ? AND puzzle_date = ? AND kind = 'scored'")
-      .bind(total, deviceId, date)
-      .run();
-    await db
-      .prepare("UPDATE daily_results SET points = ?, finalized = 1 WHERE device_id = ? AND puzzle_date = ? AND mode = 'head-to-head'")
-      .bind(total, deviceId, date)
-      .run();
-  }
+  await db.prepare("UPDATE daily_results SET finalized = 1 WHERE puzzle_date = ? AND mode = 'head-to-head'").bind(date).run();
 }

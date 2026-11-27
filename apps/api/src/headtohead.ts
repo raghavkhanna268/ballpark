@@ -1,19 +1,24 @@
+import { headToHeadField } from "./field.js";
+import { joinLeague } from "./league.js";
 import {
-  beatPercentRuns,
-  blendShare,
+  type FieldStats,
+  H2H_LENGTH,
+  beatPercent,
   buildHeadToHeadSequence,
   formatFactValue,
-  h2hPickPoints,
-  h2hPriorWrongShare,
   headToHeadShareText,
-  levelForCorrectCount,
+  journeyProgress,
+  levelForJourney,
+  placement,
+  raceCode,
+  reachedPhrase,
   puzzleNumber,
   puzzleSlot,
   scoreHeadToHead,
   toPublicRound,
   utcToday,
-  zoomShareLine,
   type H2HFact,
+  type Placement,
   type H2HRound,
   type PublicH2HRound,
 } from "@ballpark/shared";
@@ -50,13 +55,29 @@ export type HeadToHeadState = {
     bestToday: number | null;
     shareText: string;
     cleared: boolean;
-    points: number;
+    marks: string;
     reached: string;
     provisional: boolean;
+    /** Scored runs only: your rank today and the gap to the next rank up. */
+    place: Placement | null;
+    race: string | null;
   } | null;
+  field: FieldStats;
 };
 
 export async function loadHeadToHead(
+  db: D1Database,
+  date: string,
+  deviceId: string,
+  epoch: string,
+  shareHost: string,
+  devDate: boolean,
+): Promise<HeadToHeadState> {
+  const state = await loadHeadToHeadState(db, date, deviceId, epoch, shareHost, devDate);
+  return { ...state, field: await headToHeadField(db, date, H2H_LENGTH) };
+}
+
+async function loadHeadToHeadState(
   db: D1Database,
   date: string,
   deviceId: string,
@@ -103,7 +124,7 @@ export async function pickHeadToHead(
   epoch: string,
   shareHost: string,
   index: number,
-  choice: { choiceId?: string; direction?: "higher" | "lower" },
+  choice: { choiceId?: string; direction?: "higher" | "lower"; timedOut?: boolean },
 ): Promise<{
   correct: boolean;
   correctCount: number;
@@ -132,24 +153,24 @@ export async function pickHeadToHead(
   const sequence = await sequenceFor(db, date, seedKey(date, deviceId, run), epoch);
   const round = sequence[index];
   if (!round) throw new HttpError(400, "invalid_guess");
-  if (round.kind === "higher-lower") {
+  if (choice.timedOut) {
+    // The 30-second timer ran out. It counts as a miss.
+  } else if (round.kind === "higher-lower") {
     if (choice.direction !== "higher" && choice.direction !== "lower") throw new HttpError(400, "invalid_guess");
   } else if (!round.items.some((item) => item.id === choice.choiceId)) {
     throw new HttpError(400, "invalid_guess");
   }
 
-  const correct = scoreHeadToHead(round, choice);
+  const correct = choice.timedOut ? false : scoreHeadToHead(round, choice);
   const correctCount = run.correct_count + (correct ? 1 : 0);
-  const finished = !correct || index === sequence.length - 1;
-  const pickPoints = await rarityPoints(db, date, index, correct);
-  const totalPoints = run.points + pickPoints;
+  const finished = index === sequence.length - 1;
   const updated = await db
     .prepare(
       `UPDATE h2h_runs
        SET next_index = ?, correct_count = ?, finished = ?, points = ?
        WHERE id = ? AND next_index = ? AND finished = 0`,
     )
-    .bind(index + 1, correctCount, finished ? 1 : 0, totalPoints, run.id, index)
+    .bind(index + 1, correctCount, finished ? 1 : 0, correctCount, run.id, index)
     .run();
   if ((updated.meta.changes ?? 0) !== 1) throw new HttpError(409, "out_of_order");
   await db
@@ -162,6 +183,7 @@ export async function pickHeadToHead(
 
   console.log(JSON.stringify({ level: "info", event: "h2h_pick", date, index, kind: round.kind, correct, official: run.kind === "scored" }));
 
+  const { marks, bands } = await marksFor(db, date, deviceId, run.kind, run.attempt);
   const nextRound = !finished ? sequence[index + 1] : undefined;
   let result: HeadToHeadState["result"] = null;
   if (finished && run.kind === "scored") {
@@ -170,19 +192,12 @@ export async function pickHeadToHead(
         `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at)
          VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
       )
-      .bind(
-        deviceId,
-        date,
-        MODE,
-        correctCount,
-        totalPoints,
-        JSON.stringify(Array.from({ length: correctCount }, () => "green")),
-        new Date().toISOString(),
-      )
+      .bind(deviceId, date, MODE, correctCount, correctCount, JSON.stringify(bands), new Date().toISOString())
       .run();
-    result = await officialResult(db, date, deviceId, puzzleNumber(date, epoch), shareHost, epoch, finished && correct);
+    await joinLeague(db, deviceId, date);
+    result = await officialResult(db, date, deviceId, puzzleNumber(date, epoch), shareHost, epoch, correctCount >= sequence.length);
   } else if (finished) {
-    const reached = levelForCorrectCount(correctCount);
+    const reached = levelForJourney(correctCount, sequence.length);
     result = {
       official: false,
       score: correctCount,
@@ -190,10 +205,12 @@ export async function pickHeadToHead(
       players: null,
       bestToday: null,
       shareText: "",
-      cleared: finished && correct,
-      points: totalPoints,
-      reached: reached.name,
+      cleared: correctCount >= sequence.length,
+      marks,
+      reached: reachedPhrase(reached),
       provisional: false,
+      place: null,
+      race: null,
     };
   }
 
@@ -201,7 +218,7 @@ export async function pickHeadToHead(
   return {
     correct,
     correctCount,
-    points: pickPoints,
+    points: 0,
     reveal: {
       prompt: round.prompt,
       rows: round.items.map((item) => ({ label: item.label, valueText: formatFactValue(item.value, item.unit) })),
@@ -345,20 +362,23 @@ async function clearedDeck(db: D1Database, date: string, run: RunRow, epoch: str
   return run.finished === 1 && sequence.length > 0 && run.correct_count >= sequence.length;
 }
 
-async function rarityPoints(db: D1Database, date: string, index: number, correct: boolean): Promise<number> {
-  if (!correct) return 0;
-  const stats = await db
+async function marksFor(
+  db: D1Database,
+  date: string,
+  deviceId: string,
+  kind: string,
+  attempt: number,
+): Promise<{ marks: string; bands: string[] }> {
+  const rows = await db
     .prepare(
-      `SELECT COUNT(*) AS n, COALESCE(SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END), 0) AS wrongs
-       FROM h2h_picks
-       WHERE puzzle_date = ? AND kind = 'scored' AND step_index = ?`,
+      `SELECT correct FROM h2h_picks
+       WHERE device_id = ? AND puzzle_date = ? AND kind = ? AND attempt = ?
+       ORDER BY step_index`,
     )
-    .bind(date, index)
-    .first<{ n: number; wrongs: number }>();
-  const sample = Number(stats?.n ?? 0) + 1;
-  const wrongs = Number(stats?.wrongs ?? 0);
-  const share = blendShare(wrongs / sample, sample, h2hPriorWrongShare(index));
-  return h2hPickPoints(share);
+    .bind(deviceId, date, kind, attempt)
+    .all<{ correct: number }>();
+  const bands = rows.results.map((row) => (row.correct === 1 ? "green" : "red"));
+  return { bands, marks: bands.map((band) => (band === "green" ? "🟩" : "🟥")).join("") };
 }
 
 async function officialResult(
@@ -372,24 +392,30 @@ async function officialResult(
 ): Promise<NonNullable<HeadToHeadState["result"]>> {
   await finalizeDay(db, date, (day) => questionsForDate(db, day, epoch));
   const board = await db
-    .prepare("SELECT device_id, score, points FROM daily_results WHERE puzzle_date = ? AND mode = ?")
+    .prepare("SELECT device_id, score, bands FROM daily_results WHERE puzzle_date = ? AND mode = ?")
     .bind(date, MODE)
-    .all<{ device_id: string; score: number; points: number }>();
-  const runs = board.results.map((row) => ({ length: row.score, points: row.points }));
-  const mine = runs.find((row, index) => board.results[index]?.device_id === deviceId) ?? runs[0] ?? { length: 0, points: 0 };
-  const best = runs.length === 0 ? mine.length : Math.max(...runs.map((row) => row.length));
-  const level = levelForCorrectCount(mine.length);
+    .all<{ device_id: string; score: number; bands: string }>();
+  const scores = board.results.map((row) => row.score);
+  const mine = board.results.find((row) => row.device_id === deviceId) ?? board.results[0];
+  const score = mine?.score ?? 0;
+  const stored = mine ? (JSON.parse(mine.bands) as string[]) : [];
+  const marks = stored.map((band) => (band === "green" || band === "🟩" ? "🟩" : "🟥")).join("");
+  const best = scores.length === 0 ? score : Math.max(...scores);
+  const level = levelForJourney(score, H2H_LENGTH);
+  const race = raceCode("h2h", number, journeyProgress(score, H2H_LENGTH));
   return {
     official: true,
-    score: mine.length,
-    beatPercent: beatPercentRuns(mine, runs.length === 0 ? [mine] : runs),
-    players: Math.max(runs.length, 1),
+    score,
+    beatPercent: beatPercent(score, scores.length === 0 ? [score] : scores),
+    players: Math.max(scores.length, 1),
     bestToday: best,
-    shareText: headToHeadShareText(number, mine.length, shareHost, zoomShareLine(level)),
+    shareText: headToHeadShareText(number, marks, score, H2H_LENGTH, shareHost, reachedPhrase(level), race),
     cleared,
-    points: mine.points,
-    reached: level.name,
+    marks,
+    reached: reachedPhrase(level),
     provisional: date >= utcToday(),
+    place: placement(score, scores.length === 0 ? [score] : scores),
+    race,
   };
 }
 
@@ -398,7 +424,7 @@ function base(
   puzzleNumberValue: number,
   shareHost: string,
   devDate: boolean,
-  rest: Omit<HeadToHeadState, "date" | "puzzleNumber" | "shareHost" | "devDate">,
+  rest: Omit<HeadToHeadState, "date" | "puzzleNumber" | "shareHost" | "devDate" | "field">,
 ): HeadToHeadState {
-  return { date, puzzleNumber: puzzleNumberValue, shareHost, devDate, ...rest };
+  return { date, puzzleNumber: puzzleNumberValue, shareHost, devDate, field: { players: 0, averageProgress: null, bestProgress: null }, ...rest };
 }

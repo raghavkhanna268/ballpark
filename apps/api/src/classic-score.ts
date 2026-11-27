@@ -1,10 +1,8 @@
 import {
   COLD_START_RESPONSES,
   blendShare,
-  estimateCrowdBonus,
-  estimatePriorFarther,
   matchAccepted,
-  nameOnePoints,
+  nameTier,
   priorShare,
   suggestionsFor,
   type AcceptedAnswer,
@@ -13,7 +11,7 @@ import {
   type Guess,
   type ServerQuestion,
 } from "@ballpark/shared";
-import { compareScore, estimateScore, logDistance, rankScore } from "@ballpark/shared/scoring";
+import { compareScore, estimateScore, rankScore } from "@ballpark/shared/scoring";
 
 export type PlayQuestion = ServerQuestion & {
   accepted: AcceptedAnswer[] | null;
@@ -30,6 +28,8 @@ export type ClassicScore = {
   detail: string;
   named: Extract<CrowdStat, { kind: "named" }> | null;
   crowdGuesses: number[];
+  /** Rarity tier name for an accepted name-one answer. */
+  tier: string | null;
 };
 
 export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, others: Guess[]): ClassicScore {
@@ -37,16 +37,13 @@ export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, other
     const answer = question.items[0]?.value ?? 0;
     const full = estimateScore(guess.value, answer, guess.confidence);
     const guesses = others.filter((item): item is Extract<Guess, { type: "estimate" }> => item.type === "estimate" && item.value > 0);
-    const mine = logDistance(guess.value, answer);
-    const farther = guesses.filter((item) => logDistance(item.value, answer) > mine).length;
-    const live = guesses.length === 0 ? 0 : farther / guesses.length;
-    const bonusPoints = estimateCrowdBonus(full.band, blendShare(live, guesses.length, estimatePriorFarther(question.difficulty)));
     return {
       band: full.band,
-      points: full.points + bonusPoints,
+      points: full.points,
       basePoints: full.basePoints,
       confidenceDelta: full.confidenceDelta,
-      bonusPoints,
+      bonusPoints: 0,
+      tier: null,
       answerText: "",
       detail: "",
       named: null,
@@ -65,6 +62,7 @@ export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, other
   }
 
   if (question.type === "name_one" && guess.type === "name_one") {
+    if (guess.timedOut) return { ...scoreName(question, "", others), answerText: "Out of time", detail: "The timer ran out before an answer was locked in.", tier: null };
     return scoreName(question, guess.text, others);
   }
 
@@ -86,6 +84,7 @@ function plain(band: Band, points: number): ClassicScore {
     detail: "",
     named: null,
     crowdGuesses: [],
+    tier: null,
   };
 }
 
@@ -120,14 +119,19 @@ function scoreName(question: PlayQuestion, text: string, others: Guess[]): Class
 
   const said = counts.get(mine.canonical) ?? 1;
   const live = livePercent(said, total);
-  const liveShare = said / total;
-  const share = blendShare(liveShare, total, priorShare(mine, accepted));
-  const points = nameOnePoints(share);
+  // Rarity is how many other players gave the same answer. Counting your own answer would stop the first
+  // player of the day from ever finding a Supernova.
+  const othersSaid = matched.filter((item) => item?.canonical === mine.canonical).length;
+  const sample = others.length;
+  const share = blendShare(sample > 0 ? othersSaid / sample : 0, sample, priorShare(mine, accepted));
+  const tier = nameTier(share);
+  const points = tier.points;
   const blendedPercent = Math.round(share * 100);
   const headline =
     live < 50 ? `Only ${live}% of players said ${mine.canonical}.` : `${live}% of players said ${mine.canonical}.`;
   return {
-    ...plain("green", points),
+    ...plain(tier.band, points),
+    tier: tier.name,
     answerText: mine.canonical,
     detail: headline,
     named: {

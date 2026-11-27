@@ -1,15 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "./entities.js";
 import { matchAccepted, normalizeAnswer, priorShare, type AcceptedAnswer } from "./match.js";
-import {
-  beatPercentRuns,
-  blendShare,
-  estimateCrowdBonus,
-  estimatePriorFarther,
-  h2hPickPoints,
-  nameOnePoints,
-} from "./rarity.js";
-import { levelForClassicScore, levelForCorrectCount, zoomShareLine } from "./scale.js";
+import { blendShare, nameOnePoints } from "./rarity.js";
+import { journeyProgress, levelForClassicScore, levelForCorrectCount, levelForJourney, zoomShareLine } from "./scale.js";
 
 const accepted: AcceptedAnswer[] = [
   { canonical: "India", aliases: ["Bharat"], prior: 30 },
@@ -55,47 +48,40 @@ describe("rarity scoring", () => {
     const rare = nameOnePoints(priorShare(accepted[1]!, accepted));
     const common = nameOnePoints(priorShare(accepted[0]!, accepted));
     expect(rare).toBeGreaterThan(common);
-    expect(nameOnePoints(0)).toBe(36);
+    expect(nameOnePoints(0)).toBe(100);
+    expect(nameOnePoints(0.02)).toBe(75);
+    expect(nameOnePoints(0.05)).toBe(50);
+    expect(nameOnePoints(0.15)).toBe(25);
     expect(nameOnePoints(1)).toBe(10);
   });
 
-  it("adds an estimate bonus only when the guess is close and the field was farther", () => {
-    expect(estimatePriorFarther(1)).toBeLessThan(estimatePriorFarther(3));
-    expect(estimateCrowdBonus("green", 1)).toBe(6);
-    expect(estimateCrowdBonus("yellow", 0.5)).toBe(3);
-    expect(estimateCrowdBonus("black", 1)).toBe(0);
-    expect(estimateCrowdBonus("blue", 1)).toBe(0);
-  });
-
-  it("breaks a head-to-head tie on points after run length", () => {
-    const field = [
-      { length: 5, points: 3 },
-      { length: 5, points: 1 },
-      { length: 4, points: 100 },
-    ];
-    expect(beatPercentRuns(field[0]!, field)).toBe(100);
-    expect(beatPercentRuns(field[1]!, field)).toBe(50);
-    expect(beatPercentRuns(field[2]!, field)).toBe(0);
-    expect(h2hPickPoints(1)).toBe(5);
-    expect(h2hPickPoints(0)).toBe(1);
-  });
 });
 
-describe("zoom path", () => {
-  it("starts at an atom and steps out once per correct answer", () => {
-    expect(levelForCorrectCount(0).name).toBe("Atom");
-    expect(levelForCorrectCount(1).name).toBe("Cell");
-    expect(levelForCorrectCount(7).name).toBe("Earth");
-    expect(levelForCorrectCount(12).name).toBe("Observable universe");
-    expect(levelForCorrectCount(13).beyond).toBe(true);
-    expect(levelForCorrectCount(15).extra).toBe(3);
+describe("altitude climb", () => {
+  it("starts on the launch pad and reaches the Milky Way after ten correct answers", () => {
+    expect(levelForCorrectCount(0).name).toBe("Launch pad");
+    expect(levelForCorrectCount(1).name).toBe("Rooftops");
+    expect(levelForCorrectCount(6).name).toBe("Edge of space");
+    expect(levelForCorrectCount(10).name).toBe("Milky Way");
+    expect(levelForCorrectCount(12).name).toBe("Milky Way");
+  });
+
+  it("lands a perfect run and a 5/10 on different worlds once misses hop a third", () => {
+    expect(journeyProgress(10, 10)).toBe(10);
+    expect(levelForJourney(10, 10).name).toBe("Milky Way");
+    expect(levelForJourney(5, 10).name).toBe("Space station");
+    expect(levelForJourney(0, 10).id).toBe("clouds");
+    expect(levelForJourney(8, 10).name).toBe("Planets");
   });
 
   it("maps a Classic score onto the same rungs and stays spoiler-free", () => {
-    expect(levelForClassicScore(0).id).toBe("atom");
-    expect(levelForClassicScore(100).id).toBe("universe");
-    expect(zoomShareLine(levelForCorrectCount(11))).toBe("⚛️→🏙️→🌌 reached Milky Way");
-    expect(zoomShareLine(levelForCorrectCount(11))).not.toContain("correct");
+    expect(levelForClassicScore(0).id).toBe("launch");
+    expect(levelForClassicScore(700).name).toBe("Milky Way");
+    // Seven questions at up to 100 each: 500 is no longer a perfect run.
+    expect(levelForClassicScore(500).name).not.toBe("Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(10))).toBe("🏁→🎈→🌌 reached the Milky Way");
+    expect(zoomShareLine(levelForCorrectCount(6))).toBe("🏁→☁️→🚀 reached the edge of space");
+    expect(zoomShareLine(levelForCorrectCount(10))).not.toContain("correct");
   });
 
   it("keeps private aliases out of the public country list", () => {

@@ -11,6 +11,8 @@ export function normalizeAnswer(input: string): string {
     .replace(/\p{M}/gu, "")
     .replace(/['’.]/g, "")
     .replace(/&/g, " and ")
+    .replace(/\+/g, " plus ")
+    .replace(/#/g, " sharp ")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, " ")
     .trim()

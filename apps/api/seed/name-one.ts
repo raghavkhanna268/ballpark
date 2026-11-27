@@ -1,3 +1,5 @@
+import { moreNameOne } from "./name-one-more.ts";
+
 /**
  * SAMPLE name-one questions. verified stays false on the question row.
  * Accepted lists are server-only. Autocomplete uses the broad entity list.
@@ -7,7 +9,8 @@ export type AcceptedSeed = { canonical: string; aliases: string[]; prior: number
 export type NameOneSeed = {
   id: string;
   prompt: string;
-  entitySet: "countries" | "elements";
+  /** null means free text with no autocomplete. */
+  entitySet: "countries" | "elements" | null;
   accepted: AcceptedSeed[];
   context: string;
   sourceName: string;
@@ -391,6 +394,151 @@ export const nameOneQuestions: NameOneSeed[] = [
     topic: "science",
     difficulty: 2,
   },
+  {
+    id: "q-space-giants",
+    prompt: "Name a country in Central America.",
+    entitySet: "countries",
+    accepted: ["Belize", "Costa Rica", "El Salvador", "Guatemala", "Honduras", "Nicaragua", "Panama"].map((name, index) =>
+      answer(name, index === 0 ? 2 : name === "Costa Rica" || name === "Panama" ? 8 : 3),
+    ),
+    context: "Seven sovereign states sit on the Central American isthmus, from Guatemala to Panama. Mexico is counted with North America in this sample. Pending verification.",
+    sourceName: "Wikipedia: Central America",
+    sourceUrl: "https://en.wikipedia.org/wiki/Central_America",
+    license: CC,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-earth-seas",
+    prompt: "Name a noble gas.",
+    entitySet: "elements",
+    accepted: ["Helium", "Neon", "Argon", "Krypton", "Xenon", "Radon", "Oganesson"].map((name) =>
+      answer(name, name === "Helium" || name === "Neon" ? 10 : name === "Argon" ? 6 : 1),
+    ),
+    context: "The noble gases are helium, neon, argon, krypton, xenon, radon, and oganesson, the last of which is only predicted to behave like the group. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 1,
+  },
+  {
+    id: "q-body-lungs",
+    prompt: "Name a halogen.",
+    entitySet: "elements",
+    accepted: ["Fluorine", "Chlorine", "Bromine", "Iodine", "Astatine", "Tennessine"].map((name) =>
+      answer(name, name === "Chlorine" || name === "Fluorine" ? 8 : name === "Iodine" ? 6 : 1),
+    ),
+    context: "Group 17 is fluorine, chlorine, bromine, iodine, astatine, and tennessine. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 1,
+  },
+  {
+    id: "q-inv-towers",
+    prompt: "Name an alkali metal.",
+    entitySet: "elements",
+    accepted: ["Lithium", "Sodium", "Potassium", "Rubidium", "Cesium", "Francium"].map((name) =>
+      answer(name, name === "Sodium" || name === "Potassium" ? 8 : name === "Lithium" ? 6 : 1, name === "Cesium" ? ["Caesium"] : []),
+    ),
+    context: "The alkali metals are lithium, sodium, potassium, rubidium, caesium, and francium. Hydrogen is left off this list. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 1,
+  },
+  {
+    id: "q-land-older",
+    prompt: "Name a member of the Group of Seven.",
+    entitySet: "countries",
+    accepted: ["Canada", "France", "Germany", "Italy", "Japan", "United Kingdom", "United States"].map((name) =>
+      answer(name, name === "United States" || name === "France" ? 8 : 4, name === "United States" ? ["USA", "US", "America"] : name === "United Kingdom" ? ["UK", "Britain"] : []),
+    ),
+    context: "The G7 is Canada, France, Germany, Italy, Japan, the United Kingdom, and the United States. The European Union attends but is not a country on this list. Pending verification.",
+    sourceName: "Government of Canada: G7",
+    sourceUrl: "https://www.international.gc.ca/world-monde/international_relations-relations_internationales/g7/index.aspx",
+    license: "Government of Canada public information",
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-nat-heavy",
+    prompt: "Name a country in Oceania.",
+    entitySet: "countries",
+    accepted: ["Australia", "Fiji", "Kiribati", "Marshall Islands", "Micronesia", "Nauru", "New Zealand", "Palau", "Papua New Guinea", "Samoa", "Solomon Islands", "Tonga", "Tuvalu", "Vanuatu"].map(
+      (name) => answer(name, name === "Australia" ? 16 : name === "New Zealand" ? 8 : 1),
+    ),
+    context: "This sample accepts the sovereign states usually counted in Oceania, including Australia and New Zealand. Pending verification.",
+    sourceName: "Wikipedia: Oceania",
+    sourceUrl: "https://en.wikipedia.org/wiki/Oceania",
+    license: CC,
+    topic: "geography",
+    difficulty: 2,
+  },
+  {
+    id: "q-geo-canada",
+    prompt: "Name a permanent member of the United Nations Security Council.",
+    entitySet: "countries",
+    accepted: ["China", "France", "Russia", "United Kingdom", "United States"].map((name) =>
+      answer(
+        name,
+        6,
+        name === "United States" ? ["USA", "US", "America"] : name === "United Kingdom" ? ["UK", "Britain"] : name === "Russia" ? ["Russian Federation"] : name === "China" ? ["PRC"] : [],
+      ),
+    ),
+    context: "The five permanent members are China, France, Russia, the United Kingdom, and the United States. Pending verification.",
+    sourceName: "United Nations Security Council",
+    sourceUrl: "https://www.un.org/securitycouncil/content/current-members",
+    license: UN,
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-sci-melt",
+    prompt: "Name an alkaline earth metal.",
+    entitySet: "elements",
+    accepted: ["Beryllium", "Magnesium", "Calcium", "Strontium", "Barium", "Radium"].map((name) =>
+      answer(name, name === "Calcium" || name === "Magnesium" ? 8 : 2),
+    ),
+    context: "Group 2 is beryllium, magnesium, calcium, strontium, barium, and radium. Pending verification.",
+    sourceName: "Royal Society of Chemistry periodic table",
+    sourceUrl: "https://www.rsc.org/periodic-table",
+    license: "Royal Society of Chemistry periodic table",
+    topic: "science",
+    difficulty: 2,
+  },
+  {
+    id: "q-cul-premiere",
+    prompt: "Name a Nordic country.",
+    entitySet: "countries",
+    accepted: ["Denmark", "Finland", "Iceland", "Norway", "Sweden"].map((name) => answer(name, name === "Sweden" || name === "Norway" ? 8 : 4)),
+    context: "This sample treats the Nordic countries as Denmark, Finland, Iceland, Norway, and Sweden. Pending verification.",
+    sourceName: "Nordic Council",
+    sourceUrl: "https://www.norden.org/en/information/facts-about-nordic-countries",
+    license: "Nordic Council public information",
+    topic: "geography",
+    difficulty: 1,
+  },
+  {
+    id: "q-long-span",
+    prompt: "Name a sovereign country in the Caribbean.",
+    entitySet: "countries",
+    accepted: ["Antigua and Barbuda", "Bahamas", "Barbados", "Cuba", "Dominica", "Dominican Republic", "Grenada", "Haiti", "Jamaica", "Saint Kitts and Nevis", "Saint Lucia", "Saint Vincent and the Grenadines", "Trinidad and Tobago"].map(
+      (name) => answer(name, name === "Cuba" || name === "Jamaica" ? 8 : 2, name === "Bahamas" ? ["The Bahamas"] : []),
+    ),
+    context: "Sovereign Caribbean states only. Territories such as Puerto Rico are not countries on this list. Pending verification.",
+    sourceName: "Wikipedia: Caribbean",
+    sourceUrl: "https://en.wikipedia.org/wiki/Caribbean",
+    license: CC,
+    topic: "geography",
+    difficulty: 2,
+  },
 ];
 
-export const nameOneById = new Map(nameOneQuestions.map((item) => [item.id, item]));
+/** Every Classic question is a name-one question now. The base estimate, compare and rank rows stay as ids only. */
+export const allNameOne: NameOneSeed[] = [...nameOneQuestions, ...moreNameOne];
+
+export const nameOneById = new Map(allNameOne.map((item) => [item.id, item]));

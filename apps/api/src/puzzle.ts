@@ -1,11 +1,20 @@
+import { classicField } from "./field.js";
+import { joinLeague } from "./league.js";
 import {
   beatPercent,
   classicShareText,
   formatFactValue,
   formatFactor,
-  levelForClassicScore,
+  NAME_CAP,
+  CLASSIC_QUESTIONS,
+  classicStep,
+  levelForProgress,
+  placement,
+  raceCode,
+  reachedPhrase,
   puzzleNumber,
   puzzleSlot,
+  SEED_SLOTS,
   sliderRange,
   utcToday,
   zoomShareLine,
@@ -30,6 +39,13 @@ import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/s
 import { HttpError } from "./http.js";
 
 const MODE = "classic";
+
+/** Where a set of answers lives: today's Classic (key = the date) or a pack (key = "pack:<id>"). */
+export type AnswerScope = { key: string; mode: string };
+
+function classicScope(date: string): AnswerScope {
+  return { key: date, mode: MODE };
+}
 const SCALES = new Set<SliderScale>([
   "distance-km",
   "length-m",
@@ -99,7 +115,7 @@ export async function loadPuzzleResponse(
   const publicQuestions: PublicQuestion[] = [];
   for (const question of questions) {
     const existing = submissions.get(question.id);
-    const reveal = existing ? await revealFor(db, date, question, parseGuess(existing.guess_json)) : null;
+    const reveal = existing ? await revealFor(db, classicScope(date), question, parseGuess(existing.guess_json)) : null;
     publicQuestions.push(toPublic(question, reveal));
   }
   const number = puzzleNumber(date, epoch);
@@ -114,6 +130,7 @@ export async function loadPuzzleResponse(
     devDate,
     questions: publicQuestions,
     result: await dayResult(db, date, deviceId, number, shareHost, epoch),
+    field: await classicField(db, date, questions),
   };
 }
 
@@ -144,7 +161,7 @@ export async function submitGuess(
     .first<{ id: string }>();
   if (existing) throw new HttpError(409, "already_submitted");
 
-  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, date, question.id, null));
+  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, classicScope(date), question.id, null));
   try {
     await db
       .prepare(
@@ -184,7 +201,7 @@ export async function submitGuess(
   );
 
   await maybeFinish(db, date, deviceId, questions);
-  const reveal = await revealFor(db, date, question, guess);
+  const reveal = await revealFor(db, classicScope(date), question, guess);
   const number = puzzleNumber(date, epoch);
   return { reveal, result: await dayResult(db, date, deviceId, number, shareHost, epoch) };
 }
@@ -205,14 +222,14 @@ async function loadPuzzle(db: D1Database, date: string, epoch: string): Promise<
   }
   const next = await db
     .prepare("SELECT theme FROM puzzles WHERE slot = ?")
-    .bind((slot + 1) % 10)
+    .bind((slot + 1) % SEED_SLOTS)
     .first<{ theme: string }>();
   const questionIds = parseStringArray(puzzle.question_ids);
   const questions = await loadQuestions(db, questionIds);
   return { questions, theme: puzzle.theme, blurb: puzzle.blurb, nextTheme: next?.theme ?? puzzle.theme };
 }
 
-async function loadQuestions(db: D1Database, ids: string[]): Promise<PlayQuestion[]> {
+export async function loadQuestions(db: D1Database, ids: string[]): Promise<PlayQuestion[]> {
   if (ids.length === 0) throw new HttpError(500, "puzzle_missing");
   const questionRows = await db
     .prepare(`SELECT * FROM questions WHERE id IN (${placeholders(ids.length)})`)
@@ -264,7 +281,7 @@ async function loadQuestions(db: D1Database, ids: string[]): Promise<PlayQuestio
   });
 }
 
-function toPublic(question: PlayQuestion, reveal: Reveal | null): PublicQuestion {
+export function toPublic(question: PlayQuestion, reveal: Reveal | null): PublicQuestion {
   const items =
     question.type === "estimate"
       ? []
@@ -287,7 +304,7 @@ function toPublic(question: PlayQuestion, reveal: Reveal | null): PublicQuestion
   };
 }
 
-function validateGuess(question: PlayQuestion, guess: Guess): void {
+export function validateGuess(question: PlayQuestion, guess: Guess): void {
   if (guess.type !== question.type) throw new HttpError(400, "wrong_guess_type");
   if (guess.type === "estimate") {
     if (!(guess.value > 0) || !Number.isFinite(guess.value)) throw new HttpError(400, "invalid_guess");
@@ -295,6 +312,7 @@ function validateGuess(question: PlayQuestion, guess: Guess): void {
     return;
   }
   if (guess.type === "name_one") {
+    if (guess.timedOut === true) return;
     const text = guess.text.trim();
     if (text.length < 1 || text.length > 80) throw new HttpError(400, "invalid_guess");
     return;
@@ -309,9 +327,9 @@ function validateGuess(question: PlayQuestion, guess: Guess): void {
   }
 }
 
-async function revealFor(db: D1Database, date: string, question: PlayQuestion, guess: Guess): Promise<Reveal> {
-  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, date, question.id, guess));
-  const crowd = scored.named ?? (await crowdFor(db, date, question));
+export async function revealFor(db: D1Database, scope: AnswerScope, question: PlayQuestion, guess: Guess): Promise<Reveal> {
+  const scored = scoreClassicQuestion(question, guess, await otherGuesses(db, scope, question.id, guess));
+  const crowd = scored.named ?? (await crowdFor(db, scope, question));
   const rows = question.correctOrder.map((id) => {
     const item = question.items.find((candidate) => candidate.id === id);
     if (!item) throw new HttpError(500, "puzzle_missing");
@@ -366,7 +384,7 @@ async function revealFor(db: D1Database, date: string, question: PlayQuestion, g
   return {
     band: scored.band,
     emoji: BAND_EMOJI[scored.band],
-    label: question.type === "estimate" ? BAND_LABEL[scored.band] : plainLabel(scored.band),
+    label: question.type === "estimate" ? BAND_LABEL[scored.band] : question.type === "name_one" ? (scored.tier ?? scored.answerText) : plainLabel(scored.band),
     points: scored.points,
     answerText,
     detail,
@@ -374,7 +392,8 @@ async function revealFor(db: D1Database, date: string, question: PlayQuestion, g
     basePoints,
     confidenceDelta,
     bonusPoints: scored.bonusPoints,
-    provisional: date >= utcToday(),
+    // A pack has no reset: its rarity keeps moving as more players finish it.
+    provisional: scope.mode === MODE && scope.key >= utcToday(),
     context: question.context,
     sourceUrl: question.sourceUrl,
     sourceName: question.sourceName,
@@ -391,13 +410,13 @@ function plainLabel(band: Band): string {
   return "Not quite";
 }
 
-async function crowdFor(db: D1Database, date: string, question: ServerQuestion): Promise<CrowdStat> {
+async function crowdFor(db: D1Database, scope: AnswerScope, question: ServerQuestion): Promise<CrowdStat> {
   const rows = await db
     .prepare(
       `SELECT guess_json, band FROM submissions
        WHERE puzzle_date = ? AND mode = ? AND question_id = ?`,
     )
-    .bind(date, MODE, question.id)
+    .bind(scope.key, scope.mode, question.id)
     .all<{ guess_json: string; band: string }>();
   const submissions = rows.results.length;
   if (question.type === "estimate") {
@@ -435,6 +454,7 @@ async function maybeFinish(db: D1Database, date: string, deviceId: string, quest
     )
     .bind(deviceId, date, MODE, score, score, JSON.stringify(bands), new Date().toISOString())
     .run();
+  await joinLeague(db, deviceId, date);
 }
 
 async function dayResult(
@@ -458,22 +478,32 @@ async function dayResult(
   const scores = board.results.map((row) => row.score);
   const bands = parseStringArray(mine.bands) as Band[];
   const emojis = bands.map((band) => BAND_EMOJI[band]);
+  // The world named in the result is the one the scene flew to, so it adds up the same per-answer flights.
+  const mineRows = await db
+    .prepare("SELECT points FROM submissions WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
+    .bind(deviceId, date, MODE)
+    .all<{ points: number }>();
+  const climbed = (mineRows.results ?? []).reduce((sum, row) => sum + classicStep(row.points, NAME_CAP, CLASSIC_QUESTIONS), 0);
+  const reached = levelForProgress(climbed);
+  const race = raceCode("classic", number, climbed);
   return {
     score: mine.score,
     bands,
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(levelForClassicScore(mine.score))),
-    reached: levelForClassicScore(mine.score).name,
+    shareText: classicShareText(number, emojis, mine.score, shareHost, zoomShareLine(reached), race),
+    reached: reachedPhrase(reached),
     provisional: date >= utcToday(),
+    place: placement(mine.score, scores),
+    race,
   };
 }
 
-async function otherGuesses(db: D1Database, date: string, questionId: string, exclude: Guess | null): Promise<Guess[]> {
+export async function otherGuesses(db: D1Database, scope: AnswerScope, questionId: string, exclude: Guess | null): Promise<Guess[]> {
   const rows = await db
     .prepare("SELECT guess_json FROM submissions WHERE puzzle_date = ? AND mode = ? AND question_id = ?")
-    .bind(date, MODE, questionId)
+    .bind(scope.key, scope.mode, questionId)
     .all<{ guess_json: string }>();
   const guesses = rows.results.map((row) => parseGuess(row.guess_json));
   if (!exclude) return guesses;
@@ -501,13 +531,13 @@ async function submissionsFor(db: D1Database, date: string, deviceId: string): P
   return new Map(rows.results.map((row) => [row.question_id, row]));
 }
 
-function parseGuess(raw: string): Guess {
+export function parseGuess(raw: string): Guess {
   const parsed = JSON.parse(raw) as Guess;
   if (!parsed || typeof parsed !== "object" || !("type" in parsed)) throw new HttpError(500, "bad_submission");
   return parsed;
 }
 
-function parseStringArray(raw: string): string[] {
+export function parseStringArray(raw: string): string[] {
   const parsed = JSON.parse(raw) as unknown;
   if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
     throw new HttpError(500, "puzzle_missing");

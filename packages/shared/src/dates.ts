@@ -2,7 +2,7 @@
 export const DEFAULT_EPOCH = "2026-01-01";
 
 /** Sample seed length. Every UTC date maps onto one of these slots until a real calendar replaces it. */
-export const SEED_SLOTS = 10;
+export const SEED_SLOTS = 17;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -46,10 +46,11 @@ export function beatPercent(myScore: number, allScores: number[]): number {
   return Math.round((100 * lower) / (allScores.length - 1));
 }
 
+/** Classic scores run 0 to 700 (seven answers at up to 100), so each of the five buckets is 140 points wide. */
 export function distributionBucket(score: number): 0 | 1 | 2 | 3 | 4 {
-  if (score <= 20) return 0;
-  if (score <= 40) return 1;
-  if (score <= 60) return 2;
-  if (score <= 80) return 3;
+  if (score <= 140) return 0;
+  if (score <= 280) return 1;
+  if (score <= 420) return 2;
+  if (score <= 560) return 3;
   return 4;
 }

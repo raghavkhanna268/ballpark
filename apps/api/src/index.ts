@@ -3,6 +3,9 @@ import { finalizeYesterday } from "./finalize.js";
 import { clientIp, HttpError, json, requireDevice, withCors } from "./http.js";
 import { resolvePlayDate } from "./play-date.js";
 import { loadHeadToHead, pickHeadToHead, startPractice } from "./headtohead.js";
+import { loadLeague } from "./league.js";
+import { listPacks, loadPack, submitPackGuess } from "./packs.js";
+import { createOrder, plusStatus, requirePlus, testUnlock, verifyPayment, type PlusEnv } from "./plus.js";
 import { loadPuzzleResponse, questionsForDate, submitGuess } from "./puzzle.js";
 import { enforceRateLimit } from "./rate-limit.js";
 
@@ -31,6 +34,15 @@ export default {
       }
       if (url.pathname === "/api/head-to-head/practice" && request.method === "POST") {
         return withCors(await handlePractice(request, env, url));
+      }
+      if (url.pathname === "/api/league" && request.method === "GET") {
+        return withCors(await handleLeague(request, env, url));
+      }
+      if (url.pathname.startsWith("/api/plus")) {
+        return withCors(await handlePlus(request, env, url));
+      }
+      if (url.pathname === "/api/packs" || url.pathname.startsWith("/api/packs/")) {
+        return withCors(await handlePacks(request, env, url));
       }
       return withCors(json({ error: "not_found" }, 404));
     } catch (error) {
@@ -91,11 +103,12 @@ async function handleHeadPick(request: Request, env: Env, url: URL): Promise<Res
   await enforceRateLimit(env.DB, `post-ip:${clientIp(request)}`, IP_LIMIT);
   const { date } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
   const body = await readJson(request);
-  const record = body as { index?: unknown; choiceId?: unknown; direction?: unknown };
+  const record = body as { index?: unknown; choiceId?: unknown; direction?: unknown; timedOut?: unknown };
   if (typeof record.index !== "number") throw new HttpError(400, "invalid_guess");
   const choiceId = typeof record.choiceId === "string" ? record.choiceId : undefined;
   const direction = record.direction === "higher" || record.direction === "lower" ? record.direction : undefined;
-  return json(await pickHeadToHead(env.DB, date, deviceId, env.EPOCH, env.SHARE_HOST, record.index, { choiceId, direction }));
+  const timedOut = record.timedOut === true && choiceId === undefined && direction === undefined;
+  return json(await pickHeadToHead(env.DB, date, deviceId, env.EPOCH, env.SHARE_HOST, record.index, { choiceId, direction, timedOut }));
 }
 
 async function handlePractice(request: Request, env: Env, url: URL): Promise<Response> {
@@ -104,6 +117,62 @@ async function handlePractice(request: Request, env: Env, url: URL): Promise<Res
   await enforceRateLimit(env.DB, `post-ip:${clientIp(request)}`, IP_LIMIT);
   const { date } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
   return json({ round: await startPractice(env.DB, date, deviceId, env.EPOCH) });
+}
+
+async function handleLeague(request: Request, env: Env, url: URL): Promise<Response> {
+  const deviceId = requireDevice(request);
+  await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+  await enforceRateLimit(env.DB, `get-ip:${clientIp(request)}`, IP_LIMIT * 3);
+  const { date } = resolvePlayDate(url, env.ALLOW_DATE_OVERRIDE);
+  return json(await loadLeague(env.DB, deviceId, date));
+}
+
+async function handlePlus(request: Request, env: PlusEnv, url: URL): Promise<Response> {
+  const deviceId = requireDevice(request);
+  const ip = clientIp(request);
+  if (url.pathname === "/api/plus" && request.method === "GET") {
+    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+    await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+    return json(await plusStatus(env.DB, deviceId, env, url));
+  }
+  if (request.method !== "POST") throw new HttpError(404, "not_found");
+  // Payment calls get a tighter budget than guesses.
+  await enforceRateLimit(env.DB, `pay:${deviceId}`, 10);
+  await enforceRateLimit(env.DB, `pay-ip:${ip}`, 30);
+  const body = await readJson(request);
+  if (url.pathname === "/api/plus/order") return json(await createOrder(env.DB, deviceId, env, body));
+  if (url.pathname === "/api/plus/verify") return json(await verifyPayment(env.DB, deviceId, env, url, body));
+  if (url.pathname === "/api/plus/test-unlock") return json(await testUnlock(env.DB, deviceId, env, url, body));
+  throw new HttpError(404, "not_found");
+}
+
+const PACK_PATH = /^\/api\/packs\/([a-z0-9-]{2,24})(\/guess)?$/;
+
+async function handlePacks(request: Request, env: Env, url: URL): Promise<Response> {
+  const deviceId = requireDevice(request);
+  const ip = clientIp(request);
+  if (url.pathname === "/api/packs" && request.method === "GET") {
+    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+    await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+    return json(await listPacks(env.DB, deviceId));
+  }
+  const match = PACK_PATH.exec(url.pathname);
+  if (!match) throw new HttpError(404, "not_found");
+  const id = match[1]!;
+  if (!match[2] && request.method === "GET") {
+    await enforceRateLimit(env.DB, `get:${deviceId}`, DEVICE_LIMIT * 3);
+    await enforceRateLimit(env.DB, `get-ip:${ip}`, IP_LIMIT * 3);
+    await requirePlus(env.DB, deviceId);
+    return json(await loadPack(env.DB, id, deviceId, env.SHARE_HOST));
+  }
+  if (match[2] && request.method === "POST") {
+    await enforceRateLimit(env.DB, `post:${deviceId}`, DEVICE_LIMIT);
+    await enforceRateLimit(env.DB, `post-ip:${ip}`, IP_LIMIT);
+    await requirePlus(env.DB, deviceId);
+    const guess = await readGuess(request);
+    return json(await submitPackGuess(env.DB, id, deviceId, env.SHARE_HOST, guess.questionId, guess.guess));
+  }
+  throw new HttpError(404, "not_found");
 }
 
 async function readJson(request: Request): Promise<unknown> {

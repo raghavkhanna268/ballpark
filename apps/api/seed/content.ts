@@ -6,10 +6,14 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { COUNTRIES, ELEMENTS, METRIC_COPY, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { CLASSIC_QUESTIONS, COUNTRIES, ELEMENTS, METRIC_COPY, PACK_QUESTIONS, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
-import { nameOneById, type AcceptedSeed } from "./name-one.ts";
+import { funDays, funNameOne, packNameOne, packs, type SeedPack } from "./fun.ts";
+import { nameOneById, type AcceptedSeed, type NameOneSeed } from "./name-one.ts";
+import { moreBase } from "./seven.ts";
+
+export { packs, type SeedPack };
 
 export type SeedFact = {
   id: string;
@@ -291,7 +295,7 @@ const baseQuestions: SeedQuestion[] = [
   question("q-long-trenches", "Which ocean trench is deeper?", "compare", "higher", ["f-challenger", "f-puerto-rico"], ["f-puerto-rico", "f-challenger"], "Challenger Deep reaches about 10,935 m. The Puerto Rico Trench, the deepest part of the Atlantic, is about 8,400 m.", "NOAA Ocean Exploration", "https://oceanexplorer.noaa.gov/ocean-fact/ocean-depth/", PD, "geography", 2),
 ];
 
-export const questions: SeedQuestion[] = baseQuestions.map((item) => {
+const baseNamed: SeedQuestion[] = baseQuestions.map((item) => {
   const named = nameOneById.get(item.id);
   if (!named) return item;
   return {
@@ -313,20 +317,62 @@ export const questions: SeedQuestion[] = baseQuestions.map((item) => {
   };
 });
 
-const basePuzzles: SeedPuzzle[] = [
-  { slot: 0, theme: "Space", blurb: "Distances, sizes, and how long a year really is.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
-  { slot: 1, theme: "Planet Earth", blurb: "Peaks, seas, and the deepest place in the ocean.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
-  { slot: 2, theme: "The human body", blurb: "Bones, cells, and the long road through the gut.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
-  { slot: 3, theme: "Inventions", blurb: "Clocks, towers, and the machines that came after.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
-  { slot: 4, theme: "Landmarks", blurb: "A few thousand years of buildings, in order.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
-  { slot: 5, theme: "Living world", blurb: "Whales, wings, and how long a pregnancy can last.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
-  { slot: 6, theme: "Maps", blurb: "Countries, membership, and the size of a border.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
-  { slot: 7, theme: "Laboratory", blurb: "Melting points, a half-life, and the speed of sound.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
-  { slot: 8, theme: "Culture", blurb: "Books, premieres, paintings, and one very exact race.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
-  { slot: 9, theme: "Measured Earth", blurb: "The equator, the Moon, and the rocky planets.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
+const olderPuzzles: SeedPuzzle[] = [
+  { slot: 0, theme: "Space", blurb: "Planets, moons, moonwalkers, bright stars, constellations, and a couple of maps.", questionIds: ["q-space-moon", "q-space-giants", "q-space-orbits", "q-space-light", "q-space-year"] },
+  { slot: 1, theme: "Planet Earth", blurb: "High peaks, long rivers, five oceans, layers of sky, European seas, and some rare gases.", questionIds: ["q-earth-everest", "q-earth-seas", "q-earth-oceans", "q-earth-trench", "q-earth-peaks"] },
+  { slot: 2, theme: "The human body", blurb: "Bones, organs, muscles, hormones, the brain, and a little chemistry.", questionIds: ["q-body-bones", "q-body-lungs", "q-body-counts", "q-body-neurons", "q-body-gut"] },
+  { slot: 3, theme: "Inventions", blurb: "Old machines, strings, woodwinds, browsers, code, and some very small countries.", questionIds: ["q-inv-order", "q-inv-piano", "q-inv-towers", "q-inv-empire", "q-inv-first"] },
+  { slot: 4, theme: "Landmarks", blurb: "Wonders, Olympic cities, tall towers, pyramids, Disney castles, and the biggest countries.", questionIds: ["q-land-pyramid", "q-land-older", "q-land-timeline", "q-land-liberty", "q-land-statues"] },
+  { slot: 5, theme: "Living world", blurb: "Whales, wild cats, apes, sharks, flightless birds, and two maps.", questionIds: ["q-nat-whale", "q-nat-heavy", "q-nat-masses", "q-nat-wings", "q-nat-gestation"] },
+  { slot: 6, theme: "Maps", blurb: "Borders, flags, coastlines, the alphabet, and the Security Council.", questionIds: ["q-geo-un", "q-geo-canada", "q-geo-areas", "q-geo-russia", "q-geo-brazil"] },
+  { slot: 7, theme: "Laboratory", blurb: "Gases, coin metals, school lab kit, and elements named after places and people.", questionIds: ["q-sci-c14", "q-sci-melt", "q-sci-metals", "q-sci-sound", "q-sci-atomic"] },
+  { slot: 8, theme: "Culture", blurb: "Sports, paintings, plays, Hogwarts, World Cups, and the far north.", questionIds: ["q-cul-marathon", "q-cul-premiere", "q-cul-works", "q-cul-paintings", "q-cul-shakespeare"] },
+  { slot: 9, theme: "Measured Earth", blurb: "The equator, the tropics, Greenwich, deserts, the Caribbean, and the heavy end of the periodic table.", questionIds: ["q-long-equator", "q-long-span", "q-long-rocky", "q-long-elements", "q-long-trenches"] },
 ];
 
-export const puzzles = basePuzzles;
+/** Each older day gets its two extra questions from seven.ts on the end. */
+const basePuzzles: SeedPuzzle[] = olderPuzzles.map((item) => {
+  const more = moreBase[item.theme];
+  if (!more) throw new Error(`No extra questions for ${item.theme}`);
+  return { ...item, questionIds: [...item.questionIds, ...more.map((extra) => extra.id)] };
+});
+
+/** A name-one question that has no older numeric version to replace. */
+function fromNameOne(named: NameOneSeed): SeedQuestion {
+  return {
+    id: named.id,
+    prompt: named.prompt,
+    type: "name_one",
+    unit: null,
+    polarity: "higher",
+    scale: null,
+    factIds: [],
+    displayIds: [],
+    context: named.context,
+    sourceUrl: named.sourceUrl,
+    sourceName: named.sourceName,
+    retrievedAt: ON,
+    license: named.license,
+    topic: named.topic,
+    difficulty: named.difficulty,
+    verified: false,
+    accepted: named.accepted,
+    entitySet: named.entitySet,
+  };
+}
+
+export const questions: SeedQuestion[] = [
+  ...baseNamed,
+  ...Object.values(moreBase).flat().map(fromNameOne),
+  ...funNameOne.map(fromNameOne),
+  ...packNameOne.map(fromNameOne),
+];
+
+/** The fun week opens the rotation. The older themes follow it. */
+export const puzzles: SeedPuzzle[] = [
+  ...funDays.map((day, slot) => ({ slot, ...day })),
+  ...basePuzzles.map((item) => ({ ...item, slot: item.slot + funDays.length })),
+];
 
 export const facts: SeedFact[] = [
   ...baseFacts.map((item) => {
@@ -342,8 +388,10 @@ export function assertSeed(): void {
   if (factById.size !== facts.length) throw new Error("Duplicate fact id");
   const questionById = new Map(questions.map((item) => [item.id, item]));
   if (questionById.size !== questions.length) throw new Error("Duplicate question id");
-  if (questions.length !== 50) throw new Error(`Expected 50 questions, found ${questions.length}`);
-  if (puzzles.length !== 10) throw new Error("Expected 10 puzzles");
+  const expectedQuestions = SEED_SLOTS * CLASSIC_QUESTIONS + packs.length * PACK_QUESTIONS;
+  if (questions.length !== expectedQuestions) throw new Error(`Expected ${expectedQuestions} questions, found ${questions.length}`);
+  if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
+  if (packs.length !== 3) throw new Error("Expected 3 packs");
 
   for (const item of facts) {
     if (item.verified !== false) throw new Error(`${item.id} must stay unverified in the sample`);
@@ -358,7 +406,25 @@ export function assertSeed(): void {
   for (const puzzle of puzzles) {
     if (seenSlots.has(puzzle.slot)) throw new Error(`Duplicate slot ${puzzle.slot}`);
     seenSlots.add(puzzle.slot);
-    if (puzzle.questionIds.length !== 5) throw new Error(`${puzzle.theme} does not have 5 questions`);
+  }
+  const seenPacks = new Set<string>();
+  for (const pack of packs) {
+    if (!/^[a-z0-9-]{2,24}$/.test(pack.id)) throw new Error(`Pack id ${pack.id} must be short lowercase words`);
+    if (seenPacks.has(pack.id)) throw new Error(`Duplicate pack ${pack.id}`);
+    seenPacks.add(pack.id);
+  }
+  // Every question plays in exactly one daily puzzle or one pack, so a pack never repeats a daily question.
+  const rounds = [
+    ...puzzles.map((item) => ({ theme: item.theme, questionIds: item.questionIds, size: CLASSIC_QUESTIONS })),
+    ...packs.map((item) => ({ theme: item.title, questionIds: item.questionIds, size: PACK_QUESTIONS })),
+  ];
+  const placed = new Set<string>();
+  for (const puzzle of rounds) {
+    if (puzzle.questionIds.length !== puzzle.size) throw new Error(`${puzzle.theme} does not have ${puzzle.size} questions`);
+    for (const questionId of puzzle.questionIds) {
+      if (placed.has(questionId)) throw new Error(`${questionId} is used twice`);
+      placed.add(questionId);
+    }
     const usedFacts = new Set<string>();
     const types = new Set<string>();
     for (const questionId of puzzle.questionIds) {
@@ -389,18 +455,31 @@ export function assertSeed(): void {
         const units = new Set(item.factIds.map((id) => factById.get(id)!.unit));
         if (units.size !== 1) throw new Error(`${item.id} mixes units`);
       } else if (item.type === "name_one") {
-        if (item.factIds.length !== 0 || !item.entitySet || !item.accepted || item.accepted.length < 5) {
+        if (item.factIds.length !== 0 || !item.accepted || item.accepted.length < 5) {
           throw new Error(`${item.id} is a bad name-one question`);
         }
         const names = new Set(item.accepted.map((answer) => answer.canonical));
         if (names.size !== item.accepted.length) throw new Error(`${item.id} repeats a canonical answer`);
-        const suggestions = new Set(suggestionsFor(item.entitySet));
-        const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
-        if (suggestions.size !== pool.length) throw new Error(`${item.id} suggestions drifted`);
+        const spellings = new Map<string, string>();
+        for (const answer of item.accepted) {
+          for (const name of [answer.canonical, ...answer.aliases]) {
+            const key = normalizeAnswer(name);
+            const owner = spellings.get(key);
+            if (owner && owner !== answer.canonical) throw new Error(`${item.id} gives "${name}" to two answers`);
+            spellings.set(key, answer.canonical);
+          }
+        }
+        // Free-text questions have no autocomplete. A list of only the right answers would give them away.
+        const suggestions = item.entitySet ? new Set(suggestionsFor(item.entitySet)) : null;
+        if (suggestions) {
+          const pool = item.entitySet === "countries" ? COUNTRIES : ELEMENTS;
+          if (suggestions.size !== pool.length) throw new Error(`${item.id} suggestions drifted`);
+        }
+        const promptWords = ` ${normalizeAnswer(item.prompt)} `;
         for (const answer of item.accepted) {
           if (!(answer.prior > 0)) throw new Error(`${item.id} needs a positive prior`);
-          if (!suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
-          if (item.prompt.toLowerCase().includes(answer.canonical.toLowerCase())) {
+          if (suggestions && !suggestions.has(answer.canonical)) throw new Error(`${item.id} hides ${answer.canonical} from autocomplete`);
+          if (promptWords.includes(` ${normalizeAnswer(answer.canonical)} `)) {
             throw new Error(`${item.id} prompt contains ${answer.canonical}`);
           }
         }
@@ -408,9 +487,11 @@ export function assertSeed(): void {
         throw new Error(`${item.id} rank needs 3 or 4 facts`);
       }
     }
-    for (const required of ["estimate", "compare", "rank", "name_one"]) {
-      if (!types.has(required)) throw new Error(`${puzzle.theme} is missing ${required}`);
-    }
+    // Classic is open answers only: every question is "name one", scored by how rare the answer is.
+    if (types.size !== 1 || !types.has("name_one")) throw new Error(`${puzzle.theme} must be all name-one questions`);
   }
-  if (seenSlots.size !== 10) throw new Error("Slots must be 0 through 9");
+  if (placed.size !== questions.length) throw new Error("Every question needs a puzzle or a pack");
+  for (let slot = 0; slot < SEED_SLOTS; slot += 1) {
+    if (!seenSlots.has(slot)) throw new Error(`Slots must be 0 through ${SEED_SLOTS - 1}`);
+  }
 }

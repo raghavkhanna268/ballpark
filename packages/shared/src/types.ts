@@ -106,6 +106,8 @@ export type RankGuess = {
 export type NameGuess = {
   type: "name_one";
   text: string;
+  /** The 30-second timer ran out. Scores zero. */
+  timedOut?: boolean;
 };
 
 export type Guess = EstimateGuess | CompareGuess | RankGuess | NameGuess;
@@ -164,6 +166,10 @@ export type DayResult = {
   shareText: string;
   reached: string;
   provisional: boolean;
+  /** Your rank among today's finishers, and the gap to the next rank up. */
+  place: import("./compete.js").Placement;
+  /** The race code in the share link, so the client can show it. */
+  race: string;
 };
 
 export type PuzzleResponse = {
@@ -177,6 +183,8 @@ export type PuzzleResponse = {
   devDate: boolean;
   questions: PublicQuestion[];
   result: DayResult | null;
+  /** Finished Classic runs today, as distances along the journey. */
+  field: import("./scale.js").FieldStats;
 };
 
 export type GuessResponse = {

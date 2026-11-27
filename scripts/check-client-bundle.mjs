@@ -4,7 +4,7 @@ import { join } from "node:path";
 const sql = readFileSync("apps/api/seed/seed.sql", "utf8");
 const numbers = new Set();
 for (const match of sql.matchAll(/\b\d{5,}\b/g)) numbers.add(match[0]);
-const phrases = ["Dunstable", "Challenger Deep", "Azevedo", "Stockton and Darlington", "384,400"];
+const phrases = ["Dunstable", "Challenger Deep", "Azevedo", "Stockton and Darlington", "384,400", "12,756", "4,806", "puggles", "Hans Island", "Oliver Smoot", "Cow corner"];
 
 function files(dir) {
   const found = [];

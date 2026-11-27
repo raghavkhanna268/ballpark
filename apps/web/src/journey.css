@@ -1,0 +1,947 @@
+.stage {
+  /* Blueprint theme: the card below the scene uses the same ink as the world. */
+  --paper: #0a1020;
+  --card: #111a2c;
+  --ink: #e8f1ff;
+  --muted: #8b9ab5;
+  --line: #24324a;
+  --tide: #ffb347;
+  --tide-ink: #1a1206;
+  --clay: #ffb347;
+  --good: rgba(110, 231, 183, 0.12);
+  --good-ink: #8ef0c4;
+  --close: rgba(255, 211, 106, 0.12);
+  --close-ink: #ffd36a;
+  --off: rgba(143, 211, 255, 0.12);
+  --off-ink: #8fd3ff;
+  --far: rgba(255, 168, 120, 0.12);
+  --far-ink: #ffb08a;
+  --miss: rgba(255, 255, 255, 0.06);
+  --miss-ink: #c4ccda;
+  --line-art: #8fd3ff;
+  --amber: #ffb347;
+  /* Game layer: a display face for numbers and call-outs, and neon glows in the Blueprint colours. */
+  --display: Orbitron, Outfit, "Avenir Next", sans-serif;
+  --glow-amber: 0 0 6px rgba(255, 179, 71, 0.85), 0 0 18px rgba(255, 179, 71, 0.45);
+  --glow-cyan: 0 0 6px rgba(143, 211, 255, 0.8), 0 0 16px rgba(143, 211, 255, 0.35);
+  --miss-red: #ff7a66;
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #070b16;
+  color: var(--ink);
+}
+.mono, .stage .mono { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace; }
+
+/* ---------- the scene ---------- */
+/* The climb fills the whole screen, behind everything. The card floats over its top, and the climber flies in the
+   open sky under the card. --sheet-bottom is where the card ends, set by Journey as the card changes size. */
+.scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0a1020;
+}
+/* When the card changes height, the world glides to its new place instead of jumping. */
+.stage.settling .layer, .stage.settling .explorer { transition: transform 0.42s cubic-bezier(0.3, 0.7, 0.2, 1); }
+.layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: block;
+  will-change: transform;
+  pointer-events: none;
+}
+.layer.front { z-index: 4; }
+/* Fades the world out under the heads-up display so the title never fights the art. */
+.scene::after {
+  content: "";
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 100px;
+  background: linear-gradient(to bottom, rgba(7, 11, 22, 0.97), rgba(7, 11, 22, 0.85) 55%, rgba(7, 11, 22, 0));
+  pointer-events: none;
+}
+/* Faint scanlines over the sky, like an old arcade screen. */
+.scene::before {
+  content: "";
+  position: absolute;
+  z-index: 5;
+  inset: 0;
+  background: repeating-linear-gradient(to bottom, rgba(143, 211, 255, 0) 0 3px, rgba(143, 211, 255, 0.035) 3px 4px);
+  pointer-events: none;
+}
+
+.route-trace { fill: none; stroke: var(--amber); stroke-width: 2; stroke-dasharray: 4 7; stroke-linecap: round; opacity: 0.95; filter: drop-shadow(0 0 3px rgba(255, 179, 71, 0.9)); }
+.route-trace.stumble { stroke: #ff7a66; filter: drop-shadow(0 0 3px rgba(255, 122, 102, 0.9)); }
+
+.ghost path, .ghost circle { stroke: currentColor; }
+.ghost text { fill: currentColor; letter-spacing: 1px; }
+.ghost.best { color: rgba(232, 241, 255, 0.75); }
+.ghost.average { color: rgba(143, 211, 255, 0.7); }
+.ghost.top { color: rgba(255, 179, 71, 0.75); }
+.ghost.friend { color: #ff9ad5; }
+.ghost { opacity: 0.85; }
+
+/* ---------- the climber ---------- */
+.explorer {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  top: 0;
+  width: 72px;
+  height: 90px;
+  will-change: transform;
+  pointer-events: none;
+}
+.climber { display: block; overflow: visible; filter: drop-shadow(0 0 3px rgba(143, 211, 255, 0.55)); }
+.climber .suit { fill: #0e1830; stroke: #e8f1ff; stroke-width: 1.6; }
+.climber .limb { fill: none; stroke: #e8f1ff; stroke-width: 3.2; stroke-linecap: round; }
+.climber .pack { fill: #0e1830; stroke: var(--line-art); stroke-width: 1.4; }
+.climber .panel { fill: var(--amber); }
+.climber .cap { fill: var(--amber); }
+.climber .goggle { fill: #0e1830; stroke: var(--amber); stroke-width: 1.4; }
+.climber .visor { fill: var(--amber); fill-opacity: 0.85; stroke: #fff2d6; stroke-width: 1; }
+.climber .glint { fill: #fff6e0; }
+.climber .head-astro { display: none; }
+.explorer.suited .head-astro { display: inline; }
+.explorer.suited .head-pilot { display: none; }
+.climber .flame path { fill: var(--amber); transform-box: fill-box; transform-origin: center top; transform: scaleY(0.35); opacity: 0.8; animation: flicker 0.18s ease-in-out infinite alternate; }
+.explorer.voyage .flame path, .explorer.replay .flame path { transform: scaleY(1.25); opacity: 1; animation-name: roar; }
+.explorer.stumble .flame path { fill: #ff7a66; animation: sputter 0.3s steps(2, end) infinite; }
+/* Rarer answers burn hotter: a Liftoff is a normal flame, a Supernova a long white-hot one. */
+.explorer.boost-3 .flame path { animation-name: roar-3; }
+.explorer.boost-4 .flame path { animation-name: roar-4; fill: #ffd27a; }
+.explorer.boost-5 .flame path { animation-name: roar-5; fill: #fff1c9; filter: drop-shadow(0 0 6px #ffb347); }
+.explorer.stumble .suit, .explorer.stumble .limb { stroke: #ffb0a2; }
+.explorer.idle .climber { animation: hover 2.6s ease-in-out infinite; }
+
+.smoke i {
+  position: absolute;
+  left: 28px;
+  top: 70px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(196, 204, 218, 0.8);
+  opacity: 0;
+  animation: smoke 0.9s ease-out forwards;
+}
+
+.speedlines { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.25s; }
+.stage.is-voyage .speedlines { opacity: 1; }
+.speedlines i {
+  position: absolute;
+  top: -40%;
+  width: 1px;
+  height: 30%;
+  background: linear-gradient(0deg, rgba(143, 211, 255, 0), rgba(143, 211, 255, 0.7));
+  animation: streak 0.42s linear infinite;
+}
+
+.miss-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px rgba(255, 122, 102, 0.9), inset 0 0 70px rgba(255, 122, 102, 0.35);
+  animation: pulsefade 0.9s ease-out forwards;
+}
+.stage.is-stumble .scene { animation: shake 0.5s linear; }
+
+/* Pop-ups: a glowing call-out for each answer, with a punch-in like a game. */
+.toast {
+  position: absolute;
+  z-index: 7;
+  left: 50%;
+  top: calc(var(--sheet-bottom, 120px) + max(52px, (100% - var(--sheet-bottom, 120px)) * 0.14));
+  isolation: isolate;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 18px;
+  border: 1px solid rgba(143, 211, 255, 0.6);
+  background: rgba(10, 16, 32, 0.86);
+  box-shadow: var(--glow-cyan);
+  color: var(--ink);
+  white-space: nowrap;
+  animation: toast 2.2s ease forwards;
+}
+.toast strong { font-family: var(--display); font-weight: 900; font-size: 1rem; letter-spacing: 0.12em; text-transform: uppercase; }
+.toast span { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--line-art); }
+.toast.pass, .toast.space { border-color: var(--amber); box-shadow: var(--glow-amber); }
+.toast.pass span, .toast.space span { color: var(--amber); }
+/* An answer's tier: big glowing type and no box, with rays behind the rare ones. */
+.toast.tier { border: none; background: none; box-shadow: none; padding: 6px 10px; animation-name: toast-punch; }
+.toast.tier strong { font-size: 1.75rem; letter-spacing: 0.1em; color: #fff4dc; text-shadow: var(--glow-amber), 0 0 34px rgba(255, 179, 71, 0.35); }
+.toast.tier span { font-size: 0.82rem; color: var(--amber); text-shadow: 0 0 8px rgba(255, 179, 71, 0.6); }
+.toast.tier.level-1 strong, .toast.tier.level-2 strong { font-size: 1.45rem; color: #e8f6ff; text-shadow: var(--glow-cyan); }
+.toast.tier.level-1 span, .toast.tier.level-2 span { color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
+.toast.tier.level-5 strong { font-size: 2rem; color: #ffffff; text-shadow: 0 0 6px #fff1c9, 0 0 16px var(--amber), 0 0 40px rgba(255, 179, 71, 0.7); }
+.toast.tier.level-4::before, .toast.tier.level-5::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  left: 50%;
+  top: 50%;
+  width: 240px;
+  height: 240px;
+  margin: -120px 0 0 -120px;
+  border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 179, 71, 0.22) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
+  mask: radial-gradient(circle, #000 18%, rgba(0, 0, 0, 0) 66%);
+  animation: spin 8s linear infinite;
+}
+.toast.tier.level-5::before { background: repeating-conic-gradient(rgba(255, 241, 201, 0.32) 0 7deg, rgba(255, 179, 71, 0) 7deg 20deg); }
+.toast.miss { border-color: rgba(255, 122, 102, 0.7); box-shadow: 0 0 6px rgba(255, 122, 102, 0.7), 0 0 18px rgba(255, 122, 102, 0.3); }
+.toast.miss strong { color: var(--miss-red); font-size: 1.3rem; text-shadow: 0 0 8px rgba(255, 122, 102, 0.7); }
+.toast.miss span { color: #ffb0a2; }
+
+/* The points lift off the pop-up and fly into the score, top right. */
+.fly {
+  position: absolute;
+  z-index: 9;
+  right: 18px;
+  top: 16px;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.1rem;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  pointer-events: none;
+  animation: fly 1.35s cubic-bezier(0.55, 0, 0.35, 1) forwards;
+}
+
+/* ---------- heads-up display ---------- */
+.hud {
+  position: absolute;
+  z-index: 7;
+  top: 8px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.hud-side { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; max-width: 58%; }
+.hud-side.end { align-items: flex-end; text-align: right; max-width: 46%; }
+.where, .rival, .scorebox, .combo { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.where { animation: arrive 0.5s ease; }
+.where .power { font-family: var(--display); font-weight: 700; font-size: 0.72rem; letter-spacing: 0.1em; color: var(--line-art); text-shadow: 0 0 8px rgba(143, 211, 255, 0.6); }
+.where .place { font-size: 1.05rem; font-weight: 600; letter-spacing: 0.14em; line-height: 1.2; text-transform: uppercase; color: var(--ink); }
+.scorebox { align-items: flex-end; }
+.scorebox small, .rival small { font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); }
+.scorebox strong { font-family: var(--display); font-weight: 900; font-size: 1.45rem; line-height: 1; letter-spacing: 0.06em; color: var(--amber); text-shadow: var(--glow-amber); font-variant-numeric: tabular-nums; }
+.scorebox.counting strong { color: #fff4dc; animation: score-pulse 0.3s ease-in-out infinite alternate; }
+.combo {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-art);
+  border-radius: 999px;
+  background: rgba(10, 16, 32, 0.7);
+  box-shadow: var(--glow-cyan);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line-art);
+  animation: combo-in 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+.combo b { font-size: 0.85rem; font-weight: 900; color: #e8f6ff; }
+/* The combo meter and "Next to beat" sit at the top of the open sky, just under the card. */
+.sky-tags {
+  position: absolute;
+  z-index: 7;
+  top: calc(var(--sheet-bottom, 120px) + 10px);
+  left: 14px;
+  right: 52px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  pointer-events: none;
+}
+.sky-tags > div:last-child { display: flex; justify-content: flex-end; min-width: 0; }
+.rival { align-items: flex-end; text-align: right; padding: 4px 8px; border-radius: 6px; background: rgba(7, 11, 22, 0.55); animation: arrive 0.5s ease; }
+.rival span { font-size: 0.74rem; font-weight: 600; color: var(--ink); line-height: 1.25; }
+.rival em { font-style: normal; font-family: var(--display); font-weight: 700; font-size: 0.64rem; color: var(--line-art); }
+.rival.done small { color: var(--amber); }
+
+/* A vertical altimeter on the right edge: ground at the bottom, the Milky Way at the top. */
+.altimeter {
+  position: absolute;
+  z-index: 7;
+  right: 12px;
+  top: calc(var(--sheet-bottom, 120px) + 14px);
+  bottom: 66px;
+  width: 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
+.alt-end { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.58rem; color: rgba(143, 211, 255, 0.7); white-space: nowrap; }
+.alt-line { position: relative; flex: 1; width: 1px; background: rgba(143, 211, 255, 0.35); }
+.alt-line b { position: absolute; left: -1px; bottom: 0; width: 3px; background: var(--amber); box-shadow: 0 0 8px rgba(255, 179, 71, 0.8); }
+.alt-line i { position: absolute; left: -4px; width: 9px; height: 1px; background: rgba(143, 211, 255, 0.55); }
+.alt-line i.passed { background: var(--amber); }
+.alt-line i.space { left: -8px; width: 17px; background: rgba(255, 179, 71, 0.7); }
+.alt-line u { position: absolute; left: 5px; width: 0; height: 0; margin-bottom: -4px; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid; }
+.alt-line u.best { color: #e8f1ff; }
+.alt-line u.average { color: var(--line-art); }
+.alt-line u.top { color: var(--amber); }
+.alt-line u.friend { color: #ff9ad5; }
+.alt-line em {
+  position: absolute;
+  left: -5px;
+  width: 11px;
+  height: 11px;
+  margin-bottom: -5px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.25), 0 0 12px rgba(255, 179, 71, 0.9);
+}
+.sound-toggle {
+  position: absolute;
+  z-index: 7;
+  left: 14px;
+  bottom: 18px;
+  border: 1px solid rgba(143, 211, 255, 0.3);
+  border-radius: 999px;
+  background: rgba(10, 16, 32, 0.6);
+  color: rgba(143, 211, 255, 0.85);
+  padding: 2px 10px;
+  font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace;
+  font-size: 0.62rem;
+}
+
+/* ---------- world animation ---------- */
+.bob-slow { animation: float 4s ease-in-out infinite; }
+.drift { animation: float 6s ease-in-out infinite; }
+.twinkle { animation: twinkle 2.4s ease-in-out infinite; }
+.galaxy-spin { animation: spin 90s linear infinite; }
+
+/* ---------- the question card ---------- */
+/* The card floats over the top of the scene, under the heads-up strip. It is sized to fit a phone screen without
+   scrolling. Only a very short window (a landscape phone, an open keyboard on Android) lets it scroll inside. */
+.sheet {
+  position: absolute;
+  z-index: 8;
+  top: 50px;
+  left: 0;
+  right: 0;
+  max-height: calc(100% - 58px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  padding: 0 10px;
+  pointer-events: none;
+}
+.sheet::-webkit-scrollbar { display: none; }
+.sheet main { pointer-events: auto; }
+.stage main { width: min(520px, 100%); margin: 0 auto; padding: 0; background: transparent; }
+.sheet footer { display: none; }
+.sheet .stack, .sheet .end {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 12px 14px 14px;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.4);
+}
+.sheet .stack { gap: 8px; }
+.sheet .wordmark { font-size: 2.2rem; }
+.sheet .prompt { font-size: 1.1rem; margin: 0; }
+.sheet .choice { min-height: 44px; padding: 8px 12px; font-size: 1rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); color: var(--ink); }
+.sheet .choice.selected { background: rgba(255, 179, 71, 0.12); }
+.sheet .choices, .sheet .guess-form { gap: 6px; }
+.sheet .card { background: transparent; border: none; padding: 4px 0; }
+.sheet .reveal { width: 100%; padding: 12px 14px; }
+.sheet .reveal .emoji { margin: 0; }
+.sheet .reveal h2 { margin: 2px 0; }
+.sheet .reveal.slim { padding: 8px 12px; }
+.sheet .reveal.slim h2 { margin: 0; font-size: 1rem; }
+.sheet .type-kicker, .sheet .practice-flag { margin: 0; }
+.sheet .primary { min-height: 42px; padding: 8px 14px; }
+.sheet .number-field { padding: 2px 12px; border-radius: 12px; }
+.sheet .number-field input { font-size: 1.25rem; padding: 4px 0; }
+.sheet .log-line { gap: 2px; }
+.sheet .log-zoom button { min-height: 28px; font-size: 0.78rem; }
+.sheet .confidence legend { font-size: 0.72rem; margin-bottom: 4px; line-height: 1.3; }
+.sheet .confidence label { padding: 6px 4px; }
+.sheet .share-card { background: rgba(255, 255, 255, 0.04); color: var(--ink); }
+.h2h-count.bump { animation: pop 0.45s ease; }
+
+/* Points by rarity, shown under a name-one prompt. Common on the left, Legendary on the right. */
+.tier-ladder { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; margin: 0; padding: 0; list-style: none; }
+.tier-ladder li { display: grid; gap: 1px; padding: 4px 2px; border: 1px solid var(--line); border-radius: 8px; text-align: center; line-height: 1.1; }
+.tier-ladder b { font-family: ui-monospace, "SFMono-Regular", Menlo, monospace; font-size: 0.82rem; color: var(--ink); }
+.tier-ladder span { font-size: 0.6rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted, rgba(232, 241, 255, 0.6)); }
+.tier-ladder li:nth-child(4), .tier-ladder li:nth-child(5) { border-color: rgba(255, 179, 71, 0.55); }
+.tier-ladder li:nth-child(5) b { color: var(--tide); }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes float { 50% { transform: translateY(-8px); } }
+@keyframes twinkle { 50% { opacity: 0.25; } }
+@keyframes hover { 50% { transform: translateY(-5px); } }
+@keyframes ping { 0% { transform: scale(0.7); stroke-opacity: 0.5; } 100% { transform: scale(1.5); stroke-opacity: 0; } }
+@keyframes flicker { to { transform: scaleY(0.5); } }
+@keyframes roar { from { transform: scaleY(1.05); } to { transform: scaleY(1.45); } }
+@keyframes roar-3 { from { transform: scaleY(1.35); } to { transform: scaleY(1.8); } }
+@keyframes roar-4 { from { transform: scaleX(1.15) scaleY(1.7); } to { transform: scaleX(1.2) scaleY(2.2); } }
+@keyframes roar-5 { from { transform: scaleX(1.3) scaleY(2.1); } to { transform: scaleX(1.4) scaleY(2.8); } }
+@keyframes sputter { 0% { opacity: 0.9; } 50% { opacity: 0.05; } }
+@keyframes smoke { 0% { opacity: 0.9; transform: translate(0, 0) scale(0.5); } 100% { opacity: 0; transform: translate(-14px, 46px) scale(2); } }
+@keyframes streak { from { transform: translateY(0); } to { transform: translateY(520%); } }
+@keyframes pulsefade { from { opacity: 1; } to { opacity: 0; } }
+@keyframes shake { 15% { transform: translateX(-6px); } 30% { transform: translateX(6px); } 45% { transform: translateX(-4px); } 60% { transform: translateX(4px); } 80% { transform: translateX(-2px); } }
+@keyframes arrive { 0% { opacity: 0.2; transform: translateY(-4px); } 100% { opacity: 1; transform: none; } }
+@keyframes toast { 0% { opacity: 0; transform: translate(-50%, 8px); } 12% { opacity: 1; transform: translate(-50%, 0); } 80% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes pop { 40% { transform: scale(1.45); } }
+@keyframes toast-punch {
+  0% { opacity: 0; transform: translateX(-50%) scale(0.3); }
+  9% { opacity: 1; transform: translateX(-50%) scale(1.22); }
+  16% { transform: translateX(-50%) scale(0.94); }
+  22% { transform: translateX(-50%) scale(1); }
+  80% { opacity: 1; transform: translateX(-50%) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-10px) scale(1); }
+}
+@keyframes fly {
+  0%, 24% { opacity: 0; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 140px)) scale(0.8); }
+  34% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 122px)) scale(1.6); }
+  44% { opacity: 1; transform: translate(calc(-50vw + 46px), calc(var(--sheet-bottom, 120px) + 118px)) scale(1.6); }
+  82% { opacity: 1; transform: translate(0, 0) scale(0.9); }
+  100% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+}
+@keyframes score-pulse { from { transform: scale(1); } to { transform: scale(1.08); } }
+@keyframes combo-in { 0% { opacity: 0; transform: scale(0.4); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes blink { 50% { opacity: 0.25; } }
+@keyframes tally-in { from { opacity: 0; transform: translateX(-10px); } to { opacity: 1; transform: none; } }
+@keyframes ready { 50% { box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 26px rgba(255, 179, 71, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.55); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .bob-slow, .drift, .twinkle, .galaxy-spin, .explorer .climber, .climber .flame path, .smoke i, .speedlines i,
+  .miss-flash, .where, .toast, .stage.is-stumble .scene, .toast.tier::before, .combo, .scorebox strong, .timer-track i,
+  .tally li, .mission, .sheet .mode-card .primary { animation: none; }
+  .scene { transition: none; }
+}
+.sheet .bar-track { background: rgba(255, 255, 255, 0.05); }
+
+/* ---------- logbook ---------- */
+.logbook { display: flex; flex-direction: column; gap: 10px; }
+.sheet .logbook { border-top: 1px solid var(--line); border-radius: 0; padding-top: 12px; }
+.log-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.log-stats p { margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.log-stats .mono { font-size: 1.05rem; color: var(--amber); }
+.log-stats small { font-size: 0.7rem; color: var(--muted); }
+.world-strip { list-style: none; display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin: 0; padding: 0; }
+.world-strip li { height: 6px; border: 1px solid rgba(143, 211, 255, 0.35); }
+.world-strip li.on { background: var(--amber); border-color: var(--amber); }
+.finds { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.finds li { display: grid; grid-template-columns: auto auto 1fr; gap: 2px 8px; align-items: baseline; font-size: 0.85rem; }
+.finds strong { color: var(--ink); }
+.finds em { font-style: normal; font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--amber); }
+.finds span { grid-column: 1 / -1; color: var(--muted); font-size: 0.75rem; }
+
+/* ---------- question timer ---------- */
+/* Ten blocks that go dark one by one, every three seconds, and turn red for the last ten. */
+.timer { display: flex; align-items: center; gap: 10px; }
+.timer-track { flex: 1; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); gap: 3px; }
+.timer-track i { height: 8px; border-radius: 1px; background: rgba(143, 211, 255, 0.12); transition: background 0.2s, box-shadow 0.2s; }
+.timer-track i.on { background: var(--line-art); box-shadow: 0 0 6px rgba(143, 211, 255, 0.7); }
+.timer .mono { font-family: var(--display); font-weight: 700; font-size: 0.78rem; color: var(--line-art); min-width: 2.6em; text-align: right; }
+.timer.low .timer-track i.on { background: var(--miss-red); box-shadow: 0 0 6px rgba(255, 122, 102, 0.8); }
+.timer.low .timer-track i.on:last-of-type, .timer.low .timer-track i.on:has(+ i:not(.on)) { animation: blink 0.5s steps(2, end) infinite; }
+.timer.low .mono, .timer.out .mono { color: var(--miss-red); text-shadow: 0 0 8px rgba(255, 122, 102, 0.6); }
+
+/* ---------- rivals: rank, friend races, weekly league ---------- */
+.rank-block { display: flex; flex-direction: column; gap: 4px; }
+.rank-block h2 span { color: var(--muted); font-size: 1.1rem; letter-spacing: 0; }
+.friend-line, .league-line { margin: 0; padding: 8px 10px; border-left: 2px solid #ff9ad5; background: rgba(255, 154, 213, 0.08); font-size: 0.9rem; }
+.friend-line.won { border-color: var(--amber); background: rgba(255, 179, 71, 0.1); }
+.league-line { border-color: var(--line-art); background: rgba(143, 211, 255, 0.08); }
+.shield-line { margin: 0; color: var(--amber); font-size: 0.85rem; }
+.race-card { border: 1px solid #ff9ad5; }
+.race-card h2 { margin: 0; font-size: 1.15rem; }
+.race-card .kicker { color: #ff9ad5; }
+.league { display: flex; flex-direction: column; gap: 10px; }
+.league-moved { margin: 0; font-size: 0.85rem; color: var(--muted); }
+.league-moved.up { color: var(--amber); }
+.league-table { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.league-table li { display: grid; grid-template-columns: 2em 1fr auto; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid rgba(143, 211, 255, 0.12); font-size: 0.85rem; }
+.league-table li.you { color: var(--amber); }
+.league-table li.you strong { color: var(--amber); }
+.league-table li.cut { border-bottom: 1px dashed var(--amber); }
+.league-table strong { font-weight: 500; color: var(--ink); }
+.league-table .mono { color: var(--muted); }
+.league-table li.you .mono { color: var(--amber); }
+.streak .shield { color: var(--muted); font-weight: 400; }
+.streak .shield.ready, .streak .shield.saved { color: var(--amber); }
+
+/* ---------- Ballpark+: packs, the pass page, ad spaces ---------- */
+.plus-tag { margin: 0; font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); }
+.packs-card { display: flex; flex-direction: column; gap: 10px; }
+.pack-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.pack-row { width: 100%; display: grid; grid-template-columns: 2.2em 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; text-align: left; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font: inherit; cursor: pointer; }
+.pack-row:hover { border-color: var(--amber); }
+.pack-row.locked { opacity: 0.82; }
+.pack-emoji { font-size: 1.5rem; line-height: 1; text-align: center; }
+.pack-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pack-text strong { font-size: 0.98rem; }
+.pack-text small { color: var(--muted); font-size: 0.78rem; line-height: 1.3; }
+.pack-state { font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; font-size: 0.78rem; color: var(--amber); white-space: nowrap; }
+
+.plus-page { gap: 12px; }
+.plus-head { display: flex; flex-direction: column; gap: 4px; }
+.plus-head .kicker { margin: 0; }
+.plus-head h1 { margin: 0; font-size: 1.7rem; line-height: 1.15; }
+.plus-head h1 span { color: var(--amber); }
+.perks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.perks li { display: flex; flex-direction: column; gap: 2px; padding-left: 12px; border-left: 2px solid var(--amber); }
+.perks strong { font-size: 0.95rem; }
+.perks span { color: var(--muted); font-size: 0.85rem; line-height: 1.35; }
+.plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.plan { position: relative; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 12px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 12px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.plan.on { border-color: var(--amber); background: rgba(255, 179, 71, 0.1); }
+.plan span { font-size: 0.8rem; color: var(--muted); }
+.plan strong { font-size: 1.5rem; font-family: "JetBrains Mono", "DejaVu Sans Mono", Menlo, monospace; }
+.plan small { font-size: 0.72rem; color: var(--muted); line-height: 1.3; }
+.plan em { position: absolute; top: -9px; right: 10px; padding: 1px 7px; border-radius: 999px; background: var(--amber); color: var(--tide-ink); font-style: normal; font-size: 0.66rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
+.ghost-button { min-height: 42px; padding: 8px 14px; border-radius: 999px; background: transparent; border: 1px dashed var(--line-art); color: var(--line-art); font: inherit; font-size: 0.9rem; cursor: pointer; }
+.fine { margin: 0; color: var(--muted); font-size: 0.75rem; line-height: 1.4; }
+.plus-active { display: flex; flex-direction: column; gap: 6px; }
+.plus-active h2 { margin: 0; color: var(--amber); }
+.plus-active p { margin: 0; color: var(--muted); }
+
+.ad-slot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 12px; border: 1px dashed rgba(143, 211, 255, 0.35); border-radius: 10px; background: rgba(143, 211, 255, 0.04); }
+.ad-slot p { margin: 0; flex: 1; color: var(--muted); font-size: 0.85rem; }
+.ad-label { padding: 1px 6px; border: 1px solid var(--muted); border-radius: 4px; color: var(--muted); font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; }
+.ad-slot .text-button { font-size: 0.8rem; }
+
+/* ---------- game layer on the card: HUD panel, chunky buttons, stage labels, tallies ---------- */
+/* A sharper panel with amber corner brackets, like a frame on a blueprint or a game dialog. */
+.sheet .stack, .sheet .end {
+  border-color: rgba(143, 211, 255, 0.22);
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) top left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 2px 16px no-repeat,
+    var(--card);
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(143, 211, 255, 0.05);
+}
+
+/* Chunky, beveled game buttons that press down. */
+.sheet .primary {
+  position: relative;
+  min-height: 48px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ffd08a 0%, #ffb347 45%, #f39a2b 100%);
+  color: #1a1206;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.82rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  box-shadow: 0 4px 0 #a8640f, 0 6px 14px rgba(0, 0, 0, 0.45), 0 0 18px rgba(255, 179, 71, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+  cursor: pointer;
+}
+.sheet .primary:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 1px 0 #a8640f, 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 12px rgba(255, 179, 71, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+}
+.sheet .primary:disabled { opacity: 1; filter: saturate(0.4) brightness(0.8); }
+.sheet .primary:focus-visible { outline: 2px solid var(--line-art); outline-offset: 3px; }
+/* The home screen's play buttons breathe, like a "press start". */
+.sheet .mode-card .primary { animation: ready 2.4s ease-in-out infinite; }
+
+/* Fields and choices glow cyan when they have focus or are picked. */
+.sheet .number-field:focus-within { border-color: var(--line-art); box-shadow: 0 0 0 1px var(--line-art), 0 0 16px rgba(143, 211, 255, 0.3); }
+.sheet .choice.selected { border-color: var(--amber); box-shadow: 0 0 12px rgba(255, 179, 71, 0.3); }
+
+/* Stage 2/5 and the stage blocks. */
+.sheet .play-head p { display: flex; align-items: baseline; gap: 0.35em; min-width: 0; }
+.sheet .play-head p span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stage-no { font-family: var(--display); font-weight: 900; font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--amber); text-shadow: 0 0 8px rgba(255, 179, 71, 0.55); white-space: nowrap; }
+.sheet .dots { gap: 3px; }
+.sheet .dots i { width: 14px; height: 6px; border-radius: 1px; background: rgba(143, 211, 255, 0.15); }
+.sheet .dots i.done { background: var(--line-art); box-shadow: 0 0 5px rgba(143, 211, 255, 0.6); }
+.sheet .dots i.on { background: var(--amber); box-shadow: 0 0 6px rgba(255, 179, 71, 0.8); }
+.sheet .type-kicker { font-family: var(--display); font-weight: 700; font-size: 0.64rem; letter-spacing: 0.18em; color: var(--line-art); }
+
+/* The reveal's points tally up in the display face. */
+.sheet .reveal .points { margin: 0; font-family: var(--display); font-weight: 900; font-size: 1.9rem; line-height: 1.1; color: var(--amber); text-shadow: var(--glow-amber); }
+.sheet .reveal .points .count, .sheet .end .score .count { color: inherit; font-size: inherit; letter-spacing: inherit; }
+.sheet .reveal .points span:not(.count) { font-size: 0.8rem; color: var(--muted); text-shadow: none; letter-spacing: 0.1em; }
+.sheet .reveal.band-black .points { color: var(--muted); text-shadow: none; }
+
+/* End screens: a mission-complete banner, an arcade score, and a stage-by-stage tally. */
+.mission {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.35rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  transform-origin: left center;
+  animation: toast-punch-in 0.6s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.sheet .end .score { font-family: var(--display); font-weight: 900; font-size: 3.4rem; letter-spacing: 0.04em; line-height: 1; color: var(--amber); text-shadow: var(--glow-amber), 0 0 40px rgba(255, 179, 71, 0.3); font-variant-numeric: tabular-nums; }
+.sheet .end .score span:not(.count) { font-family: var(--display); font-size: 0.9rem; letter-spacing: 0.12em; color: var(--muted); text-shadow: none; }
+.tally-block { display: flex; flex-direction: column; gap: 6px; }
+.tally { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; border-top: 1px solid rgba(143, 211, 255, 0.18); }
+.tally li {
+  display: grid;
+  grid-template-columns: 5.6em 1fr auto;
+  gap: 8px;
+  align-items: baseline;
+  padding: 5px 0;
+  border-bottom: 1px dashed rgba(143, 211, 255, 0.16);
+  font-size: 0.84rem;
+  animation: tally-in 0.35s ease-out both;
+}
+.tally-stage { font-family: var(--display); font-weight: 700; font-size: 0.6rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--line-art); }
+.tally-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.tally b { font-family: var(--display); font-weight: 900; font-size: 0.85rem; color: var(--amber); }
+.best-combo {
+  align-self: flex-start;
+  margin: 2px 0 0;
+  padding: 3px 10px;
+  border: 1px solid var(--line-art);
+  border-radius: 999px;
+  box-shadow: var(--glow-cyan);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--line-art);
+}
+@keyframes toast-punch-in { 0% { opacity: 0; transform: scale(0.5); } 100% { opacity: 1; transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet .mode-card .primary, .mission, .tally li, .sheet .primary { animation: none; transition: none; }
+}
+
+/* ---------- one screen, no scrolling ---------- */
+/* The card is glass over the climb, so the scene stays visible through it. Everything below is sized so a phone
+   (375 × 667 and up) shows the whole card without scrolling and still has open sky for the climber underneath. */
+.sheet .stack, .sheet .end {
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) top left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 2px 16px no-repeat,
+    rgba(12, 19, 35, 0.86);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45), inset 0 0 30px rgba(143, 211, 255, 0.05);
+}
+.sheet .text-button { min-height: 32px; }
+.sheet .play-head { align-items: center; gap: 8px; }
+.sheet .play-head .text-button { min-height: 28px; font-size: 0.85rem; }
+.sheet .prompt { font-size: 1.12rem; line-height: 1.25; }
+.sheet .guess-form { gap: 6px; }
+.sheet .guess-form .hint { font-size: 0.72rem; line-height: 1.3; }
+.sheet .primary { min-height: 44px; padding: 8px 14px; }
+
+/* The reveal: tier, answer and points in one row, then the fact, the crowd and the source. */
+.sheet .reveal { gap: 6px; padding: 10px 12px; border-radius: 10px; }
+.reveal-top { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; width: 100%; }
+.sheet .reveal .emoji { width: 40px; height: 40px; border-radius: 10px; font-size: 1.35rem; }
+.reveal-what { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.sheet .reveal-what h2 { margin: 0; font-size: 1.15rem; line-height: 1.15; }
+.sheet .reveal-what .answer { margin: 0; font-size: 1rem; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet .reveal .points { margin: 0; display: flex; flex-direction: column; align-items: flex-end; font-size: 1.6rem; line-height: 1; white-space: nowrap; }
+.sheet .reveal .points small { font-family: Outfit, sans-serif; font-weight: 400; font-size: 0.62rem; letter-spacing: 0.04em; color: var(--muted); text-shadow: none; }
+.sheet .reveal .context { margin: 0; font-size: 0.86rem; line-height: 1.4; }
+.sheet .reveal .crowd { margin: 0; display: flex; flex-direction: column; gap: 2px; font-size: 0.78rem; line-height: 1.35; opacity: 0.9; }
+.sheet .reveal .crowd p { margin: 0; }
+.sheet .reveal .name-list { margin: 0; padding-left: 16px; font-size: 0.78rem; }
+.sheet .reveal .source { font-size: 0.72rem; font-weight: 500; opacity: 0.85; }
+.sheet .reveal .delta { margin: 0; font-size: 0.78rem; }
+
+/* The end screen: banner, score, the stages as one row of tiles, your place, then share. */
+.end-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sheet .end .mission { font-size: 1.1rem; }
+.sheet .end .kicker { font-size: 0.7rem; }
+.end-score { display: flex; justify-content: space-between; align-items: flex-end; gap: 10px; }
+.sheet .end h2 { font-size: 1.2rem; line-height: 1.15; }
+.sheet .end .score { font-size: 2.5rem; flex: none; }
+.sheet .end .score span:not(.count) { font-size: 0.7rem; }
+.tally-block { gap: 6px; }
+.tally { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; border-top: 0; }
+.tally li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 0 5px;
+  border: 1px solid rgba(143, 211, 255, 0.18);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.8rem;
+  animation: tally-pop 0.35s cubic-bezier(0.3, 1.5, 0.5, 1) both;
+}
+.tally li.empty { opacity: 0.4; animation: none; }
+.tally-stage { font-size: 0.55rem; }
+.tally-emoji { font-size: 1rem; line-height: 1.1; }
+.tally b { font-size: 0.7rem; }
+.sheet .end .players, .sheet .end .streak-line { font-size: 0.78rem; }
+.sheet .rank-block { gap: 2px; }
+.sheet .rank-block h2 { font-size: 1.1rem; }
+.sheet .rank-block h2 span { font-size: 0.9rem; }
+.sheet .rank-block .players { font-size: 0.78rem; line-height: 1.35; }
+.sheet .friend-line, .sheet .league-line { padding: 6px 9px; font-size: 0.8rem; line-height: 1.35; }
+.end-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.end-foot .streak-line { margin: 0; }
+
+/* Home: the day and the play button up top, the rest as tiles that open in the card. */
+.home-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.sheet .home-head .wordmark { margin: 0; font-size: 1.9rem; line-height: 1; }
+.sheet .home-head .countdown { font-size: 0.7rem; text-align: right; }
+.sheet .day-card { display: flex; flex-direction: column; gap: 2px; padding: 0; }
+.sheet .day-card .kicker { font-size: 0.68rem; }
+.sheet .day-card .theme { margin: 0; font-size: 1.5rem; line-height: 1.15; }
+.sheet .day-card .blurb { font-size: 0.82rem; line-height: 1.35; }
+.sheet .day-card .tomorrow { margin: 0; font-size: 0.72rem; }
+.sheet .mode-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; border-top: 1px solid rgba(143, 211, 255, 0.14); }
+.sheet .mode-card h2 { margin: 0; font-size: 1.05rem; }
+.sheet .mode-card p { font-size: 0.8rem; line-height: 1.35; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); grid-auto-flow: column; gap: 6px; }
+.tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  min-height: 64px;
+  padding: 6px 4px;
+  border: 1px solid rgba(143, 211, 255, 0.22);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+}
+.tile:hover, .tile:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.25); }
+.tile-icon { font-size: 1.1rem; line-height: 1.2; }
+.tile strong { font-size: 0.78rem; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tile small { font-size: 0.62rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.home-panel .back { align-self: flex-start; min-height: 28px; font-size: 0.85rem; }
+.sheet .home-panel .card { padding: 0; }
+.sheet .stats-panel { display: flex; flex-direction: column; gap: 10px; }
+.sheet .stats-panel .stat { padding: 8px; border-radius: 8px; background: rgba(255, 255, 255, 0.03); }
+.sheet .stats-panel .bar-track { height: 60px; }
+.sheet .packs-card .pack-row { padding: 8px 10px; }
+.sheet .league-table li { padding: 4px 0; }
+
+/* Ads sit in a slim strip at the bottom of the screen, like a mobile game banner, never inside the card. */
+.sheet .ad-slot {
+  position: fixed;
+  z-index: 9;
+  left: 104px;
+  right: 12px;
+  bottom: 10px;
+  flex-wrap: nowrap;
+  padding: 6px 10px;
+  background: rgba(10, 16, 32, 0.88);
+}
+.sheet .ad-slot p { font-size: 0.75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet .ad-slot .text-button { min-height: 28px; font-size: 0.72rem; white-space: nowrap; }
+@media (min-width: 640px) {
+  .sheet .ad-slot { left: calc(50% - 200px); right: auto; width: 400px; }
+}
+/* A wider screen gets a narrower card, so there is sky on both sides. */
+@media (min-width: 640px) {
+  .stage main { width: min(460px, 100%); }
+}
+
+@keyframes tally-pop { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .tally li { animation: none; }
+  .stage.settling .layer, .stage.settling .explorer { transition: none; }
+}
+.sheet .reveal .pts-line { font-weight: inherit; }
+
+/* ---------- the climb takes the screen (like a dive in Krillion) ---------- */
+/* One thing on screen at a time. While a question is open the card asks it. Once you lock in, the card clears away,
+   your answer rises through the tier lines in the sky with the camera following it, and the result floats over the
+   scene. A Next button brings the card back. */
+
+/* The heads-up strip: where you are on the left, the stage strip in the middle, the score on the right. */
+.hud { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+.hud-side { max-width: none; }
+.hud-side.end { max-width: none; justify-self: end; }
+.hud .where .place { font-size: 0.82rem; letter-spacing: 0.1em; overflow-wrap: anywhere; }
+.hud-mid { display: flex; justify-content: center; }
+.stage-strip { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }
+.hud .dots { display: flex; gap: 3px; }
+.hud .dots i { width: 11px; height: 11px; border-radius: 2px; border: 1px solid rgba(143, 211, 255, 0.4); background: rgba(10, 16, 32, 0.7); }
+.hud .dots i.on { border-color: var(--amber); background: rgba(255, 179, 71, 0.3); box-shadow: 0 0 6px rgba(255, 179, 71, 0.7); }
+.hud .dots i.done { border-color: transparent; }
+.hud .dots i.band-green { background: var(--good-ink); box-shadow: 0 0 5px rgba(142, 240, 196, 0.6); }
+.hud .dots i.band-yellow { background: var(--close-ink); box-shadow: 0 0 5px rgba(255, 211, 106, 0.6); }
+.hud .dots i.band-blue { background: var(--off-ink); box-shadow: 0 0 5px rgba(143, 211, 255, 0.6); }
+.hud .dots i.band-brown { background: var(--far-ink); box-shadow: 0 0 5px rgba(255, 176, 138, 0.5); }
+.hud .dots i.band-black { background: rgba(255, 255, 255, 0.14); border-color: rgba(255, 122, 102, 0.5); }
+.hud .stage-no { font-size: 0.56rem; letter-spacing: 0.16em; color: var(--line-art); text-shadow: 0 0 6px rgba(143, 211, 255, 0.5); }
+
+/* The question card: just the question. The tiers are drawn in the sky during the climb instead. */
+.sheet .stack.ask { animation: card-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.sheet .play-head p span { color: var(--muted); font-size: 0.8rem; }
+.sheet .rarer { margin: -2px 0 0; font-family: var(--display); font-weight: 700; font-size: 0.56rem; letter-spacing: 0.18em; text-transform: uppercase; text-align: center; color: var(--line-art); opacity: 0.8; }
+
+/* Tier lines across the sky, at the height each tier would carry your answer. They light up as the answer passes. */
+.ladder { position: absolute; inset: 0; z-index: 2; pointer-events: none; opacity: 0; transition: opacity 0.45s ease; }
+.ladder.on { opacity: 1; transition: opacity 0.2s ease; }
+.rung { --rung: var(--line-art); position: absolute; left: 10px; right: 48px; top: 0; height: 0; background: none; border-top: 1.5px dashed rgba(143, 211, 255, 0.3); will-change: transform; transition: border-color 0.2s, box-shadow 0.2s; }
+.rung span { position: absolute; right: 0; bottom: 4px; font-family: var(--display); font-weight: 700; font-size: 0.58rem; letter-spacing: 0.16em; text-transform: uppercase; white-space: nowrap; color: rgba(232, 241, 255, 0.5); transition: color 0.2s; }
+.rung.band-green { --rung: var(--good-ink); }
+.rung.band-yellow { --rung: var(--close-ink); }
+.rung.band-blue { --rung: var(--off-ink); }
+.rung.band-brown { --rung: var(--far-ink); }
+.rung.passed { border-top-color: var(--rung); box-shadow: 0 0 8px var(--rung); }
+.rung.passed span { color: var(--rung); text-shadow: 0 0 8px var(--rung); }
+.rung.earned.passed { border-top-style: solid; border-top-width: 2px; }
+.rung.earned.passed span { font-size: 0.7rem; }
+
+/* Your answer, rising through the sky with the climber under it. */
+.answer-tag {
+  position: absolute;
+  z-index: 6;
+  left: 0;
+  top: 0;
+  max-width: 78vw;
+  padding: 6px 14px;
+  border: 1.5px solid var(--amber);
+  border-radius: 6px;
+  background: rgba(10, 16, 32, 0.84);
+  box-shadow: var(--glow-amber);
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fff4dc;
+  text-shadow: var(--glow-amber);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+  transition: opacity 0.35s ease;
+}
+.answer-tag.on { opacity: 1; transition: opacity 0.12s ease; }
+.answer-tag.stumble { border-color: var(--miss-red); color: #ffd0c8; text-decoration: line-through; text-shadow: 0 0 8px rgba(255, 122, 102, 0.7); box-shadow: 0 0 6px rgba(255, 122, 102, 0.7), 0 0 18px rgba(255, 122, 102, 0.3); }
+
+/* With the card cleared away, the sheet covers the screen but only its buttons and links take taps. */
+.stage.is-focus .sheet { top: 0; bottom: 0; max-height: none; overflow: hidden; padding: 0 16px; transition: opacity 0.35s ease 0.15s; }
+.stage.is-focus .sheet.holding { opacity: 0; visibility: hidden; transition: none; }
+.stage.is-focus .sheet main { height: 100%; pointer-events: none; }
+.stage.is-focus .sheet main a, .stage.is-focus .sheet main button { pointer-events: auto; }
+.stage.is-focus .sky-tags { display: none; }
+/* Passing your best or reaching space shows as one slim line under the heads-up strip, above the result. */
+.stage.is-focus .toast { top: 54px; flex-flow: row wrap; justify-content: center; align-items: baseline; gap: 2px 8px; padding: 5px 12px; width: max-content; max-width: calc(100% - 32px); white-space: normal; text-align: center; }
+.stage.is-focus .toast strong { font-size: 0.78rem; }
+.stage.is-focus .toast span { font-size: 0.62rem; }
+.stage.is-focus .sound-toggle { left: auto; right: 14px; }
+
+/* The result, over the scene: the tier's picture, the tier, your answer, the points, one line on the crowd, the fact. */
+.stage.is-focus .sheet .stack.result {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  padding: 88px 0 16px;
+  border: none;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+/* Only the stage strip of the header shows, up in the heads-up display. Home is on the next question's card. */
+.stage.is-focus .sheet .result .play-head { display: none; }
+.stage.is-focus .sheet .result .reveal {
+  --tier: #e8f6ff;
+  --tier-glow: rgba(143, 211, 255, 0.55);
+  width: 100%;
+  max-width: 380px;
+  margin: 0;
+  padding: 18px 18px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+  border-radius: 24px;
+  background: radial-gradient(closest-side, rgba(7, 11, 22, 0.9), rgba(7, 11, 22, 0.72) 62%, rgba(7, 11, 22, 0));
+  color: var(--ink);
+  animation: none;
+}
+.stage.is-focus .sheet .result .reveal.band-green { --tier: #c2ffe4; --tier-glow: rgba(142, 240, 196, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-yellow { --tier: #ffe6a0; --tier-glow: rgba(255, 211, 106, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-blue { --tier: #d4efff; --tier-glow: rgba(143, 211, 255, 0.6); }
+.stage.is-focus .sheet .result .reveal.band-brown { --tier: #ffd8c2; --tier-glow: rgba(255, 176, 138, 0.5); }
+.stage.is-focus .sheet .result .reveal.band-black { --tier: #ffc2b8; --tier-glow: rgba(255, 122, 102, 0.45); }
+.result-icon { margin: 0; font-size: 2.7rem; line-height: 1; filter: drop-shadow(0 0 14px var(--tier-glow)); transition: transform 0.55s cubic-bezier(0.3, 1.6, 0.5, 1) 0.05s, opacity 0.25s ease; }
+.stage.is-focus .sheet.holding .result-icon { transform: scale(0.3) translateY(30px); opacity: 0; }
+.stage.is-focus .sheet .result .result-tier {
+  margin: 4px 0 0;
+  font-family: var(--display);
+  font-weight: 900;
+  font-size: 1.85rem;
+  line-height: 1.05;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--tier);
+  text-shadow: 0 0 10px var(--tier-glow), 0 0 30px var(--tier-glow);
+}
+.stage.is-focus .sheet .result .result-answer { margin: 0; font-size: 1.15rem; font-weight: 600; line-height: 1.25; color: var(--ink); overflow-wrap: anywhere; }
+.stage.is-focus .sheet .result .points { margin: 2px 0 0; display: flex; flex-direction: column; align-items: center; font-size: 1.4rem; line-height: 1.1; }
+.stage.is-focus .sheet .result.band-black .points, .stage.is-focus .sheet .result .reveal.band-black .points { color: var(--muted); text-shadow: none; }
+.stage.is-focus .sheet .result .crowd { margin: 4px 0 0; font-size: 0.82rem; line-height: 1.4; color: var(--ink); opacity: 0.92; }
+.stage.is-focus .sheet .result .context { margin: 2px 0 0; max-width: 36ch; font-size: 0.8rem; line-height: 1.4; color: #b9c6dc; }
+.stage.is-focus .sheet .result .source { font-size: 0.68rem; color: var(--line-art); opacity: 0.8; }
+.stage.is-focus .sheet .result .next-stage { margin-top: auto; align-self: center; width: min(200px, 56%); }
+.next-stage span { margin-left: 4px; }
+
+@keyframes card-in { from { opacity: 0; transform: translateY(-14px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .sheet .stack.ask, .result-icon { animation: none; transition: none; }
+}
+/* On a wide screen the tier lines span the column the climb happens in, not the whole window. */
+@media (min-width: 640px) {
+  .rung { left: calc(50% - 250px); right: calc(50% - 250px); }
+}
