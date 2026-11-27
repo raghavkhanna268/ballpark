@@ -64,6 +64,12 @@ const HEAD_TO_HEAD_ON = false;
  */
 const AFTERBURNER_ON = false;
 
+/**
+ * Ads are switched off for launch: there is no ad network yet, so free players see no ad space at all. `AdSlot` stays in
+ * plus.tsx, so setting this to true brings the placeholder back on the home and end screens.
+ */
+const ADS_ON = false;
+
 type Phase =
   | { name: "home" }
   | { name: "ask"; index: number }
@@ -261,7 +267,7 @@ export function App() {
       : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
   const afterburnerReady = puzzle !== null && puzzle.result === null && !puzzle.questions.some((question) => question.reveal?.boosted);
   const fresh = newlyEarned(hangar, earned);
-  const showAds = plus !== null && !plus.plus;
+  const showAds = ADS_ON && plus !== null && !plus.plus;
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
   const challenge = classicRace && !puzzle?.result ? classicRace : HEAD_TO_HEAD_ON && h2hRace && h2h?.status !== "finished" ? h2hRace : null;
@@ -357,7 +363,7 @@ export function App() {
             onArchive: () => setPhase({ name: "archive" }),
             onUnlimited: () => setPhase({ name: "unlimited" }),
           })}
-          plus={{ id: "plus", icon: "⭐", title: "Ballpark+", note: plus?.plus ? "Your pass" : "No ads, more play", onOpen: () => setPhase({ name: "plus" }) }}
+          plus={{ id: "plus", icon: "⭐", title: "Ballpark+", note: plus?.plus ? "Your pass" : "More to play", onOpen: () => setPhase({ name: "plus" }) }}
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
           panels={[
             {

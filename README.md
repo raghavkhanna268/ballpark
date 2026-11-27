@@ -150,11 +150,11 @@ The daily Classic, the league, ranks, race links and streaks are free for everyo
 
 - **Pack journeys.** Cricket Crazy 🏏 (from the gully to Lord's), Screen Time 🎬 (from the multiplex to the Oscars) and Space Nerd 🚀 (from the launch pad to the edge of the Solar System), each three chapters of five, played in order, any day, once per device (see Phase 3 above). The end screen ranks you among everyone who played that chapter ("You're #2 of 40 who played this chapter"). Pack answers never reach `daily_results`, so a pass never adds league points.
 - **Unlimited**, and **the whole archive** rather than the last 7 days (see Phase 3 above).
-- **No ads.** Free players see a labelled ad space on the home screen and the end screen. There is no ad network yet: it is a placeholder (`AdSlot` in `apps/web/src/plus.tsx`) that also links to Ballpark+. Members never see it.
+- **Ads are switched off.** There is no ad network yet, so nobody sees an ad and Ballpark+ does not sell their removal. A labelled placeholder (`AdSlot` in `apps/web/src/plus.tsx`) stays in the code behind `ADS_ON` in `App.tsx`; set it to `true` to show it to free players on the home and end screens.
 
 Without a pass, `GET /api/packs` lists the packs as locked and the questions stay on the server. `GET /api/packs/:id` (the route), `GET /api/packs/:id/chapters/:n` and `POST /api/packs/:id/chapters/:n/guess` answer `402 plus_required`, and so do Unlimited and archive days older than a week.
 
-A pass is a one-time purchase for this device, 30 or 365 days, and it does not renew by itself. Prices in `packages/shared/src/plus.ts` are **placeholders** (₹99 a month, ₹799 a year). Buying early adds the new days to the days left. A pass is tied to the anonymous device id, like the rest of the game.
+A pass is a one-time purchase for this device, 30 or 365 days, and it does not renew by itself. Prices are in `packages/shared/src/plus.ts`: ₹49 for 30 days and ₹399 for 365 days. Buying early adds the new days to the days left. A pass is tied to the anonymous device id, like the rest of the game.
 
 **Restore on a new device.** A member taps "Show my restore code" on the Ballpark+ page and gets a code like `BP-7A8C-QQU3-4R44` (12 characters from an alphabet with no 0, O, 1, I or L; `GET /api/plus/restore-code`). Typing it on another device (`POST /api/plus/restore`, 5 tries a minute per IP address) moves the pass there and the code with it, and the old device goes back to free, so one pass is one device at a time. If the new device has a pass of its own, it keeps whichever ends later. Progress in packs and Unlimited stays with the old device, because answers are kept by device. A code whose pass has ended answers `410 pass_expired`. No email or phone number is collected.
 
@@ -275,4 +275,4 @@ To accept one, add it to that question's `accepted` list (or as an alias) in `ap
 
 ## Ethics
 
-The daily game, the league and streaks are free, with no account wall. Ballpark+ sells extra packs and the removal of ads, not an edge: a pass never adds league points, and every free player gets the same daily questions. There is no loot box and no streak-shame copy. The ad space is a placeholder with no ad network or tracking behind it. The archive, Unlimited and packs are for fun: none of them adds to the streak, the rank or the league, and Cruise keeps a streak alive without a place on the board.
+The daily game, the league and streaks are free, with no account wall. Ballpark+ sells extra play (packs, Unlimited, the whole archive), not an edge: a pass never adds league points, and every free player gets the same daily questions. There is no loot box and no streak-shame copy. There are no ads and no ad tracking. The archive, Unlimited and packs are for fun: none of them adds to the streak, the rank or the league, and Cruise keeps a streak alive without a place on the board.

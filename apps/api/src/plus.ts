@@ -103,7 +103,7 @@ export async function createOrder(db: D1Database, deviceId: string, env: PlusEnv
     keyId: env.RAZORPAY_KEY_ID!,
     plan,
     name: "Ballpark+",
-    description: `${price.label} pass · themed packs, no ads`,
+    description: `${price.label} pass · packs, Unlimited, the whole archive`,
   };
 }
 

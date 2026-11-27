@@ -4,7 +4,7 @@ import { ApiError, errorCopy, getRestoreCode, postPlusOrder, postPlusVerify, pos
 import { haptic } from "./haptic";
 
 /*
- * Ballpark+: pack journeys, the whole archive, Unlimited, and no ads. The daily game, the league and streaks stay free.
+ * Ballpark+: pack journeys, the whole archive and Unlimited. The daily game, the league and streaks stay free.
  * Payment is Razorpay Checkout. The server creates the order and checks Razorpay's signature before a pass starts.
  */
 
@@ -119,7 +119,7 @@ export function PlusScreen({
       <header className="plus-head">
         <p className="kicker">Ballpark+</p>
         <h1>
-          More climbs. <span>No ads.</span>
+          More climbs. <span>Any day.</span>
         </h1>
       </header>
       <ul className="perks">
@@ -134,10 +134,6 @@ export function PlusScreen({
         <li>
           <strong>The whole archive</strong>
           <span>Every past day, not just the last week.</span>
-        </li>
-        <li>
-          <strong>No ads, anywhere</strong>
-          <span>Home and results stay clean.</span>
         </li>
         <li>
           <strong>Fair for everyone</strong>

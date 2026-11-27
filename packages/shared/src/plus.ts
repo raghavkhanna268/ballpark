@@ -1,6 +1,6 @@
 
 /**
- * Ballpark+: themed packs and no ads. The daily game, the league and every streak stay free, so paying
+ * Ballpark+: pack journeys, Unlimited and the whole archive. The daily game, the league and every streak stay free, so paying
  * never buys league points. A pass is tied to the device, like everything else without an account.
  */
 
@@ -17,10 +17,10 @@ export type PlusPrice = {
   days: number;
 };
 
-/** PLACEHOLDER prices for local play. Set the real ones before launch. */
+/** Launch prices: a pass for 30 or 365 days, paid once. */
 export const PLUS_PRICES: PlusPrice[] = [
-  { plan: "month", amount: 9900, currency: "INR", label: "Monthly", price: "₹99", note: "30 days", days: 30 },
-  { plan: "year", amount: 79900, currency: "INR", label: "Yearly", price: "₹799", note: "365 days, about ₹67 a month", days: 365 },
+  { plan: "month", amount: 4900, currency: "INR", label: "Monthly", price: "₹49", note: "30 days", days: 30 },
+  { plan: "year", amount: 39900, currency: "INR", label: "Yearly", price: "₹399", note: "365 days, about ₹33 a month", days: 365 },
 ];
 
 export function plusPrice(plan: string): PlusPrice | null {
