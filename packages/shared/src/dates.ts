@@ -1,7 +1,7 @@
-/** Puzzle #1 is this UTC date. Later days count forward from here. */
+/** Puzzle #1 is this date. Later days count forward from here. */
 export const DEFAULT_EPOCH = "2026-01-01";
 
-/** Sample seed length. Every UTC date maps onto one of these slots until a real calendar replaces it. */
+/** Sample seed length. Every date maps onto one of these slots until a real calendar replaces it. */
 export const SEED_SLOTS = 17;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -15,6 +15,24 @@ export function isIsoDate(value: string): boolean {
 
 export function utcToday(now: Date = new Date()): string {
   return now.toISOString().slice(0, 10);
+}
+
+/**
+ * The game's day turns over at midnight India time (UTC+5:30), for everyone. Most players are in India, so a late
+ * evening there is still today's puzzle, and the new one arrives at midnight instead of 5:30 in the morning.
+ */
+export const DAY_OFFSET_MINUTES = 330;
+
+/** Today's game date: the calendar date in India time. */
+export function playToday(now: Date = new Date()): string {
+  return new Date(now.getTime() + DAY_OFFSET_MINUTES * 60_000).toISOString().slice(0, 10);
+}
+
+/** The moment the next game day starts: the next midnight India time. */
+export function nextDayStart(now: Date = new Date()): Date {
+  const offset = DAY_OFFSET_MINUTES * 60_000;
+  const dayStart = Math.floor((now.getTime() + offset) / 86_400_000) * 86_400_000;
+  return new Date(dayStart + 86_400_000 - offset);
 }
 
 export function puzzleNumber(date: string, epoch: string = DEFAULT_EPOCH): number {

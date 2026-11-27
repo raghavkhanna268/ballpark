@@ -1,6 +1,4 @@
-import { COMPARE_MIN_PLAYERS, canCompare, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
-import { formatAltitude } from "./journey";
-import { WORLD_STOPS, stopAt } from "./worlds";
+import { COMPARE_MIN_PLAYERS, canCompare, formatAltitude, milestoneAt, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
 
 /*
  * The competitive layer: your rank after a game, racing a friend's climb from a shared link,
@@ -34,7 +32,7 @@ export function raceFor(race: Race | null, mode: RaceMode, puzzleNumber: number 
 }
 
 function heightPhrase(progress: number): string {
-  return WORLD_STOPS[stopAt(progress)]!.phrase;
+  return milestoneAt(progress).phrase;
 }
 
 export function RaceBanner({ race, onRace }: { race: Race; onRace: () => void }) {

@@ -31,6 +31,9 @@ export {
   isIsoDate,
   puzzleNumber,
   puzzleSlot,
+  DAY_OFFSET_MINUTES,
+  nextDayStart,
+  playToday,
   utcToday,
 } from "./dates.js";
 
@@ -62,15 +65,24 @@ export type { AcceptedAnswer } from "./match.js";
 export { levenshtein, matchAccepted, normalizeAnswer, priorShare } from "./match.js";
 export type { NameTier } from "./rarity.js";
 export { COLD_START_RESPONSES, NAME_BASE, NAME_CAP, NAME_TIERS, blendShare, nameOnePoints, nameTier, rarityMultiplier } from "./rarity.js";
-export type { FieldStats, ScaleLevel } from "./scale.js";
+export type { FieldStats, Milestone, ScaleLevel } from "./scale.js";
 export {
   CLASSIC_QUESTIONS,
   CLASSIC_SCORE_SPAN,
+  MILESTONES,
   PACK_QUESTIONS,
   SCALE_LEVELS,
   SPACE_STOP,
+  altitudeKm,
+  climbShareLine,
+  climbedPhrase,
+  formatAltitude,
+  formatDistance,
   journeyProgress,
   classicStep,
+  milestoneAt,
+  milestonesReached,
+  nextMilestone,
   fieldStats,
   levelForClassicScore,
   levelForProgress,

@@ -1,4 +1,4 @@
-import { advanceStreak, distributionBucket, liveStreak, shieldReady, utcToday, type Stats } from "@ballpark/shared";
+import { advanceStreak, distributionBucket, liveStreak, playToday, shieldReady, type Stats } from "@ballpark/shared";
 
 const KEY = "ballpark.stats.v1";
 
@@ -140,7 +140,7 @@ export function recordHeadToHead(date: string, score: number): HeadToHeadStats {
 /** The streak line for a mode on `today`: the streak as it stands, and the shield's state this week. */
 export function streakStatus(
   stats: { currentStreak: number; lastPlayedDate: string | null; shieldWeek: string | null; shieldedOn: string | null },
-  today: string = utcToday(),
+  today: string = playToday(),
 ): { streak: number; shield: "ready" | "used" | "saved"; savedToday: boolean } {
   const streak = liveStreak(stats, today);
   const savedToday = stats.shieldedOn === today;

@@ -69,6 +69,18 @@ export function scoreClassicQuestion(question: PlayQuestion, guess: Guess, other
   return plain("black", 0);
 }
 
+/** Wrong tries a player gets on one name-one question, per minute, before the server says to slow down. */
+export const RETRY_LIMIT = 10;
+
+/**
+ * A typed name-one answer that is not on the accepted list. It is not stored and scores nothing yet: the player
+ * tries again while the clock runs. Only an accepted answer, or running out of time, locks the question.
+ */
+export function isUnlistedName(question: PlayQuestion, guess: Guess): boolean {
+  if (question.type !== "name_one" || guess.type !== "name_one" || guess.timedOut) return false;
+  return matchAccepted(guess.text, question.accepted ?? []) === null;
+}
+
 export function suggestionsForQuestion(question: PlayQuestion): string[] {
   return suggestionsFor(question.entitySet);
 }

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { NAME_CAP, NAME_TIERS, classicStep } from "@ballpark/shared";
+import { NAME_CAP, classicStep, type QuestionType } from "@ballpark/shared";
+import type { SkyTrail } from "./sky";
 
 /**
  * Counts a number up to `value` like an arcade score tally. It starts at `from` (or at `value`, so a first render
@@ -109,14 +110,43 @@ export function gainLevel(points: number, max: number): number {
   return Math.max(1, Math.min(5, Math.round((points / Math.max(1, max)) * 4) + 1));
 }
 
-/** One tier as a line across the sky: its name, its points, its band colour, and how far an answer in it climbs. */
-export type Rung = { label: string; points: number; band: string; travel: number };
+/** The most a question of this type can score: 100 for naming one, 20 for the others. */
+export function maxPoints(type: QuestionType): number {
+  return type === "name_one" ? NAME_CAP : 20;
+}
 
-/** The tier lines for a run of `questions`, lowest first, so the sky shows where each tier would take you. */
-export function tierLadder(questions: number): Rung[] {
-  return [...NAME_TIERS]
-    .reverse()
-    .map((tier) => ({ label: tier.name, points: tier.points, band: tier.band, travel: classicStep(tier.points, NAME_CAP, questions) }));
+/** 0 for Liftoff up to 4 for Supernova, or -1 when an answer scored nothing. Sets the colours and the burner. */
+export function tierOf(points: number, max: number): number {
+  return points > 0 ? gainLevel(points, max) - 1 : -1;
+}
+
+/** The climb so far as one stretch per scoring answer, in order, coloured by tier. */
+export function trailOf(questions: Array<{ type: QuestionType; reveal: { points: number } | null }>, count: number): SkyTrail[] {
+  const trail: SkyTrail[] = [];
+  let at = 0;
+  for (const question of questions) {
+    if (!question.reveal) continue;
+    const max = maxPoints(question.type);
+    const step = classicStep(question.reveal.points, max, count);
+    if (step > 0) trail.push({ from: at, to: at + step, tier: tierOf(question.reveal.points, max) });
+    at += step;
+  }
+  return trail;
+}
+
+const NAME_FLAVOUR = [
+  "Most people said this. A small hop.",
+  "A solid pick. Steady lift.",
+  "Off the beaten track. Big lift!",
+  "Rare air. Few players went here.",
+  "Full burn! Almost nobody said this.",
+];
+const GUESS_FLAVOUR = ["In the ballpark. A small hop.", "Not bad. Steady lift.", "Good call. Big lift!", "Very close. Rare air.", "Spot on! Full burn."];
+
+/** One line under the result on what the answer did for the climb. */
+export function flavourLine(label: string, tier: number, named: boolean): string {
+  if (tier < 0) return label === "Out of time" ? "Time ran out. The rocket holds its height." : "No lift this time. The rocket holds its height.";
+  return (named ? NAME_FLAVOUR : GUESS_FLAVOUR)[Math.min(4, tier)];
 }
 
 /** A picture for each result, shown big over the scene once the climb lands. */

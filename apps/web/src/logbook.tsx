@@ -1,8 +1,7 @@
-import { formatAltitude } from "./journey";
-import { WORLD_STOPS } from "./worlds";
+import { MILESTONES, formatAltitude, milestoneAt, milestonesReached } from "@ballpark/shared";
 
 /**
- * The logbook is what a player keeps across days: their highest climb, the heights they have reached,
+ * The logbook is what a player keeps across days: their highest climb, the landmarks they have passed,
  * and the rare answers they found. It lives on this device only.
  */
 
@@ -48,12 +47,12 @@ function save(next: Logbook): Logbook {
 /** Call once a scored run is finished. Returns the updated logbook. */
 export function recordRun(mode: Mode, progress: number): Logbook {
   const current = loadLogbook();
-  const reached = Math.max(0, Math.min(WORLD_STOPS.length - 1, Math.round(progress)));
+  const farthest = Math.max(current.farthest, progress);
   return save({
     ...current,
     best: { ...current.best, [mode]: Math.max(current.best[mode], progress) },
-    farthest: Math.max(current.farthest, progress),
-    worlds: Math.max(current.worlds, reached),
+    farthest,
+    worlds: milestonesReached(farthest),
   });
 }
 
@@ -64,7 +63,9 @@ export function recordFind(find: Find): Logbook {
 }
 
 export function LogbookCard({ logbook }: { logbook: Logbook }) {
-  const farthest = WORLD_STOPS[Math.max(0, Math.min(WORLD_STOPS.length - 1, Math.round(logbook.farthest)))]!;
+  const farthest = milestoneAt(logbook.farthest);
+  const reached = milestonesReached(logbook.farthest);
+  const landmarks = MILESTONES.slice(1);
   return (
     <section className="card logbook" aria-label="Your logbook on this device">
       <div className="mode-top">
@@ -74,13 +75,13 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
       <div className="log-stats">
         <p>
           <span className="mono">{logbook.farthest > 0 ? formatAltitude(logbook.farthest) : "—"}</span>
-          <small>Highest · {logbook.farthest > 0 ? farthest.label : "not yet"}</small>
+          <small>Highest · {logbook.farthest > 0 ? (farthest.at > 0 ? `past ${farthest.name}` : "off the pad") : "not yet"}</small>
         </p>
         <p>
           <span className="mono">
-            {logbook.farthest > 0 ? logbook.worlds + 1 : 0}/{WORLD_STOPS.length}
+            {reached}/{landmarks.length}
           </span>
-          <small>Heights reached</small>
+          <small>Landmarks passed</small>
         </p>
         <p>
           <span className="mono">{logbook.finds.length}</span>
@@ -88,8 +89,8 @@ export function LogbookCard({ logbook }: { logbook: Logbook }) {
         </p>
       </div>
       <ol className="world-strip" aria-hidden="true">
-        {WORLD_STOPS.map((stop, index) => (
-          <li key={stop.id} className={logbook.farthest > 0 && index <= logbook.worlds ? "on" : ""} title={stop.label} />
+        {landmarks.map((milestone, index) => (
+          <li key={milestone.id} className={index < reached ? "on" : ""} title={milestone.name} />
         ))}
       </ol>
       {logbook.finds.length > 0 ? (

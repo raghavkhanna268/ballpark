@@ -1,21 +1,21 @@
-import { addUtcDays, utcToday } from "@ballpark/shared";
+import { addUtcDays, playToday } from "@ballpark/shared";
 import { scoreClassicQuestion, type PlayQuestion } from "./classic-score.js";
 import type { Guess } from "@ballpark/shared";
 
 type Submission = { device_id: string; question_id: string; guess_json: string };
 
 /**
- * Recompute a closed UTC day from every stored guess.
+ * Recompute a closed game day from every stored guess.
  * Safe to run more than once. Today's board stays provisional.
  */
 export async function finalizeDay(db: D1Database, date: string, loadQuestions: (date: string) => Promise<PlayQuestion[]>): Promise<void> {
-  if (date >= utcToday()) return;
+  if (date >= playToday()) return;
   await finalizeClassic(db, date, loadQuestions);
   await finalizeHeadToHead(db, date);
 }
 
 export async function finalizeYesterday(db: D1Database, when: Date, loadQuestions: (date: string) => Promise<PlayQuestion[]>): Promise<void> {
-  await finalizeDay(db, addUtcDays(utcToday(when), -1), loadQuestions);
+  await finalizeDay(db, addUtcDays(playToday(when), -1), loadQuestions);
 }
 
 async function finalizeClassic(db: D1Database, date: string, loadQuestions: (date: string) => Promise<PlayQuestion[]>): Promise<void> {

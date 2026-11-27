@@ -21,7 +21,7 @@
     "PLUS_TEST_UNLOCK": "false"
   },
   "triggers": {
-    "crons": ["0 0 * * *"]
+    "crons": ["30 18 * * *"]
   },
   "observability": {
     "enabled": true,

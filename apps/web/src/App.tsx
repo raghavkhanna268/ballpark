@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CLASSIC_QUESTIONS,
   NAME_CAP,
   PACK_QUESTIONS,
   classicStep,
+  formatAltitude,
   journeyProgress,
+  playToday,
+  puzzleNumber,
   type DayResult,
   type FieldStats,
   type Guess,
@@ -18,12 +21,14 @@ import {
 import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, type HeadToHeadState } from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
-import { currentCombo, gainLevel, tierLadder } from "./game";
-import { Journey, formatAltitude, type Ghost, type Hop, type HudScore } from "./journey";
+import { currentCombo, gainLevel, maxPoints, tierOf, trailOf } from "./game";
+import { Journey, type Ghost, type Hop, type HudScore, type TrailSegment } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
 import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
 import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel } from "./screens";
+import { sceneryFor } from "./sky";
+import { playBonk } from "./sound";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
 
 /**
@@ -65,6 +70,9 @@ export function App() {
   /** Score and right-answers-in-a-row for the heads-up display in Head-to-head and packs. Classic reads them from the puzzle. */
   const [h2hRun, setH2hRun] = useState({ score: 0, combo: 0 });
   const [packRun, setPackRun] = useState({ score: 0, combo: 0 });
+  const [packTrail, setPackTrail] = useState<TrailSegment[]>([]);
+  /** Names the server said are not on the list, for the question on screen: each one costs 2 seconds. */
+  const [rejected, setRejected] = useState<{ id: string; count: number }>({ id: "", count: 0 });
 
   const refreshPlus = useCallback(async () => {
     try {
@@ -121,7 +129,7 @@ export function App() {
       const nextPuzzle = { ...puzzle, questions, result: response.result };
       setPuzzle(nextPuzzle);
       if (response.result) setStats(recordScore(nextPuzzle.date, response.result.score));
-      const max = question.type === "name_one" ? NAME_CAP : 20;
+      const max = maxPoints(question.type);
       const travel = classicStep(response.reveal.points, max, CLASSIC_QUESTIONS);
       const scored = response.reveal.points > 0;
       const gain = scored ? { label: response.reveal.label, points: response.reveal.points, level: gainLevel(response.reveal.points, max) } : undefined;
@@ -133,7 +141,6 @@ export function App() {
         gain,
         combo,
         answer: guess.type === "name_one" ? guess.text : undefined,
-        ladder: question.type === "name_one" ? tierLadder(CLASSIC_QUESTIONS) : undefined,
       }));
       if (question.type === "name_one" && response.reveal.points >= NAME_CAP / 2) {
         setLogbook(recordFind({ date: nextPuzzle.date, prompt: question.prompt, answer: response.reveal.answerText, tier: response.reveal.label, points: response.reveal.points }));
@@ -145,6 +152,13 @@ export function App() {
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "not_listed") {
+        // Not on our list: nothing is stored, the clock loses 2 seconds, and the player tries another name.
+        setRejected((current) => ({ id: question.id, count: current.id === question.id ? current.count + 1 : 1 }));
+        playBonk();
+        haptic("bad");
+        return;
+      }
       if (caught instanceof ApiError && caught.code === "already_submitted") {
         await refresh();
       }
@@ -155,6 +169,9 @@ export function App() {
   }
 
   const classicFlight = puzzle ? flightFor(puzzle) : 0;
+  const classicTrail = useMemo(() => (puzzle ? trailOf(puzzle.questions, CLASSIC_QUESTIONS) : []), [puzzle]);
+  // City night, Sunset coast and Himalaya take turns by puzzle number, the same for everyone.
+  const scenery = sceneryFor(puzzle?.puzzleNumber ?? puzzleNumber(playToday()));
   const mode = phase.name === "h2h" ? "h2h" : phase.name === "pack" ? "pack" : "classic";
   const flight = mode === "h2h" ? h2hFlight : mode === "pack" ? packFlight : classicFlight;
   const today = puzzle?.date ?? h2h?.date ?? "";
@@ -196,6 +213,7 @@ export function App() {
   function openPack(id: string) {
     setPackFlight(0);
     setPackRun({ score: 0, combo: 0 });
+    setPackTrail([]);
     setPhase({ name: "pack", id, done: false });
   }
 
@@ -208,6 +226,8 @@ export function App() {
       progress={flight}
       hop={hop}
       ghosts={ghosts}
+      scenery={scenery}
+      trail={mode === "pack" ? packTrail : mode === "classic" ? classicTrail : NO_TRAIL}
       score={hudScore}
       combo={combo}
       overview={phase.name === "end" || h2hOverview || (phase.name === "pack" && phase.done)}
@@ -270,6 +290,7 @@ export function App() {
           index={phase.index}
           busy={busy}
           error={error}
+          rejections={rejected.id === puzzle.questions[phase.index]?.id ? rejected.count : 0}
           onHome={() => setPhase({ name: "home" })}
           onSubmit={(guess) => void submit(phase.index, guess)}
         />
@@ -365,15 +386,17 @@ export function App() {
             goHome();
             void refreshPlus();
           }}
-          onFlight={(progress, score, combo) => {
+          onFlight={(progress, score, combo, trail) => {
             setPackFlight(progress);
             setPackRun({ score, combo });
+            setPackTrail(trail);
           }}
           onHop={(points, label, answer) => {
             const travel = classicStep(points, NAME_CAP, PACK_QUESTIONS);
             const combo = points > 0 ? packRun.combo + 1 : packRun.combo;
             setPackRun({ score: packRun.score + points, combo: points > 0 ? combo : 0 });
             setPackFlight((current) => current + travel);
+            if (travel > 0) setPackTrail((current) => [...current, { from: packFlight, to: packFlight + travel, tier: tierOf(points, NAME_CAP) }]);
             setHop((current) => ({
               id: current.id + 1,
               kind: points > 0 ? "voyage" : "stumble",
@@ -381,7 +404,6 @@ export function App() {
               gain: label ? { label, points, level: gainLevel(points, NAME_CAP) } : undefined,
               combo,
               answer,
-              ladder: tierLadder(PACK_QUESTIONS),
             }));
           }}
           onEnd={() => setPhase((current) => (current.name === "pack" ? { ...current, done: true } : current))}
@@ -396,10 +418,12 @@ export function App() {
   );
 }
 
+const NO_TRAIL: TrailSegment[] = [];
+
 function flightFor(puzzle: PuzzleResponse): number {
   return puzzle.questions.reduce((sum, question) => {
     if (!question.reveal) return sum;
-    return sum + classicStep(question.reveal.points, question.type === "name_one" ? NAME_CAP : 20, CLASSIC_QUESTIONS);
+    return sum + classicStep(question.reveal.points, maxPoints(question.type), CLASSIC_QUESTIONS);
   }, 0);
 }
 
