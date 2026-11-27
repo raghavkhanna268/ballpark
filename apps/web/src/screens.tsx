@@ -328,9 +328,6 @@ function HowToPlay({ count }: { count: number }) {
           <b>{QUESTION_SECONDS} seconds a question.</b> A name that isn’t on the list costs 2 seconds, then try another.
         </li>
         <li>
-          <b>Afterburner ×2.</b> Once a day, double one answer you’re sure of.
-        </li>
-        <li>
           <b>Cruise</b> turns the clock off. It keeps your streak but stays off the board and the league.
         </li>
         <li>

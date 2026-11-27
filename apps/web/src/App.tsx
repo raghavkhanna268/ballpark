@@ -58,6 +58,12 @@ import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakSt
  */
 const HEAD_TO_HEAD_ON = false;
 
+/**
+ * The Afterburner (double one answer a day) is switched off: the question card no longer offers it, so the card stays
+ * short. The API still takes it and old boosted answers still show their flame, so setting this to true brings it back.
+ */
+const AFTERBURNER_ON = false;
+
 type Phase =
   | { name: "home" }
   | { name: "ask"; index: number }
@@ -406,7 +412,7 @@ export function App() {
           rejections={rejected.id === puzzle.questions[phase.index]?.id ? rejected.count : 0}
           rejectedText={rejected.id === puzzle.questions[phase.index]?.id ? rejected.text : ""}
           correction={correction.id === puzzle.questions[phase.index]?.id ? correction : null}
-          afterburner={{ ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) }}
+          afterburner={AFTERBURNER_ON ? { ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) } : null}
           clock={!cruise}
           onNudge={async () => (await postNudge(stats.deviceId, puzzle.questions[phase.index]!.id)).nudge}
           onReport={async (text) => {
