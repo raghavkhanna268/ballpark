@@ -1,4 +1,4 @@
-import { classicClimbs, climbCurve, stageStep, todayStats } from "./field.js";
+import { dayBots, fieldClimbs, stageStep, todayStats } from "./field.js";
 import { joinLeague } from "./league.js";
 import {
   beatPercent,
@@ -31,7 +31,7 @@ import {
   type ServerQuestion,
   type SliderScale,
 } from "@ballpark/shared";
-import { RETRY_LIMIT, isUnlistedName, scoreStage, suggestionsForQuestion, type PlayQuestion, type StageOptions } from "./classic-score.js";
+import { RETRY_LIMIT, checkName, isUnlistedName, nameRejection, scoreStage, type PlayQuestion, type StageOptions } from "./classic-score.js";
 import { finalizeDay } from "./finalize.js";
 import { BAND_EMOJI, BAND_LABEL, correctOrder, estimateScore } from "@ballpark/shared/scoring";
 import { HttpError } from "./http.js";
@@ -39,8 +39,18 @@ import { enforceRateLimit } from "./rate-limit.js";
 
 const MODE = "classic";
 
-/** Where a set of answers lives: today's Classic (key = the date) or a pack (key = "pack:<id>"). */
+/** Where a set of answers lives: a day's Classic (key = the date), a pack chapter, a past day, an Unlimited round. */
 export type AnswerScope = { key: string; mode: string };
+/**
+ * Whose answers set the rarity: one stored set, or every answer to the question in the given modes, on any day.
+ * Unlimited uses the second, so a question asked on many days counts all of its players.
+ */
+export type CrowdScope = AnswerScope | { key: null; modes: string[] };
+
+function crowdWhere(scope: CrowdScope): { sql: string; binds: string[] } {
+  if (scope.key !== null) return { sql: "puzzle_date = ? AND mode = ?", binds: [scope.key, scope.mode] };
+  return { sql: `mode IN (${placeholders(scope.modes.length)})`, binds: scope.modes };
+}
 
 function classicScope(date: string): AnswerScope {
   return { key: date, mode: MODE };
@@ -102,6 +112,7 @@ type SubmissionRow = {
   points: number;
   boost: number;
   nudged: number;
+  cruise: number;
 };
 
 /** How a stage was played, from its stored answer. */
@@ -128,7 +139,7 @@ export async function loadPuzzleResponse(
     publicQuestions.push(toPublic(question, reveal, true));
   }
   const number = puzzleNumber(date, epoch);
-  const climbs = await classicClimbs(db, date, questions);
+  const climbs = await fieldClimbs(db, date, questions);
   return {
     date,
     puzzleNumber: number,
@@ -141,7 +152,8 @@ export async function loadPuzzleResponse(
     questions: publicQuestions,
     result: await dayResult(db, date, deviceId, number, shareHost, epoch, questions),
     field: fieldStats([...climbs.values()]),
-    today: await todayStats(db, date, deviceId, climbs),
+    today: await todayStats(db, date, deviceId, climbs, dayBots(date, questions)),
+    cruise: submissions.size > 0 ? [...submissions.values()].some((row) => row.cruise === 1) : null,
   };
 }
 
@@ -157,7 +169,7 @@ export async function submitGuess(
   shareHost: string,
   questionId: string,
   guess: Guess,
-  extras: { afterburner?: boolean; skin?: string | null } = {},
+  extras: { afterburner?: boolean; skin?: string | null; cruise?: boolean } = {},
 ): Promise<{ reveal: Reveal; result: DayResult | null }> {
   const { questions } = await loadPuzzle(db, date, epoch);
   const question = questions.find((candidate) => candidate.id === questionId);
@@ -172,9 +184,18 @@ export async function submitGuess(
     .bind(deviceId, date, MODE, question.id)
     .first<{ id: string }>();
   if (existing) throw new HttpError(409, "already_submitted");
-  if (isUnlistedName(question, guess)) {
+  // A day is played one way: the first answer sets Cruise or the clock, and the rest must match.
+  const cruise = extras.cruise === true;
+  const started = await db
+    .prepare("SELECT cruise FROM submissions WHERE device_id = ? AND puzzle_date = ? AND mode = ? LIMIT 1")
+    .bind(deviceId, date, MODE)
+    .first<{ cruise: number }>();
+  if (started && started.cruise === 1 !== cruise) throw new HttpError(409, "mode_locked");
+  // A name that is not on the list, or only close to one, is not stored: the player tries again while the clock runs.
+  const rejection = nameRejection(checkName(question, guess));
+  if (rejection) {
     await enforceRateLimit(db, `try:${deviceId}:${date}:${question.id}`, RETRY_LIMIT);
-    throw new HttpError(422, "not_listed");
+    throw rejection;
   }
   if (extras.afterburner) {
     const used = await db
@@ -194,8 +215,8 @@ export async function submitGuess(
     await db
       .prepare(
         `INSERT INTO submissions
-          (id, device_id, puzzle_date, mode, question_id, guess_json, band, points, boost, nudged, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          (id, device_id, puzzle_date, mode, question_id, guess_json, band, points, boost, nudged, cruise, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         crypto.randomUUID(),
@@ -208,6 +229,7 @@ export async function submitGuess(
         scored.points,
         options.boost ? 1 : 0,
         options.nudged ? 1 : 0,
+        cruise ? 1 : 0,
         new Date().toISOString(),
       )
       .run();
@@ -229,10 +251,11 @@ export async function submitGuess(
       points: scored.points,
       boost: options.boost,
       nudged: options.nudged,
+      cruise,
     }),
   );
 
-  await maybeFinish(db, date, deviceId, questions, extras.skin ?? null);
+  await maybeFinish(db, date, deviceId, questions, extras.skin ?? null, cruise);
   const reveal = await revealFor(db, classicScope(date), question, guess, options);
   const number = puzzleNumber(date, epoch);
   return { reveal, result: await dayResult(db, date, deviceId, number, shareHost, epoch, questions) };
@@ -281,7 +304,7 @@ export async function reportAnswer(db: D1Database, date: string, deviceId: strin
   return { ok: true };
 }
 
-async function loadPuzzle(db: D1Database, date: string, epoch: string): Promise<{
+export async function loadPuzzle(db: D1Database, date: string, epoch: string): Promise<{
   questions: PlayQuestion[];
   theme: string;
   blurb: string;
@@ -376,7 +399,6 @@ export function toPublic(question: PlayQuestion, reveal: Reveal | null, nudges =
     topic: question.topic,
     difficulty: question.difficulty,
     slider: question.slider ? sliderRange(question.slider) : null,
-    suggestions: question.type === "name_one" ? suggestionsForQuestion(question) : [],
     hasNudge: nudges && question.type === "name_one" && Boolean(question.nudge),
     reveal,
   };
@@ -405,7 +427,7 @@ export function validateGuess(question: PlayQuestion, guess: Guess): void {
   }
 }
 
-export async function revealFor(db: D1Database, scope: AnswerScope, question: PlayQuestion, guess: Guess, options: StageOptions = {}): Promise<Reveal> {
+export async function revealFor(db: D1Database, scope: CrowdScope, question: PlayQuestion, guess: Guess, options: StageOptions = {}): Promise<Reveal> {
   const scored = scoreStage(question, guess, await otherGuesses(db, scope, question.id, guess), options);
   const crowd = scored.named ?? (await crowdFor(db, scope, question));
   const rows = question.correctOrder.map((id) => {
@@ -471,7 +493,7 @@ export async function revealFor(db: D1Database, scope: AnswerScope, question: Pl
     confidenceDelta,
     bonusPoints: scored.bonusPoints,
     // A pack has no reset: its rarity keeps moving as more players finish it.
-    provisional: scope.mode === MODE && scope.key >= playToday(),
+    provisional: scope.key !== null && scope.mode === MODE && scope.key >= playToday(),
     boosted: options.boost === true && scored.points > 0,
     nudged: options.nudged === true,
     context: question.context,
@@ -490,13 +512,11 @@ function plainLabel(band: Band): string {
   return "Not quite";
 }
 
-async function crowdFor(db: D1Database, scope: AnswerScope, question: ServerQuestion): Promise<CrowdStat> {
+async function crowdFor(db: D1Database, scope: CrowdScope, question: ServerQuestion): Promise<CrowdStat> {
+  const where = crowdWhere(scope);
   const rows = await db
-    .prepare(
-      `SELECT guess_json, band FROM submissions
-       WHERE puzzle_date = ? AND mode = ? AND question_id = ?`,
-    )
-    .bind(scope.key, scope.mode, question.id)
+    .prepare(`SELECT guess_json, band FROM submissions WHERE ${where.sql} AND question_id = ?`)
+    .bind(...where.binds, question.id)
     .all<{ guess_json: string; band: string }>();
   const submissions = rows.results.length;
   if (question.type === "estimate") {
@@ -521,7 +541,7 @@ async function crowdFor(db: D1Database, scope: AnswerScope, question: ServerQues
   };
 }
 
-async function maybeFinish(db: D1Database, date: string, deviceId: string, questions: ServerQuestion[], skin: string | null): Promise<void> {
+async function maybeFinish(db: D1Database, date: string, deviceId: string, questions: ServerQuestion[], skin: string | null, cruise: boolean): Promise<void> {
   const submissions = await submissionsFor(db, date, deviceId);
   if (questions.some((question) => !submissions.has(question.id))) return;
   const ordered = questions.map((question) => submissions.get(question.id)!);
@@ -529,12 +549,13 @@ async function maybeFinish(db: D1Database, date: string, deviceId: string, quest
   const bands = ordered.map((row) => row.band);
   await db
     .prepare(
-      `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at, skin)
-       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+      `INSERT OR IGNORE INTO daily_results (device_id, puzzle_date, mode, score, points, bands, finalized, created_at, skin, cruise)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)`,
     )
-    .bind(deviceId, date, MODE, score, score, JSON.stringify(bands), new Date().toISOString(), skin)
+    .bind(deviceId, date, MODE, score, score, JSON.stringify(bands), new Date().toISOString(), skin, cruise ? 1 : 0)
     .run();
-  await joinLeague(db, deviceId, date);
+  // A Cruise run keeps the streak on the device, but it is not a league week's play.
+  if (!cruise) await joinLeague(db, deviceId, date);
 }
 
 async function dayResult(
@@ -548,15 +569,19 @@ async function dayResult(
 ): Promise<DayResult | null> {
   await finalizeDay(db, date, (day) => questionsForDate(db, day, epoch));
   const mine = await db
-    .prepare("SELECT score, bands, skin FROM daily_results WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
+    .prepare("SELECT score, bands, skin, cruise FROM daily_results WHERE device_id = ? AND puzzle_date = ? AND mode = ?")
     .bind(deviceId, date, MODE)
-    .first<{ score: number; bands: string; skin: string | null }>();
+    .first<{ score: number; bands: string; skin: string | null; cruise: number }>();
   if (!mine) return null;
+  const cruise = mine.cruise === 1;
+  // Ranks are among timed runs. A Cruise run sees how the day went, without a rank of its own.
   const board = await db
-    .prepare("SELECT score FROM daily_results WHERE puzzle_date = ? AND mode = ?")
+    .prepare("SELECT score FROM daily_results WHERE puzzle_date = ? AND mode = ? AND cruise = 0")
     .bind(date, MODE)
     .all<{ score: number }>();
-  const scores = board.results.map((row) => row.score);
+  // Today's bots are ranked alongside, so there is a field from the first finish.
+  const bots = dayBots(date, questions);
+  const scores = [...board.results.map((row) => row.score), ...bots.map((bot) => bot.score)];
   const bands = parseStringArray(mine.bands) as Band[];
   // The height in the result is the one the scene flew to, so it adds up the same per-answer climbs.
   const mineRows = await submissionsFor(db, date, deviceId);
@@ -574,20 +599,21 @@ async function dayResult(
     emojis,
     beatPercent: beatPercent(mine.score, scores),
     players: scores.length,
-    shareText: classicShareText(number, emojis, mine.score, shareHost, climbShareLine(climbed), race),
+    shareText: classicShareText(number, emojis, mine.score, shareHost, climbShareLine(climbed), race, cruise),
     reached: climbedPhrase(climbed),
     provisional: date >= playToday(),
-    place: placement(mine.score, scores),
+    place: cruise ? null : placement(mine.score, scores),
+    cruise,
     race,
     boosted: boosted >= 0 ? boosted : null,
-    curve: climbCurve(await classicClimbs(db, date, questions), deviceId),
   };
 }
 
-export async function otherGuesses(db: D1Database, scope: AnswerScope, questionId: string, exclude: Guess | null): Promise<Guess[]> {
+export async function otherGuesses(db: D1Database, scope: CrowdScope, questionId: string, exclude: Guess | null): Promise<Guess[]> {
+  const where = crowdWhere(scope);
   const rows = await db
-    .prepare("SELECT guess_json FROM submissions WHERE puzzle_date = ? AND mode = ? AND question_id = ?")
-    .bind(scope.key, scope.mode, questionId)
+    .prepare(`SELECT guess_json FROM submissions WHERE ${where.sql} AND question_id = ?`)
+    .bind(...where.binds, questionId)
     .all<{ guess_json: string }>();
   const guesses = rows.results.map((row) => parseGuess(row.guess_json));
   if (!exclude) return guesses;
@@ -607,7 +633,7 @@ function parseAccepted(raw: string | null): AcceptedAnswer[] | null {
 async function submissionsFor(db: D1Database, date: string, deviceId: string): Promise<Map<string, SubmissionRow>> {
   const rows = await db
     .prepare(
-      `SELECT question_id, guess_json, band, points, boost, nudged FROM submissions
+      `SELECT question_id, guess_json, band, points, boost, nudged, cruise FROM submissions
        WHERE device_id = ? AND puzzle_date = ? AND mode = ?`,
     )
     .bind(deviceId, date, MODE)

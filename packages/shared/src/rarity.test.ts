@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { COUNTRIES } from "./entities.js";
-import { matchAccepted, normalizeAnswer, priorShare, type AcceptedAnswer } from "./match.js";
+import { exactAccepted, matchAccepted, normalizeAnswer, priorShare, suggestAccepted, type AcceptedAnswer } from "./match.js";
 import { blendShare, nameOnePoints } from "./rarity.js";
 import { journeyProgress, levelForClassicScore, levelForCorrectCount, levelForJourney, zoomShareLine } from "./scale.js";
 
@@ -33,6 +33,34 @@ describe("answer matching", () => {
       { canonical: "Nigeria", aliases: [], prior: 1 },
     ];
     expect(matchAccepted("Nigeri", twins)).toBeNull();
+  });
+
+  it("offers the listed spelling for a near miss or a name that is half typed, for the player to confirm", () => {
+    const units: AcceptedAnswer[] = [
+      { canonical: "Kilometre", aliases: ["Kilometer", "km"], prior: 14 },
+      { canonical: "Mile", aliases: [], prior: 20 },
+      { canonical: "Furlong", aliases: [], prior: 2 },
+      { canonical: "Fathom", aliases: [], prior: 2 },
+    ];
+    expect(exactAccepted("kilometer", units)?.canonical).toBe("Kilometre");
+    expect(exactAccepted("Kilomter", units)).toBeNull();
+    // An exact name needs no offer.
+    expect(suggestAccepted("Kilometre", units)).toBeNull();
+    // The closest spelling on the list wins, alias or not, and a tie goes to the main name.
+    expect(suggestAccepted("Kilomter", units)).toBe("Kilometer");
+    expect(suggestAccepted("kilometr", units)).toBe("Kilometre");
+    expect(suggestAccepted("Furlog", units)).toBe("Furlong");
+    // Half typed: filled in from the start of one name.
+    expect(suggestAccepted("Kilom", units)).toBe("Kilometre");
+    expect(suggestAccepted("furl", units)).toBe("Furlong");
+    // Too short, too far, or a start shared by two answers: nothing is offered.
+    expect(suggestAccepted("Kil", units)).toBeNull();
+    expect(suggestAccepted("Kilogram", units)).toBeNull();
+    expect(suggestAccepted("Lightyear", units)).toBeNull();
+    expect(suggestAccepted("Nige", [{ canonical: "Niger", aliases: [], prior: 1 }, { canonical: "Nigeria", aliases: [], prior: 1 }])).toBeNull();
+    // A short name is only offered for a one-letter slip.
+    expect(suggestAccepted("Mle", units)).toBeNull();
+    expect(suggestAccepted("Miel", units)).toBe("Mile");
   });
 });
 

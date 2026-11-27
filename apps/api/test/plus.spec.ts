@@ -1,8 +1,9 @@
 import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import type { PackGuessResponse, PackResponse, PackSummary, PlusStatus } from "@ballpark/shared";
+import type { JourneyResponse, PackSummary, PlusStatus, RoundGuessResponse, RoundResponse } from "@ballpark/shared";
 import { packs, questions } from "../seed/content.ts";
+import { crewSize } from "../src/bots.ts";
 import { hmacHex } from "../src/plus.ts";
 import { correctGuess, resetAndSeed } from "./seed-db.ts";
 
@@ -92,61 +93,144 @@ describe("Ballpark+ passes", () => {
   });
 });
 
-describe("themed packs", () => {
-  it("lists packs for everyone but keeps their questions behind the pass", async () => {
+describe("pack journeys", () => {
+  const chapterTwo = cricket.chapters[1]!.questionIds.map((id) => questions.find((item) => item.id === id)!);
+
+  /** The least likely answer on the list, so the first player to say it scores high. */
+  function rareGuess(question: (typeof cricketQuestions)[number]) {
+    return { type: "name_one" as const, text: question.accepted!.at(-1)!.canonical };
+  }
+
+  async function playChapter(chapter: number, list: typeof cricketQuestions, deviceId = DEVICE, rare = false) {
+    let last: RoundGuessResponse | null = null;
+    for (const question of list) {
+      const guess = rare ? rareGuess(question) : correctGuess(question);
+      const response = await call(`/api/packs/cricket/chapters/${chapter}/guess`, deviceId, { questionId: question.id, guess });
+      expect(response.status).toBe(200);
+      last = (await response.json()) as RoundGuessResponse;
+    }
+    return last!;
+  }
+
+  it("lists packs for everyone but keeps their chapters behind the pass", async () => {
     const list = (await (await call("/api/packs")).json()) as { plus: boolean; packs: PackSummary[] };
     expect(list.plus).toBe(false);
     expect(list.packs.map((item) => item.id)).toEqual(["cricket", "screen", "space"]);
-    expect(list.packs.every((item) => item.locked)).toBe(true);
+    expect(list.packs.every((item) => item.locked && item.chapters === 3 && item.chaptersDone === 0)).toBe(true);
+    expect(list.packs[0]!.route).toBe(cricket.route);
     expect(JSON.stringify(list)).not.toContain(cricketQuestions[0]!.prompt);
 
-    const locked = await call("/api/packs/cricket");
-    expect(locked.status).toBe(402);
-    expect(((await locked.json()) as { error: string }).error).toBe("plus_required");
-    const guess = await call("/api/packs/cricket/guess", DEVICE, { questionId: cricketQuestions[0]!.id, guess: correctGuess(cricketQuestions[0]!) });
+    for (const path of ["/api/packs/cricket", "/api/packs/cricket/chapters/1"]) {
+      const locked = await call(path);
+      expect(locked.status).toBe(402);
+      expect(((await locked.json()) as { error: string }).error).toBe("plus_required");
+    }
+    const guess = await call("/api/packs/cricket/chapters/1/guess", DEVICE, { questionId: cricketQuestions[0]!.id, guess: correctGuess(cricketQuestions[0]!) });
     expect(guess.status).toBe(402);
   });
 
-  it("plays a pack once, scores rarity among pack players, and leaves the league alone", async () => {
+  it("opens each chapter once the one before it is finished", async () => {
     await call("/api/plus/test-unlock", DEVICE, { plan: "month" });
-    const pack = (await (await call("/api/packs/cricket")).json()) as PackResponse;
-    expect(pack.pack.locked).toBe(false);
-    expect(pack.questions).toHaveLength(5);
-    const raw = JSON.stringify(pack);
+    const journey = (await (await call("/api/packs/cricket")).json()) as JourneyResponse;
+    expect(journey.pack.route).toBe(cricket.route);
+    expect(journey.chapters.map((item) => [item.chapter, item.title, item.locked])).toEqual([
+      [1, cricket.chapters[0]!.title, false],
+      [2, cricket.chapters[1]!.title, true],
+      [3, cricket.chapters[2]!.title, true],
+    ]);
+    const early = await call("/api/packs/cricket/chapters/2");
+    expect(early.status).toBe(403);
+    expect(((await early.json()) as { error: string }).error).toBe("chapter_locked");
+    const earlyGuess = await call("/api/packs/cricket/chapters/2/guess", DEVICE, { questionId: chapterTwo[0]!.id, guess: correctGuess(chapterTwo[0]!) });
+    expect(earlyGuess.status).toBe(403);
+
+    const first = (await (await call("/api/packs/cricket/chapters/1")).json()) as RoundResponse;
+    expect(first.round).toMatchObject({ kind: "pack", id: "cricket", chapter: 1, questions: 5, answered: 0, score: null });
+    expect(first.questions).toHaveLength(5);
+    const raw = JSON.stringify(first);
     expect(raw).not.toContain("\"accepted\"");
     expect(raw).not.toContain(cricketQuestions[0]!.context);
 
-    let last: PackGuessResponse | null = null;
-    for (const question of cricketQuestions) {
-      const response = await call("/api/packs/cricket/guess", DEVICE, { questionId: question.id, guess: correctGuess(question) });
-      expect(response.status).toBe(200);
-      last = (await response.json()) as PackGuessResponse;
-      expect(last.reveal.points).toBeGreaterThan(0);
-      expect(last.reveal.provisional).toBe(false);
-    }
-    expect(last?.result?.score).toBeGreaterThan(0);
-    expect(last?.result?.place).toEqual({ rank: 1, players: 1, next: null });
-    expect(last?.result?.shareText).toContain("Ballpark+ · 🏏 Cricket Crazy");
+    const done = await playChapter(1, cricketQuestions);
+    expect(done.reveal.provisional).toBe(false);
+    expect(done.result?.score).toBeGreaterThan(0);
+    // The first to finish a chapter is ranked among the chapter's bots, who count like players.
+    expect(crewSize("pack:cricket")).toBeGreaterThan(10);
+    expect(done.result!.place!.players).toBe(1 + crewSize("pack:cricket"));
+    expect(done.result!.place!.betterThan).not.toBeNull();
+    expect(done.result?.hypothetical).toBe(false);
+    expect(done.result?.shareText).toContain("Ballpark+ · 🏏 Cricket Crazy · Chapter 1");
 
-    const twice = await call("/api/packs/cricket/guess", DEVICE, { questionId: cricketQuestions[0]!.id, guess: correctGuess(cricketQuestions[0]!) });
-    expect(twice.status).toBe(409);
-
-    const results = await env.DB.prepare("SELECT COUNT(*) AS n FROM daily_results").first<{ n: number }>();
-    expect(results?.n).toBe(0);
-    const league = await env.DB.prepare("SELECT COUNT(*) AS n FROM league_members").first<{ n: number }>();
-    expect(league?.n).toBe(0);
+    const after = (await (await call("/api/packs/cricket")).json()) as JourneyResponse;
+    expect(after.chapters.map((item) => item.locked)).toEqual([false, false, true]);
+    expect(after.chapters[0]!.score).toBe(done.result?.score);
+    const second = (await (await call("/api/packs/cricket/chapters/2")).json()) as RoundResponse;
+    expect(second.questions.map((item) => item.id)).toEqual(cricket.chapters[1]!.questionIds);
 
     const list = (await (await call("/api/packs")).json()) as { plus: boolean; packs: PackSummary[] };
-    expect(list.plus).toBe(true);
-    expect(list.packs[0]).toMatchObject({ id: "cricket", answered: 5, locked: false });
-    expect(list.packs[0]!.score).toBe(last?.result?.score);
+    expect(list.packs[0]).toMatchObject({ id: "cricket", chapters: 3, chaptersDone: 1, locked: false });
   });
 
-  it("rejects unknown packs and questions from another pack", async () => {
+  it("plays a chapter once, scores rarity among that chapter's players, and leaves the league alone", async () => {
+    await call("/api/plus/test-unlock", DEVICE, { plan: "month" });
+    await call("/api/plus/test-unlock", OTHER, { plan: "month" });
+    await playChapter(1, cricketQuestions, OTHER);
+    const theirs = await playChapter(2, chapterTwo, OTHER, true);
+    await playChapter(1, cricketQuestions);
+    const mine = await playChapter(2, chapterTwo, DEVICE, true);
+    // The same rare answers again: once someone in the chapter has said them, they are no longer rare.
+    expect(mine.result!.score).toBeLessThan(theirs.result!.score);
+    expect(mine.result!.place!.players).toBe(2 + crewSize("pack:cricket:2"));
+    expect(mine.result?.placeWhat).toBe("who played this chapter");
+
+    const twice = await call("/api/packs/cricket/chapters/2/guess", DEVICE, { questionId: chapterTwo[0]!.id, guess: correctGuess(chapterTwo[0]!) });
+    expect(twice.status).toBe(409);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM daily_results").first<{ n: number }>())?.n).toBe(0);
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM league_members").first<{ n: number }>())?.n).toBe(0);
+  });
+
+  it("rejects unknown packs, chapters and questions from somewhere else", async () => {
     await call("/api/plus/test-unlock", DEVICE, { plan: "month" });
     expect((await call("/api/packs/nope")).status).toBe(404);
+    expect((await call("/api/packs/cricket/chapters/9")).status).toBe(404);
     const daily = questions.find((item) => item.id === "q-fun-berry")!;
-    const response = await call("/api/packs/cricket/guess", DEVICE, { questionId: daily.id, guess: correctGuess(daily) });
+    const response = await call("/api/packs/cricket/chapters/1/guess", DEVICE, { questionId: daily.id, guess: correctGuess(daily) });
     expect(response.status).toBe(404);
+    const nextChapter = await call("/api/packs/cricket/chapters/1/guess", DEVICE, { questionId: chapterTwo[0]!.id, guess: correctGuess(chapterTwo[0]!) });
+    expect(nextChapter.status).toBe(404);
+  });
+});
+
+describe("restore on a new device", () => {
+  it("moves the pass to another device with a code, once", async () => {
+    expect((await call("/api/plus/restore-code")).status).toBe(402);
+    const before = (await (await call("/api/plus/test-unlock", DEVICE, { plan: "year" })).json()) as PlusStatus;
+    const { code } = (await (await call("/api/plus/restore-code")).json()) as { code: string };
+    expect(code).toMatch(/^BP-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}-[2-9A-HJKMNP-Z]{4}$/);
+    // The same code until it is used.
+    expect(((await (await call("/api/plus/restore-code")).json()) as { code: string }).code).toBe(code);
+
+    expect((await call("/api/plus/restore", OTHER, { code: "nope" })).status).toBe(400);
+    expect((await call("/api/plus/restore", OTHER, { code: "BP-2222-2222-2222" })).status).toBe(404);
+
+    // Typed loosely, without dashes, in lower case.
+    const moved = await call("/api/plus/restore", OTHER, { code: code.replaceAll("-", "").toLowerCase() });
+    expect(moved.status).toBe(200);
+    const after = (await moved.json()) as PlusStatus;
+    expect(after.plus).toBe(true);
+    expect(after.expiresAt).toBe(before.expiresAt);
+    expect(((await (await call("/api/plus")).json()) as PlusStatus).plus).toBe(false);
+    // The code went with the pass: the new device sees it, and using it again from the old device does nothing.
+    expect(((await (await call("/api/plus/restore-code", OTHER)).json()) as { code: string }).code).toBe(code);
+    expect(((await (await call("/api/plus/restore", OTHER, { code })).json()) as PlusStatus).plus).toBe(true);
+  });
+
+  it("refuses a code whose pass has run out", async () => {
+    await call("/api/plus/test-unlock", DEVICE, { plan: "month" });
+    const { code } = (await (await call("/api/plus/restore-code")).json()) as { code: string };
+    await env.DB.prepare("UPDATE entitlements SET expires_at = ? WHERE device_id = ?").bind("2020-01-01T00:00:00.000Z", DEVICE).run();
+    const response = await call("/api/plus/restore", OTHER, { code });
+    expect(response.status).toBe(410);
+    expect(((await response.json()) as { error: string }).error).toBe("pass_expired");
   });
 });

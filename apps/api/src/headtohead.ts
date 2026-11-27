@@ -1,3 +1,4 @@
+import { headToHeadBots } from "./bots.js";
 import { headToHeadField } from "./field.js";
 import { joinLeague } from "./league.js";
 import {
@@ -154,7 +155,7 @@ export async function pickHeadToHead(
   const round = sequence[index];
   if (!round) throw new HttpError(400, "invalid_guess");
   if (choice.timedOut) {
-    // The 30-second timer ran out. It counts as a miss.
+    // The 25-second timer ran out. It counts as a miss.
   } else if (round.kind === "higher-lower") {
     if (choice.direction !== "higher" && choice.direction !== "lower") throw new HttpError(400, "invalid_guess");
   } else if (!round.items.some((item) => item.id === choice.choiceId)) {
@@ -395,7 +396,8 @@ async function officialResult(
     .prepare("SELECT device_id, score, bands FROM daily_results WHERE puzzle_date = ? AND mode = ?")
     .bind(date, MODE)
     .all<{ device_id: string; score: number; bands: string }>();
-  const scores = board.results.map((row) => row.score);
+  // Today's bots run the same ten picks and count like players.
+  const scores = [...board.results.map((row) => row.score), ...headToHeadBots(date, H2H_LENGTH)];
   const mine = board.results.find((row) => row.device_id === deviceId) ?? board.results[0];
   const score = mine?.score ?? 0;
   const stored = mine ? (JSON.parse(mine.bands) as string[]) : [];
@@ -414,7 +416,7 @@ async function officialResult(
     marks,
     reached: reachedPhrase(level),
     provisional: date >= playToday(),
-    place: placement(score, scores.length === 0 ? [score] : scores),
+    place: placement(score, scores.length === 0 ? [score] : scores, H2H_LENGTH),
     race,
   };
 }

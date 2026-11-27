@@ -1,6 +1,8 @@
 /**
  * The game's sounds, made with WebAudio so there are no files to load: a burner that roars louder and longer for
- * rarer answers, a chime for each landmark passed, a sputter for a miss, and a bonk for a name that is not on the list.
+ * rarer answers, a chime for each landmark passed, a sputter for a miss, a bonk for a name that is not on the list,
+ * a tick for each of the last seconds, a whoosh as the card burns away, a boing when the rocket is poked,
+ * and a pop, a parachute and a thud for the trip home.
  * Sound is on unless the player turns it off. Browsers only allow sound after a tap or a key press, so the page calls
  * unlockAudio from one.
  */
@@ -193,6 +195,67 @@ export function playSputter(delayMs = 250) {
   fall.stop(start + 0.9);
 }
 
+/** The capsule popping off the booster: a short bright snap and a puff of air. */
+export function playPop() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime + 0.45;
+  const puff = context.createBufferSource();
+  puff.buffer = noiseBuffer(context);
+  const band = context.createBiquadFilter();
+  band.type = "bandpass";
+  band.frequency.value = 1400;
+  band.Q.value = 0.8;
+  puff.connect(band).connect(envelope(context, start, 0.22, 0.004, 0.02, 0.18)).connect(context.destination);
+  puff.start(start, Math.random());
+  puff.stop(start + 0.3);
+  const snap = context.createOscillator();
+  snap.type = "triangle";
+  snap.frequency.setValueAtTime(880, start);
+  snap.frequency.exponentialRampToValueAtTime(330, start + 0.08);
+  snap.connect(envelope(context, start, 0.07, 0.003, 0.01, 0.1)).connect(context.destination);
+  snap.start(start);
+  snap.stop(start + 0.15);
+}
+
+/** The parachute opening: a soft whump of cloth catching the air. */
+export function playChute() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const whoosh = context.createBufferSource();
+  whoosh.buffer = noiseBuffer(context);
+  const filter = context.createBiquadFilter();
+  filter.type = "lowpass";
+  filter.frequency.setValueAtTime(1800, start);
+  filter.frequency.exponentialRampToValueAtTime(240, start + 0.35);
+  whoosh.connect(filter).connect(envelope(context, start, 0.26, 0.02, 0.05, 0.32)).connect(context.destination);
+  whoosh.start(start, Math.random());
+  whoosh.stop(start + 0.5);
+}
+
+/** Touchdown on the pad: a low, soft thud. */
+export function playThud() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const body = context.createOscillator();
+  body.type = "sine";
+  body.frequency.setValueAtTime(120, start);
+  body.frequency.exponentialRampToValueAtTime(42, start + 0.22);
+  body.connect(envelope(context, start, 0.3, 0.005, 0.04, 0.3)).connect(context.destination);
+  body.start(start);
+  body.stop(start + 0.4);
+  const scuff = context.createBufferSource();
+  scuff.buffer = noiseBuffer(context);
+  const low = context.createBiquadFilter();
+  low.type = "lowpass";
+  low.frequency.value = 600;
+  scuff.connect(low).connect(envelope(context, start, 0.12, 0.005, 0.03, 0.25)).connect(context.destination);
+  scuff.start(start, Math.random());
+  scuff.stop(start + 0.35);
+}
+
 /** "Not on our list": a short low bonk, so the player knows to try again. */
 export function playBonk() {
   const context = ready();
@@ -206,4 +269,60 @@ export function playBonk() {
   tone.connect(gain).connect(context.destination);
   tone.start(start);
   tone.stop(start + 0.35);
+}
+
+/** One of the last five seconds: a dry clock tick, a little higher on the very last one. */
+export function playTick(last = false) {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const click = context.createOscillator();
+  click.type = "square";
+  click.frequency.setValueAtTime(last ? 1760 : 1320, start);
+  click.frequency.exponentialRampToValueAtTime(last ? 880 : 660, start + 0.04);
+  const high = context.createBiquadFilter();
+  high.type = "highpass";
+  high.frequency.value = 500;
+  click.connect(high).connect(envelope(context, start, last ? 0.07 : 0.05, 0.002, 0.01, 0.06)).connect(context.destination);
+  click.start(start);
+  click.stop(start + 0.1);
+}
+
+/** The card burning away after Lock in: a quick rising rush of air. */
+export function playWhoosh() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const rush = context.createBufferSource();
+  rush.buffer = noiseBuffer(context);
+  const band = context.createBiquadFilter();
+  band.type = "bandpass";
+  band.Q.value = 1.2;
+  band.frequency.setValueAtTime(400, start);
+  band.frequency.exponentialRampToValueAtTime(2600, start + 0.32);
+  rush.connect(band).connect(envelope(context, start, 0.2, 0.06, 0.08, 0.28)).connect(context.destination);
+  rush.start(start, Math.random());
+  rush.stop(start + 0.5);
+}
+
+/** The rocket poked on the pad: a springy boing. */
+export function playBoing() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const spring = context.createOscillator();
+  spring.type = "sine";
+  spring.frequency.setValueAtTime(170, start);
+  spring.frequency.exponentialRampToValueAtTime(520, start + 0.09);
+  spring.frequency.exponentialRampToValueAtTime(240, start + 0.42);
+  const wobble = context.createOscillator();
+  wobble.frequency.value = 18;
+  const depth = context.createGain();
+  depth.gain.value = 24;
+  wobble.connect(depth).connect(spring.frequency);
+  spring.connect(envelope(context, start, 0.16, 0.01, 0.12, 0.32)).connect(context.destination);
+  spring.start(start);
+  wobble.start(start);
+  spring.stop(start + 0.5);
+  wobble.stop(start + 0.5);
 }

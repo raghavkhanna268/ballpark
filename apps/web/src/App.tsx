@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CLASSIC_QUESTIONS,
   NAME_CAP,
-  PACK_QUESTIONS,
   classicStep,
   formatAltitude,
   journeyProgress,
@@ -17,19 +16,38 @@ import {
   type PuzzleResponse,
   type Race,
   type Reveal,
+  type UnlimitedStatus,
 } from "@ballpark/shared";
-import { ApiError, errorCopy, getHeadToHead, getLeague, getPacks, getPlus, getPuzzle, postGuess, postNudge, postReport, type HeadToHeadState } from "./api";
+import {
+  ApiError,
+  errorCopy,
+  getHeadToHead,
+  getLeague,
+  getPacks,
+  getPlus,
+  getPuzzle,
+  getUnlimited,
+  postGuess,
+  postNudge,
+  postReport,
+  postUnlimited,
+  type HeadToHeadState,
+  type RoundRef,
+} from "./api";
 import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
 import { basePoints, currentCombo, gainLevel, maxPoints, stageStep, tierOf, trailOf } from "./game";
 import { HangarCard, RocketIcon, SKINS, activeSkin, earnedFrom, isUnlocked, loadHangar, newlyEarned, saveHangar, skinById, type HangarState } from "./hangar";
+import { Loader } from "./loader";
 import { TodayBoard } from "./flightlog";
 import { ReminderSwitch } from "./reminder";
 import { Journey, type Ghost, type Hop, type HudScore, type TrailSegment } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
-import { AdSlot, PackRun, PacksCard, PlusScreen } from "./plus";
+import { ArchiveScreen, JourneyScreen, PacksScreen, UnlimitedScreen, playMoreTiles } from "./more";
+import { AdSlot, PlusScreen } from "./plus";
+import { RoundRun } from "./rounds";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
-import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel } from "./screens";
+import { DevDate, EndScreen, HomeScreen, QuestionScreen, RevealScreen, StatsPanel, type Correction } from "./screens";
 import { sceneryFor } from "./sky";
 import { playBonk } from "./sound";
 import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakStatus, type HeadToHeadStats, type StoredStats } from "./storage";
@@ -40,6 +58,18 @@ import { loadHeadToHeadStats, loadStats, recordHeadToHead, recordScore, streakSt
  */
 const HEAD_TO_HEAD_ON = false;
 
+/**
+ * The Afterburner (double one answer a day) is switched off: the question card no longer offers it, so the card stays
+ * short. The API still takes it and old boosted answers still show their flame, so setting this to true brings it back.
+ */
+const AFTERBURNER_ON = false;
+
+/**
+ * Ads are switched off for launch: there is no ad network yet, so free players see no ad space at all. `AdSlot` stays in
+ * plus.tsx, so setting this to true brings the placeholder back on the home and end screens.
+ */
+const ADS_ON = false;
+
 type Phase =
   | { name: "home" }
   | { name: "ask"; index: number }
@@ -47,7 +77,16 @@ type Phase =
   | { name: "end" }
   | { name: "h2h" }
   | { name: "plus" }
-  | { name: "pack"; id: string; done: boolean };
+  | { name: "packs" }
+  | { name: "journey"; id: string }
+  | { name: "archive" }
+  | { name: "unlimited" }
+  | { name: "round"; round: RoundRef; done: boolean };
+
+/** A round's key, so a new round mounts fresh. */
+function roundKey(round: RoundRef): string {
+  return round.kind === "pack" ? `pack-${round.id}-${round.chapter}` : round.kind === "archive" ? `archive-${round.date}` : `unlimited-${round.id}`;
+}
 
 export function App() {
   const [stats, setStats] = useState<StoredStats>(() => loadStats());
@@ -69,13 +108,20 @@ export function App() {
   const [league, setLeague] = useState<LeagueResponse | null>(null);
   const [plus, setPlus] = useState<PlusStatus | null>(null);
   const [packs, setPacks] = useState<PackSummary[]>([]);
-  const [packFlight, setPackFlight] = useState(0);
-  /** Score and right-answers-in-a-row for the heads-up display in Head-to-head and packs. Classic reads them from the puzzle. */
+  const [unlimited, setUnlimited] = useState<UnlimitedStatus | null>(null);
+  /** Cruise for today, picked before the first answer. Once the day has started, the puzzle says which it is. */
+  const [cruisePick, setCruisePick] = useState(false);
+  const [roundFlight, setRoundFlight] = useState(0);
+  /** Score and right-answers-in-a-row for the heads-up display in Head-to-head and other rounds. Classic reads them from the puzzle. */
   const [h2hRun, setH2hRun] = useState({ score: 0, combo: 0 });
-  const [packRun, setPackRun] = useState({ score: 0, combo: 0 });
-  const [packTrail, setPackTrail] = useState<TrailSegment[]>([]);
+  const [roundRun, setRoundRun] = useState({ score: 0, combo: 0 });
+  const [roundTrail, setRoundTrail] = useState<TrailSegment[]>([]);
+  /** Questions in the round being played, which sets how far each answer climbs. */
+  const [roundSize, setRoundSize] = useState(5);
   /** Names the server said are not on the list, for the question on screen: each one costs 2 seconds. */
   const [rejected, setRejected] = useState<{ id: string; count: number; text: string }>({ id: "", count: 0, text: "" });
+  /** The listed spelling offered for a name typed close to one, on the question it belongs to. */
+  const [correction, setCorrection] = useState<Correction & { id: string }>({ id: "", from: "", to: "", key: 0 });
   /** Today's Afterburner is armed for the next answer. */
   const [armed, setArmed] = useState(false);
   const [hangar, setHangar] = useState<HangarState>(() => loadHangar());
@@ -89,11 +135,12 @@ export function App() {
   const refreshPlus = useCallback(async () => {
     try {
       const deviceId = loadStats().deviceId;
-      const [status, list] = await Promise.all([getPlus(deviceId), getPacks(deviceId)]);
+      const [status, list, endless] = await Promise.all([getPlus(deviceId), getPacks(deviceId), getUnlimited(deviceId)]);
       setPlus(status);
       setPacks(list.packs);
+      setUnlimited(endless);
     } catch {
-      // Packs and the Ballpark+ card wait for the next refresh. The free game still works.
+      // Packs, Unlimited and the Ballpark+ card wait for the next refresh. The free game still works.
     }
   }, []);
 
@@ -146,7 +193,7 @@ export function App() {
     setError(null);
     haptic("tap");
     try {
-      const response = await postGuess(stats.deviceId, question.id, guess, { afterburner: armed || undefined, skin: skin.id });
+      const response = await postGuess(stats.deviceId, question.id, guess, { afterburner: armed || undefined, skin: skin.id, cruise: cruise || undefined });
       setArmed(false);
       const questions = puzzle.questions.map((item, itemIndex) => (itemIndex === index ? { ...item, reveal: response.reveal } : item));
       const nextPuzzle = { ...puzzle, questions, result: response.result };
@@ -178,6 +225,14 @@ export function App() {
       haptic(response.reveal.band === "green" ? "good" : response.reveal.band === "black" ? "bad" : "ok");
       setPhase({ name: "reveal", index, reveal: response.reveal, result: response.result });
     } catch (caught) {
+      if (caught instanceof ApiError && caught.code === "did_you_mean" && caught.suggestion) {
+        // Close to a listed name: the box fills with that spelling to confirm or edit. No time is lost.
+        const to = caught.suggestion;
+        const from = guess.type === "name_one" ? guess.text : "";
+        setCorrection((current) => ({ id: question.id, from, to, key: current.key + 1 }));
+        haptic("ok");
+        return;
+      }
       if (caught instanceof ApiError && caught.code === "not_listed") {
         // Not on our list: nothing is stored, the clock loses 2 seconds, and the player tries another name.
         const text = guess.type === "name_one" ? guess.text : "";
@@ -187,7 +242,7 @@ export function App() {
         return;
       }
       if (caught instanceof ApiError && caught.code === "afterburner_used") setArmed(false);
-      if (caught instanceof ApiError && caught.code === "already_submitted") {
+      if (caught instanceof ApiError && (caught.code === "already_submitted" || caught.code === "mode_locked")) {
         await refresh();
       }
       setError(errorCopy(caught));
@@ -200,18 +255,19 @@ export function App() {
   const classicTrail = useMemo(() => (puzzle ? trailOf(puzzle.questions, CLASSIC_QUESTIONS) : []), [puzzle]);
   // City night, Sunset coast and Himalaya take turns by puzzle number, the same for everyone.
   const scenery = sceneryFor(puzzle?.puzzleNumber ?? puzzleNumber(playToday()));
-  const mode = phase.name === "h2h" ? "h2h" : phase.name === "pack" ? "pack" : "classic";
-  const flight = mode === "h2h" ? h2hFlight : mode === "pack" ? packFlight : classicFlight;
+  const mode = phase.name === "h2h" ? "h2h" : phase.name === "round" ? "round" : "classic";
+  const flight = mode === "h2h" ? h2hFlight : mode === "round" ? roundFlight : classicFlight;
+  const cruise = puzzle?.cruise ?? cruisePick;
   const today = puzzle?.date ?? h2h?.date ?? "";
   const classicRace = raceFor(race, "classic", puzzle?.puzzleNumber);
   const h2hRace = raceFor(race, "h2h", h2h?.puzzleNumber);
   const ghosts =
-    phase.name === "home" || phase.name === "plus" || mode === "pack"
+    mode === "round" || (mode === "classic" && !withGhosts(phase))
       ? []
       : ghostsFor(bestBefore[mode], mode === "h2h" ? h2h?.field : puzzle?.field, mode === "h2h" ? h2hRace : classicRace);
   const afterburnerReady = puzzle !== null && puzzle.result === null && !puzzle.questions.some((question) => question.reveal?.boosted);
   const fresh = newlyEarned(hangar, earned);
-  const showAds = plus !== null && !plus.plus;
+  const showAds = ADS_ON && plus !== null && !plus.plus;
   const classicStreak = streakStatus(stats, today || undefined);
   const h2hStreak = streakStatus(h2hStats, today || undefined);
   const challenge = classicRace && !puzzle?.result ? classicRace : HEAD_TO_HEAD_ON && h2hRace && h2h?.status !== "finished" ? h2hRace : null;
@@ -220,10 +276,10 @@ export function App() {
     ? { value: puzzle ? classicScore(puzzle) : 0, label: "Score", digits: 3 }
     : mode === "h2h"
       ? { value: h2hRun.score, label: "Picks", digits: 2 }
-      : mode === "pack"
-        ? { value: packRun.score, label: "Score", digits: 3 }
+      : mode === "round"
+        ? { value: roundRun.score, label: "Score", digits: 3 }
         : null;
-  const combo = inClassic && puzzle ? currentCombo(pointsOf(puzzle)) : mode === "h2h" ? h2hRun.combo : mode === "pack" ? packRun.combo : 0;
+  const combo = inClassic && puzzle ? currentCombo(pointsOf(puzzle)) : mode === "h2h" ? h2hRun.combo : mode === "round" ? roundRun.combo : 0;
 
   function startHeadToHead() {
     const correct = h2h?.correct ?? 0;
@@ -240,11 +296,27 @@ export function App() {
     setPhase({ name: "ask", index: index === -1 ? 0 : index });
   }
 
-  function openPack(id: string) {
-    setPackFlight(0);
-    setPackRun({ score: 0, combo: 0 });
-    setPackTrail([]);
-    setPhase({ name: "pack", id, done: false });
+  function openRound(round: RoundRef) {
+    setRoundFlight(0);
+    setRoundRun({ score: 0, combo: 0 });
+    setRoundTrail([]);
+    setPhase({ name: "round", round, done: false });
+  }
+
+  /** Where a round goes back to: its pack's route, the archive, or Unlimited. */
+  function leaveRound(round: RoundRef) {
+    void refreshPlus();
+    if (round.kind === "pack") setPhase({ name: "journey", id: round.id });
+    else if (round.kind === "archive") setPhase({ name: "archive" });
+    else setPhase({ name: "unlimited" });
+  }
+
+  async function anotherRound() {
+    try {
+      openRound({ kind: "unlimited", id: (await postUnlimited(stats.deviceId)).id });
+    } catch {
+      setPhase({ name: "unlimited" });
+    }
   }
 
   function goHome() {
@@ -257,15 +329,15 @@ export function App() {
       hop={hop}
       ghosts={ghosts}
       scenery={scenery}
-      trail={mode === "pack" ? packTrail : mode === "classic" ? classicTrail : NO_TRAIL}
+      trail={mode === "round" ? roundTrail : mode === "classic" ? classicTrail : NO_TRAIL}
       score={hudScore}
       combo={combo}
       paint={skin}
-      overview={phase.name === "end" || h2hOverview || (phase.name === "pack" && phase.done)}
-      page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "pack" ? `pack-${phase.id}` : phase.name}
+      overview={phase.name === "end" || h2hOverview || (phase.name === "round" && phase.done)}
+      page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "round" ? roundKey(phase.round) : phase.name === "journey" ? `journey-${phase.id}` : phase.name}
     >
     <main>
-      {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
+      {loading && !puzzle ? <Loader label="Loading today’s puzzle…" /> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
       {puzzle && phase.name === "home" ? (
         <HomeScreen
@@ -282,6 +354,16 @@ export function App() {
           }
           onPlay={startClassic}
           onResult={() => setPhase({ name: "end" })}
+          cruise={{ on: cruise, locked: puzzle.cruise !== null, onToggle: () => setCruisePick((current) => !current) }}
+          play={playMoreTiles({
+            packs,
+            plus,
+            unlimited,
+            onPacks: () => setPhase({ name: "packs" }),
+            onArchive: () => setPhase({ name: "archive" }),
+            onUnlimited: () => setPhase({ name: "unlimited" }),
+          })}
+          plus={{ id: "plus", icon: "⭐", title: "Ballpark+", note: plus?.plus ? "Your pass" : "More to play", onOpen: () => setPhase({ name: "plus" }) }}
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
           panels={[
             {
@@ -291,29 +373,18 @@ export function App() {
               note: league?.joined && league.you ? `${league.name} · ${league.you.points} pts` : (league?.name ?? "Weekly"),
               content: league ? <LeagueCard league={league} today={today} /> : <p className="hint">Loading the league…</p>,
             },
-            ...(packs.length > 0
-              ? [
-                  {
-                    id: "packs",
-                    icon: "🎁",
-                    title: "Packs",
-                    note: plus?.plus ? "Ballpark+" : `${packs.length} themed packs`,
-                    content: <PacksCard packs={packs} status={plus} onPack={openPack} onPlus={() => setPhase({ name: "plus" })} />,
-                  },
-                ]
-              : []),
             {
               id: "today",
               icon: "🏁",
-              title: "Today",
-              note: puzzle.today.climbing ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten at 20 players",
+              title: "Today’s board",
+              note: puzzle.today.climbing > 0 ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten climbs",
               content: (
                 <section className="card today-card" aria-label="Today’s board">
                   <div className="mode-top">
                     <h2>Today’s top climbs</h2>
                     <p className="streak">#{puzzle.puzzleNumber}</p>
                   </div>
-                  <TodayBoard today={puzzle.today} players={puzzle.field.players} />
+                  <TodayBoard today={puzzle.today} />
                 </section>
               ),
             },
@@ -322,6 +393,7 @@ export function App() {
               icon: "🚀",
               title: "Hangar",
               note: fresh.length > 0 ? `New: ${fresh[0]!.name}` : `${SKINS.filter((item) => isUnlocked(item, earned)).length}/${SKINS.length} paint jobs`,
+              alert: fresh.length > 0,
               content: <HangarCard state={hangar} earned={earned} streak={classicStreak.streak} onPick={pickSkin} />,
             },
             {
@@ -345,7 +417,9 @@ export function App() {
           error={error}
           rejections={rejected.id === puzzle.questions[phase.index]?.id ? rejected.count : 0}
           rejectedText={rejected.id === puzzle.questions[phase.index]?.id ? rejected.text : ""}
-          afterburner={{ ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) }}
+          correction={correction.id === puzzle.questions[phase.index]?.id ? correction : null}
+          afterburner={AFTERBURNER_ON ? { ready: afterburnerReady, armed, onToggle: () => setArmed((current) => !current) } : null}
+          clock={!cruise}
           onNudge={async () => (await postNudge(stats.deviceId, puzzle.questions[phase.index]!.id)).nudge}
           onReport={async (text) => {
             await postReport(stats.deviceId, puzzle.questions[phase.index]!.id, text);
@@ -377,9 +451,10 @@ export function App() {
           result={puzzle.result}
           stats={stats}
           streak={classicStreak}
+          standing={puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" big /> : null}
           rivals={
             <>
-              {puzzle.result.place ? <RankBlock place={puzzle.result.place} unit="pts" /> : null}
+              {puzzle.result.cruise ? <p className="cruise-note">⛵ A cruise: no clock, so it stays off the board and the league. Your streak still counts.</p> : null}
               {classicRace ? <FriendResult race={classicRace} mine={classicFlight} /> : null}
               <LeagueLine league={league} />
             </>
@@ -467,29 +542,49 @@ export function App() {
             void refreshPlus();
           }}
           onHome={goHome}
-          onPacks={goHome}
+          onPacks={() => setPhase({ name: "packs" })}
         />
       ) : null}
-      {phase.name === "pack" ? (
-        <PackRun
+      {phase.name === "packs" ? <PacksScreen packs={packs} status={plus} onPack={(id) => setPhase({ name: "journey", id })} onPlus={() => setPhase({ name: "plus" })} onHome={goHome} /> : null}
+      {phase.name === "journey" ? (
+        <JourneyScreen
           key={phase.id}
           deviceId={stats.deviceId}
           packId={phase.id}
+          onChapter={(chapter) => openRound({ kind: "pack", id: phase.id, chapter })}
+          onBack={() => setPhase({ name: "packs" })}
+        />
+      ) : null}
+      {phase.name === "archive" ? (
+        <ArchiveScreen deviceId={stats.deviceId} onDay={(date) => openRound({ kind: "archive", date })} onPlus={() => setPhase({ name: "plus" })} onHome={goHome} />
+      ) : null}
+      {phase.name === "unlimited" ? (
+        <UnlimitedScreen deviceId={stats.deviceId} onRound={(id) => openRound({ kind: "unlimited", id })} onPlus={() => setPhase({ name: "plus" })} onHome={goHome} />
+      ) : null}
+      {phase.name === "round" ? (
+        <RoundRun
+          key={roundKey(phase.round)}
+          deviceId={stats.deviceId}
+          round={phase.round}
           onHome={() => {
             goHome();
             void refreshPlus();
           }}
-          onFlight={(progress, score, combo, trail) => {
-            setPackFlight(progress);
-            setPackRun({ score, combo });
-            setPackTrail(trail);
+          onBack={() => leaveRound(phase.round)}
+          backLabel={phase.round.kind === "pack" ? "Back to the route" : phase.round.kind === "archive" ? "Back to the archive" : "Back to Unlimited"}
+          onAgain={phase.round.kind === "unlimited" ? () => void anotherRound() : undefined}
+          onFlight={(progress, score, combo, trail, size) => {
+            setRoundFlight(progress);
+            setRoundRun({ score, combo });
+            setRoundTrail(trail);
+            setRoundSize(size);
           }}
           onHop={(points, label, answer) => {
-            const travel = classicStep(points, NAME_CAP, PACK_QUESTIONS);
-            const combo = points > 0 ? packRun.combo + 1 : packRun.combo;
-            setPackRun({ score: packRun.score + points, combo: points > 0 ? combo : 0 });
-            setPackFlight((current) => current + travel);
-            if (travel > 0) setPackTrail((current) => [...current, { from: packFlight, to: packFlight + travel, tier: tierOf(points, NAME_CAP) }]);
+            const travel = classicStep(points, NAME_CAP, roundSize);
+            const combo = points > 0 ? roundRun.combo + 1 : roundRun.combo;
+            setRoundRun({ score: roundRun.score + points, combo: points > 0 ? combo : 0 });
+            setRoundFlight((current) => current + travel);
+            if (travel > 0) setRoundTrail((current) => [...current, { from: roundFlight, to: roundFlight + travel, tier: tierOf(points, NAME_CAP) }]);
             setHop((current) => ({
               id: current.id + 1,
               kind: points > 0 ? "voyage" : "stumble",
@@ -499,7 +594,7 @@ export function App() {
               answer,
             }));
           }}
-          onEnd={() => setPhase((current) => (current.name === "pack" ? { ...current, done: true } : current))}
+          onEnd={() => setPhase((current) => (current.name === "round" ? { ...current, done: true } : current))}
         />
       ) : null}
       <footer>
@@ -512,6 +607,11 @@ export function App() {
 }
 
 const NO_TRAIL: TrailSegment[] = [];
+
+/** Ghost rockets fly only in Classic and Head-to-head. */
+function withGhosts(phase: Phase): boolean {
+  return phase.name === "ask" || phase.name === "reveal" || phase.name === "end" || phase.name === "h2h";
+}
 
 function flightFor(puzzle: PuzzleResponse): number {
   return puzzle.questions.reduce((sum, question) => (question.reveal ? sum + stageStep(question.type, question.reveal, CLASSIC_QUESTIONS) : sum), 0);

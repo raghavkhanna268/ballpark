@@ -51,55 +51,6 @@ export function CountUp({ value, delay = 250, duration = 900, pad = 0 }: { value
   );
 }
 
-/** Stage by stage points as one row of tiles that pop in one after another, then the best combo. Shared with the pack end screen. */
-export function Tally({ rows }: { rows: Array<{ emoji: string; label: string; points: number; boosted?: boolean } | null> }) {
-  const combo = bestCombo(rows.map((row) => row?.points ?? null));
-  return (
-    <div className="tally-block">
-      <ol className="tally">
-        {rows.map((row, index) =>
-          row ? (
-            <li key={index} style={{ animationDelay: `${300 + index * 120}ms` }}>
-              <span className="tally-stage" aria-hidden="true">
-                {index + 1}
-              </span>
-              <span className="tally-emoji" aria-hidden="true">
-                {row.emoji}
-              </span>
-              <b aria-hidden="true">{row.points > 0 ? `+${row.points}` : "0"}</b>
-              {row.boosted ? (
-                <i className="tally-boost" aria-hidden="true">
-                  ×2
-                </i>
-              ) : null}
-              <span className="sr">
-                Stage {index + 1}: {row.label}, {row.points} points{row.boosted ? ", Afterburner" : ""}
-              </span>
-            </li>
-          ) : (
-            <li key={index} className="empty" aria-hidden="true">
-              <span className="tally-stage">{index + 1}</span>
-            </li>
-          ),
-        )}
-      </ol>
-      {combo >= 2 ? <p className="best-combo">Best combo x{combo}</p> : null}
-    </div>
-  );
-}
-
-/** The longest run of answers that scored, for the combo meter and the end screen. */
-export function bestCombo(points: Array<number | null>): number {
-  let best = 0;
-  let run = 0;
-  for (const value of points) {
-    if (value === null) break;
-    run = value > 0 ? run + 1 : 0;
-    best = Math.max(best, run);
-  }
-  return best;
-}
-
 /** Right answers in a row at the end of what has been answered so far. */
 export function currentCombo(points: Array<number | null>): number {
   let run = 0;
@@ -150,13 +101,24 @@ export function trailOf(questions: Array<{ type: QuestionType; reveal: Scored | 
   return trail;
 }
 
+/**
+ * What a "name one" answer makes you, by tier, from the most said to the rarest: the big word on the result card.
+ * The tier name (Liftoff … Supernova) still sits under it, and on the tiles, the ladder and the share card.
+ */
+const NAME_TITLE = ["Space Tourist", "Wingman", "Pathfinder", "Lone Voyager", "One of a Kind"];
 const NAME_FLAVOUR = [
-  "Most people said this. A small hop.",
-  "A solid pick. Steady lift.",
+  "Rush hour on the launch pad. A small hop.",
+  "You flew with the pack. Steady lift.",
   "Off the beaten track. Big lift!",
-  "Rare air. Few players went here.",
-  "Full burn! Almost nobody said this.",
+  "Hardly anyone came this way. Rare air.",
+  "Nobody saw that coming. Full burn!",
 ];
+
+/** The big word on a name-one result: what the answer makes you. Misses and timeouts keep the rocket on the ground. */
+export function answerTitle(label: string, tier: number): string {
+  if (tier < 0) return label === "Out of time" ? "Stuck on the Pad" : "Grounded";
+  return NAME_TITLE[Math.min(4, tier)]!;
+}
 const GUESS_FLAVOUR = ["In the ballpark. A small hop.", "Not bad. Steady lift.", "Good call. Big lift!", "Very close. Rare air.", "Spot on! Full burn."];
 
 /** One line under the result on what the answer did for the climb. */

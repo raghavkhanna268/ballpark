@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { assertSeed } from "../seed/content.ts";
 import { resolvePlayDate } from "../src/play-date.ts";
+import { crewSize } from "../src/bots.ts";
 import { HttpError } from "../src/http.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
@@ -52,12 +53,8 @@ describe("today's questions hide the answers", () => {
     expect(raw).not.toContain("\"accepted\"");
     expect(raw).not.toContain("Ganymede");
     expect(raw).not.toContain("Cassiopeia");
-    const free = body.questions[0] as unknown as { suggestions?: string[] };
-    expect(free.suggestions).toEqual([]);
-    const named = body.questions.find((question) => (question as { suggestions?: string[] }).suggestions?.length) as { suggestions?: string[] };
-    expect(named.suggestions).toContain("India");
-    expect(named.suggestions).toContain("Iceland");
-    expect(named.suggestions).not.toContain("Bharat");
+    // No pick list either: the box is plain typing, even for countries and elements.
+    expect(raw).not.toContain("suggestions");
     for (const question of body.questions) {
       expect(question.reveal).toBeNull();
       for (const item of question.items) {
@@ -126,7 +123,17 @@ describe("submissions", () => {
       expect(body.reveal.crowd.submissions).toBe(1);
       result = body.result;
     }
-    expect(result).toMatchObject({ beatPercent: 100, players: 1, place: { rank: 1, players: 1, next: null } });
+    // The only player today is ranked among today's bots, who count like players, and nothing marks them.
+    const place = result!.place as { rank: number; players: number; betterThan: number | null; spread: { bins: number[]; top: number; you: number } };
+    expect(crewSize(DAY)).toBeGreaterThan(10);
+    expect(place.players).toBe(crewSize(DAY) + 1);
+    expect(result!.players).toBe(place.players);
+    expect(JSON.stringify(result)).not.toMatch(/bot/i);
+    // Where you stand: the share of the field you beat, and everyone's scores for the curve.
+    expect(place.betterThan).toBe(result!.beatPercent);
+    expect(place.spread.you).toBe(result!.score);
+    expect(place.spread.bins.reduce((sum, count) => sum + count, 0)).toBe(place.players);
+    expect(place.spread.top).toBeGreaterThanOrEqual(result!.score);
     // Every answer is right, so none is black. How many points each earns depends on its rarity tier.
     expect(result!.emojis).toHaveLength(7);
     expect(result!.emojis).not.toContain("⬛");
@@ -197,8 +204,16 @@ describe("submissions", () => {
     expect(lateBody.reveal.points).toBe(0);
     expect(lateBody.reveal.band).toBe("black");
 
-    const typo = await guess("66666666-6666-4666-8666-666666666666", named.id, { type: "name_one", text: "Nigera" });
-    const typoReveal = ((await typo.json()) as { reveal: { answerText: string; points: number } }).reveal;
+    // A near miss is not scored on its own: the listed spelling comes back to confirm, and nothing is stored yet.
+    const speller = "66666666-6666-4666-8666-666666666666";
+    const typo = await guess(speller, named.id, { type: "name_one", text: "Nigera" });
+    expect(typo.status).toBe(422);
+    expect(await typo.json()).toEqual({ error: "did_you_mean", suggestion: "Nigeria" });
+    const half = await guess(speller, named.id, { type: "name_one", text: "Ethiop" });
+    expect(await half.json()).toEqual({ error: "did_you_mean", suggestion: "Ethiopia" });
+    const confirmed = await guess(speller, named.id, { type: "name_one", text: "Nigeria" });
+    expect(confirmed.status).toBe(200);
+    const typoReveal = ((await confirmed.json()) as { reveal: { answerText: string; points: number } }).reveal;
     expect(typoReveal.answerText).toBe("Nigeria");
     expect(typoReveal.points).toBeGreaterThan(0);
   });

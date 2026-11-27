@@ -3,19 +3,16 @@ import {
   CLASSIC_QUESTIONS,
   NAME_CAP,
   callsign,
-  canCompare,
   classicStep,
   fieldStats,
   journeyProgress,
   type BoardRow,
-  type ClimbCurve,
   type FieldStats,
   type TodayStats,
 } from "@ballpark/shared";
+import { crewRuns, headToHeadBots, type BotRun } from "./bots.js";
 import type { PlayQuestion } from "./classic-score.js";
 
-/** How many height bands the end screen's curve of today's climbs has. */
-const CURVE_BINS = 12;
 /** How many climbs the Today board lists. */
 const BOARD_SIZE = 10;
 
@@ -35,7 +32,7 @@ export async function classicClimbs(db: D1Database, date: string, questions: Pla
     .prepare(
       `SELECT s.device_id AS device_id, s.question_id AS question_id, s.points AS points, s.boost AS boost
        FROM submissions s
-       JOIN daily_results r ON r.device_id = s.device_id AND r.puzzle_date = s.puzzle_date AND r.mode = 'classic'
+       JOIN daily_results r ON r.device_id = s.device_id AND r.puzzle_date = s.puzzle_date AND r.mode = 'classic' AND r.cruise = 0
        WHERE s.puzzle_date = ? AND s.mode = 'classic'`,
     )
     .bind(date)
@@ -50,44 +47,48 @@ export async function classicClimbs(db: D1Database, date: string, questions: Pla
   return climbs;
 }
 
-/** Finished Classic runs today, as distances along the journey. */
+/** Today's bots: the same crew and the same answers on every request, and on that day's archive page later. */
+export function dayBots(date: string, questions: PlayQuestion[]): Array<BotRun & { progress: number }> {
+  return crewRuns(date, questions, { afterburner: true }).map((run) => ({
+    ...run,
+    progress: run.points.reduce((sum, points, index) => sum + (questions[index] ? stageStep(questions[index], points, index === run.boosted) : 0), 0),
+  }));
+}
+
+/** Today's finished climbs, players' and bots', keyed by device id or bot id. */
+export async function fieldClimbs(db: D1Database, date: string, questions: PlayQuestion[]): Promise<Map<string, number>> {
+  const climbs = await classicClimbs(db, date, questions);
+  for (const bot of dayBots(date, questions)) climbs.set(bot.id, bot.progress);
+  return climbs;
+}
+
+/** Finished Classic runs today, bots included, as distances along the journey. */
 export async function classicField(db: D1Database, date: string, questions: PlayQuestion[]): Promise<FieldStats> {
-  return fieldStats([...(await classicClimbs(db, date, questions)).values()]);
+  return fieldStats([...(await fieldClimbs(db, date, questions)).values()]);
 }
 
-/** Today's climbs as a histogram with yours marked, once enough players have finished to compare with. */
-export function climbCurve(climbs: Map<string, number>, deviceId: string): ClimbCurve | null {
-  const mine = climbs.get(deviceId);
-  if (mine === undefined || !canCompare(climbs.size)) return null;
-  const all = [...climbs.values()];
-  const top = Math.max(1, Math.ceil(Math.max(...all)));
-  const bins = Array.from({ length: CURVE_BINS }, () => 0);
-  for (const value of all) bins[Math.min(CURVE_BINS - 1, Math.floor((value / top) * CURVE_BINS))] += 1;
-  const others = all.length - 1;
-  const below = all.filter((value) => value < mine - 1e-9).length;
-  return { bins, top, you: round(mine), higherThan: others > 0 ? Math.round((100 * below) / others) : 0 };
-}
-
-/** How many are climbing today, and the ten highest finished climbs. Both wait for 20 players. */
-export async function todayStats(db: D1Database, date: string, deviceId: string, climbs: Map<string, number>): Promise<TodayStats> {
+/** How many are climbing today, and the ten highest finished climbs. `climbs` comes from fieldClimbs, bots included. */
+export async function todayStats(db: D1Database, date: string, deviceId: string, climbs: Map<string, number>, bots: BotRun[]): Promise<TodayStats> {
   const started = await db
     .prepare("SELECT COUNT(DISTINCT device_id) AS players FROM submissions WHERE puzzle_date = ? AND mode = 'classic'")
     .bind(date)
     .first<{ players: number }>();
-  const climbing = started && canCompare(started.players) ? started.players : null;
-  if (!canCompare(climbs.size)) return { climbing, board: null, you: null };
+  const names = new Map(bots.map((bot) => [bot.id, bot]));
 
   const results = await db
-    .prepare("SELECT device_id, score, skin FROM daily_results WHERE puzzle_date = ? AND mode = 'classic'")
+    .prepare("SELECT device_id, score, skin FROM daily_results WHERE puzzle_date = ? AND mode = 'classic' AND cruise = 0")
     .bind(date)
     .all<{ device_id: string; score: number; skin: string | null }>();
   const extra = new Map((results.results ?? []).map((row) => [row.device_id, row]));
   const ordered = [...climbs.entries()]
-    .map(([id, progress]) => ({ id, progress: round(progress), score: extra.get(id)?.score ?? 0, skin: extra.get(id)?.skin ?? null }))
+    .map(([id, progress]) => {
+      const bot = names.get(id);
+      return { id, bot, progress: round(progress), score: bot ? bot.score : (extra.get(id)?.score ?? 0), skin: bot ? bot.skin : (extra.get(id)?.skin ?? null) };
+    })
     .sort((left, right) => right.progress - left.progress || right.score - left.score || left.id.localeCompare(right.id));
   const rows: BoardRow[] = ordered.map((row) => ({
     rank: ordered.filter((other) => other.progress > row.progress).length + 1,
-    callsign: callsign(row.id),
+    callsign: row.bot ? row.bot.name : callsign(row.id),
     progress: row.progress,
     score: row.score,
     skin: row.skin,
@@ -95,16 +96,17 @@ export async function todayStats(db: D1Database, date: string, deviceId: string,
   }));
   const board = rows.slice(0, BOARD_SIZE);
   const you = board.some((row) => row.you) ? null : (rows.find((row) => row.you) ?? null);
-  return { climbing, board, you };
+  return { climbing: (started?.players ?? 0) + bots.length, board, you };
 }
 
-/** Finished scored Head-to-head runs today. Every run answers all ten. */
+/** Finished scored Head-to-head runs today, bots included. Every run answers all ten. */
 export async function headToHeadField(db: D1Database, date: string, length: number): Promise<FieldStats> {
   const rows = await db
     .prepare(`SELECT correct_count FROM h2h_runs WHERE puzzle_date = ? AND kind = 'scored' AND finished = 1`)
     .bind(date)
     .all<{ correct_count: number }>();
-  return fieldStats((rows.results ?? []).map((row) => journeyProgress(row.correct_count, length)));
+  const runs = [...(rows.results ?? []).map((row) => row.correct_count), ...headToHeadBots(date, length)];
+  return fieldStats(runs.map((right) => journeyProgress(right, length)));
 }
 
 function round(value: number): number {

@@ -3,10 +3,11 @@ import {
   COLD_START_RESPONSES,
   NAME_TIERS,
   blendShare,
+  exactAccepted,
   matchAccepted,
   nameTier,
   priorShare,
-  suggestionsFor,
+  suggestAccepted,
   type AcceptedAnswer,
   type Band,
   type CrowdStat,
@@ -15,6 +16,7 @@ import {
   type ServerQuestion,
 } from "@ballpark/shared";
 import { compareScore, estimateScore, rankScore } from "@ballpark/shared/scoring";
+import { HttpError } from "./http.js";
 
 export type PlayQuestion = ServerQuestion & {
   accepted: AcceptedAnswer[] | null;
@@ -102,8 +104,26 @@ export function isUnlistedName(question: PlayQuestion, guess: Guess): boolean {
   return matchAccepted(guess.text, question.accepted ?? []) === null;
 }
 
-export function suggestionsForQuestion(question: PlayQuestion): string[] {
-  return suggestionsFor(question.entitySet);
+/**
+ * What happens to a typed name-one answer before it is scored. "listed" locks it in. "suggest" hands back the listed
+ * spelling it looks like, for the player to confirm or edit, like "Kilomter" to "Kilometre": nothing is stored, no
+ * time is lost, and the clock keeps running. "unlisted" is a name that is not on the list.
+ */
+export type NameCheck = { kind: "listed" } | { kind: "suggest"; name: string } | { kind: "unlisted" };
+
+export function checkName(question: PlayQuestion, guess: Guess): NameCheck {
+  if (question.type !== "name_one" || guess.type !== "name_one" || guess.timedOut) return { kind: "listed" };
+  const accepted = question.accepted ?? [];
+  if (exactAccepted(guess.text, accepted)) return { kind: "listed" };
+  const name = suggestAccepted(guess.text, accepted);
+  return name ? { kind: "suggest", name } : { kind: "unlisted" };
+}
+
+/** Throws the answer back when it is not an exact listed name: as a spelling to confirm, or as not on the list. */
+export function nameRejection(check: NameCheck): HttpError | null {
+  if (check.kind === "suggest") return new HttpError(422, "did_you_mean", { suggestion: check.name });
+  if (check.kind === "unlisted") return new HttpError(422, "not_listed");
+  return null;
 }
 
 function plain(band: Band, points: number): ClassicScore {

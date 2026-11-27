@@ -1,29 +1,27 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { playTick } from "./sound";
 
-export const QUESTION_SECONDS = 30;
-/** The countdown is drawn as ten blocks, one for every three seconds, like an arcade power bar. */
+export const QUESTION_SECONDS = 25;
+/** The countdown is drawn as ten blocks, one for every two and a half seconds, like an arcade power bar. */
 const BLOCKS = 10;
+/** The last few seconds: a red edge throbs round the screen and the clock ticks. */
+const DANGER_SECONDS = 5;
+
+type ClockInput = {
+  questionKey: string;
+  running: boolean;
+  penaltyMs?: number;
+  onExpire: () => void;
+};
 
 /**
- * A 30-second countdown for one question. It starts the first time `running` is true, so the 3-second read before
+ * A 25-second countdown for one question. It starts the first time `running` is true, so the 3-second read before
  * it is free, and pauses its ticking while `running` is false (for example while an answer is being sent).
  * `penaltyMs` comes off the time left: each name that is not on the list costs 2 seconds.
  * It calls onExpire once when time runs out.
  */
-export function QuestionTimer({
-  questionKey,
-  running,
-  penaltyMs = 0,
-  waitLabel,
-  onExpire,
-}: {
-  questionKey: string;
-  running: boolean;
-  penaltyMs?: number;
-  /** Shown instead of the seconds before the clock starts, like "Clock starts in 3". */
-  waitLabel?: string;
-  onExpire: () => void;
-}) {
+export function useQuestionClock({ questionKey, running, penaltyMs = 0, onExpire }: ClockInput): { left: number; total: number; started: boolean } {
   const total = QUESTION_SECONDS * 1000;
   const [elapsed, setElapsed] = useState(0);
   const startRef = useRef<number | null>(null);
@@ -54,15 +52,29 @@ export function QuestionTimer({
     expireRef.current();
   }, [left, running]);
 
+  return { left, total, started: startRef.current !== null };
+}
+
+/** The clock as ten blocks on the card, for the question types that answer on the card. */
+export function QuestionTimer({
+  waitLabel,
+  ...clock
+}: ClockInput & {
+  /** Shown instead of the seconds before the clock starts, like "Clock starts in 3". */
+  waitLabel?: string;
+}) {
+  const { left, total, started } = useQuestionClock(clock);
   const seconds = Math.ceil(left / 1000);
   const lit = Math.ceil((left / total) * BLOCKS);
-  const waiting = waitLabel !== undefined && startRef.current === null;
+  const waiting = waitLabel !== undefined && !started;
+  const danger = useDanger(seconds, clock.running && started);
   return (
     <div
       className={`timer ${waiting ? "waiting" : left <= 0 ? "out" : seconds <= 10 ? "low" : ""}`}
       role="timer"
       aria-label={waiting ? waitLabel : `${seconds} seconds left`}
     >
+      {danger ? <DangerEdge /> : null}
       <div className="timer-track" aria-hidden="true">
         {Array.from({ length: BLOCKS }, (_, block) => (
           <i key={block} className={block < lit ? "on" : ""} />
@@ -71,4 +83,51 @@ export function QuestionTimer({
       <span className="mono">{waiting ? waitLabel : left <= 0 ? "Time" : `${seconds}s`}</span>
     </div>
   );
+}
+
+const RING = 2 * Math.PI * 23;
+
+/**
+ * The clock in the answer bar: the seconds left inside a ring that empties. During the 3-second read it shows the
+ * read count in amber instead.
+ */
+export function ClockRing({ left, total, read }: { left: number; total: number; read: number }) {
+  const seconds = Math.ceil(left / 1000);
+  const state = read > 0 ? "waiting" : left <= 0 ? "out" : seconds <= DANGER_SECONDS ? "low danger" : seconds <= 10 ? "low" : "";
+  return (
+    <div className={`clock-ring ${state}`} role="timer" aria-label={read > 0 ? `Clock starts in ${read}` : `${seconds} seconds left`}>
+      <svg viewBox="0 0 54 54" aria-hidden="true">
+        <circle className="clock-track" cx="27" cy="27" r="23" />
+        <circle className="clock-left" cx="27" cy="27" r="23" strokeDasharray={RING} strokeDashoffset={read > 0 ? 0 : RING * (1 - left / total)} />
+      </svg>
+      {/* A new number each second, so the last few seconds can bump. */}
+      <b aria-hidden="true" key={read > 0 ? `r${read}` : seconds}>
+        {read > 0 ? read : seconds}
+      </b>
+    </div>
+  );
+}
+
+/** A thin line under the answer box that burns down with the clock. */
+export function ClockFuse({ left, total, read }: { left: number; total: number; read: number }) {
+  const low = read === 0 && left <= 10_000;
+  return (
+    <i className={`clock-fuse${low ? " low" : ""}`} aria-hidden="true">
+      <b style={{ transform: `scaleX(${read > 0 ? 1 : left / total})` }} />
+    </i>
+  );
+}
+
+/** True in the last five seconds of a running clock. Each of those seconds ticks. */
+export function useDanger(seconds: number, running: boolean): boolean {
+  const danger = running && seconds > 0 && seconds <= DANGER_SECONDS;
+  useEffect(() => {
+    if (danger) playTick(seconds === 1);
+  }, [danger, seconds]);
+  return danger;
+}
+
+/** A red glow that throbs round the edge of the screen while time runs out. */
+export function DangerEdge() {
+  return createPortal(<i className="danger-edge" aria-hidden="true" />, document.body);
 }

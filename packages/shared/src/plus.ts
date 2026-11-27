@@ -1,8 +1,6 @@
-import type { Band, PublicQuestion } from "./types.js";
-import type { Placement } from "./compete.js";
 
 /**
- * Ballpark+: themed packs and no ads. The daily game, the league and every streak stay free, so paying
+ * Ballpark+: pack journeys, Unlimited and the whole archive. The daily game, the league and every streak stay free, so paying
  * never buys league points. A pass is tied to the device, like everything else without an account.
  */
 
@@ -19,10 +17,10 @@ export type PlusPrice = {
   days: number;
 };
 
-/** PLACEHOLDER prices for local play. Set the real ones before launch. */
+/** Launch prices: a pass for 30 or 365 days, paid once. */
 export const PLUS_PRICES: PlusPrice[] = [
-  { plan: "month", amount: 9900, currency: "INR", label: "Monthly", price: "₹99", note: "30 days", days: 30 },
-  { plan: "year", amount: 79900, currency: "INR", label: "Yearly", price: "₹799", note: "365 days, about ₹67 a month", days: 365 },
+  { plan: "month", amount: 4900, currency: "INR", label: "Monthly", price: "₹49", note: "30 days", days: 30 },
+  { plan: "year", amount: 39900, currency: "INR", label: "Yearly", price: "₹399", note: "365 days, about ₹33 a month", days: 365 },
 ];
 
 export function plusPrice(plan: string): PlusPrice | null {
@@ -51,33 +49,19 @@ export type PlusOrder = {
   description: string;
 };
 
+/** A themed pack in the list: a journey of chapters, played in order. */
 export type PackSummary = {
   id: string;
   title: string;
   emoji: string;
   blurb: string;
-  questions: number;
-  answered: number;
-  score: number | null;
+  /** Where the journey goes, such as "From gully cricket to Lord's". */
+  route: string;
+  chapters: number;
+  /** Chapters finished on this device. */
+  chaptersDone: number;
   locked: boolean;
 };
 
-export type PackResult = {
-  score: number;
-  bands: Band[];
-  emojis: string[];
-  reached: string;
-  place: Placement;
-  shareText: string;
-};
-
-export type PackResponse = {
-  pack: PackSummary;
-  questions: PublicQuestion[];
-  result: PackResult | null;
-};
-
-export type PackGuessResponse = {
-  reveal: import("./types.js").Reveal;
-  result: PackResult | null;
-};
+/** What a restore code does: moves this device's pass to the device that types it. */
+export type RestoreCode = { code: string };

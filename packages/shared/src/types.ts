@@ -82,8 +82,6 @@ export type PublicQuestion = {
   topic: string;
   difficulty: number;
   slider: { min: number; max: number } | null;
-  /** Empty unless the question is name-one. A broad list, not the scoring key. */
-  suggestions: string[];
   /** True when a stuck player can ask for a nudge on this question. The nudge itself comes from the API on request. */
   hasNudge: boolean;
   reveal: Reveal | null;
@@ -108,7 +106,7 @@ export type RankGuess = {
 export type NameGuess = {
   type: "name_one";
   text: string;
-  /** The 30-second timer ran out. Scores zero. */
+  /** The 25-second timer ran out. Scores zero. */
   timedOut?: boolean;
 };
 
@@ -174,34 +172,25 @@ export type DayResult = {
   shareText: string;
   reached: string;
   provisional: boolean;
-  /** Your rank among today's finishers, and the gap to the next rank up. */
-  place: import("./compete.js").Placement;
+  /** Your rank among today's finishers, and the gap to the next rank up. Null for a Cruise run, which is not ranked. */
+  place: import("./compete.js").Placement | null;
+  /** Played in Cruise: no clock, kept out of the rank, the board and the league. */
+  cruise: boolean;
   /** The race code in the share link, so the client can show it. */
   race: string;
   /** The stage that used today's Afterburner, by index, or null. */
   boosted: number | null;
   /** Today's finished climbs as a histogram of heights with yours marked. Null below 20 finishers. */
-  curve: ClimbCurve | null;
-};
-
-export type ClimbCurve = {
-  /** Finished climbs per height band, lowest first. Each band is `top / bins.length` tall. */
-  bins: number[];
-  top: number;
-  /** Your height. */
-  you: number;
-  /** The share of other finishers you climbed higher than, 0 to 100. */
-  higherThan: number;
 };
 
 /** One finished climb on today's board. */
 export type BoardRow = { rank: number; callsign: string; progress: number; score: number; skin: string | null; you: boolean };
 
 export type TodayStats = {
-  /** Players who have answered at least one question today, or null below 20. */
-  climbing: number | null;
-  /** The ten highest finished climbs, or null below 20 finishers. */
-  board: BoardRow[] | null;
+  /** Everyone climbing today. */
+  climbing: number;
+  /** The ten highest finished climbs. */
+  board: BoardRow[];
   /** Your row when you finished outside the top ten. */
   you: BoardRow | null;
 };
@@ -221,6 +210,8 @@ export type PuzzleResponse = {
   field: import("./scale.js").FieldStats;
   /** How many are climbing today and the top ten, once 20 have played. */
   today: TodayStats;
+  /** How today is being played once the first answer is in: true for Cruise (no clock), null before any answer. */
+  cruise: boolean | null;
 };
 
 export type GuessResponse = {

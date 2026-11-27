@@ -2,6 +2,7 @@ import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
 import { addUtcDays, playToday } from "@ballpark/shared";
+import { crewSize } from "../src/bots.ts";
 import { isPushEndpoint, saveReminder, sendReminders, type ReminderEnv } from "../src/reminders.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
 
@@ -29,7 +30,7 @@ async function call(path: string, deviceId: string, body?: unknown, method = bod
 }
 
 type Reveal = { label: string; points: number; boosted: boolean; nudged: boolean; crowd: { count?: number } };
-type Result = { score: number; shareText: string; emojis: string[]; boosted: number | null; race: string; curve: unknown };
+type Result = { score: number; shareText: string; emojis: string[]; boosted: number | null; race: string; place: { players: number } | null };
 
 async function answer(deviceId: string, questionId: string, text: string, extras: Record<string, unknown> = {}) {
   const response = await call("/api/guess", deviceId, { questionId, guess: { type: "name_one", text }, ...extras });
@@ -148,25 +149,32 @@ describe("should this count?", () => {
 });
 
 describe("today's board and the flight log", () => {
-  it("waits for 20 players, then lists the top ten climbs and draws the curve", async () => {
-    const early = (await (await call("/api/puzzle", DEVICE)).json()) as { today: { climbing: number | null; board: unknown } };
-    expect(early.today).toEqual({ climbing: null, board: null, you: null });
+  it("fills the board with bots that look and count like players from the first game", async () => {
+    type Today = { climbing: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean }>; you: unknown };
+    // Before anyone plays, today's bots are already on the board and in the climbing count, with callsigns and paint.
+    const early = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today; field: { players: number; averageProgress: number | null } };
+    expect(early.today.climbing).toBe(crewSize(DAY));
+    expect(early.today.board).toHaveLength(10);
+    expect(early.today.board.every((row) => !row.you && /^\S+ \S+ \d+$/.test(row.callsign))).toBe(true);
+    expect(early.today.board.some((row) => row.skin !== null)).toBe(true);
+    expect(JSON.stringify(early.today)).not.toMatch(/bot/i);
+    // Bots pick different answers, so their climbs spread out.
+    expect(new Set(early.today.board.map((row) => row.progress)).size).toBeGreaterThan(3);
+    expect(early.field.averageProgress).not.toBeNull();
+    // The same bots, with the same climbs, on every request.
+    const again = (await (await call("/api/puzzle", OTHER)).json()) as { today: Today };
+    expect(again.today.board).toEqual(early.today.board);
 
-    await finishRuns(24);
+    await finishRuns(4);
     let result: Result | null = null;
     for (const question of spaceDay()) {
       const response = await call("/api/guess", DEVICE, { questionId: question.id, guess: correctGuess(question), skin: "aurora" });
       result = ((await response.json()) as { result: Result | null }).result;
     }
-    const curve = result!.curve as { bins: number[]; top: number; you: number; higherThan: number };
-    expect(curve.bins.reduce((sum, count) => sum + count, 0)).toBe(25);
-    expect(curve.higherThan).toBeGreaterThanOrEqual(0);
-    expect(curve.higherThan).toBeLessThanOrEqual(100);
+    expect(result!.place!.players).toBe(5 + crewSize(DAY));
 
-    const day = (await (await call("/api/puzzle", DEVICE)).json()) as {
-      today: { climbing: number; board: Array<{ rank: number; callsign: string; progress: number; skin: string | null; you: boolean }>; you: unknown };
-    };
-    expect(day.today.climbing).toBe(25);
+    const day = (await (await call("/api/puzzle", DEVICE)).json()) as { today: Today };
+    expect(day.today.climbing).toBe(5 + crewSize(DAY));
     expect(day.today.board).toHaveLength(10);
     const heights = day.today.board.map((row) => row.progress);
     expect([...heights].sort((left, right) => right - left)).toEqual(heights);

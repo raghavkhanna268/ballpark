@@ -1,9 +1,11 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { MILESTONES, altitudeKm, formatAltitude, formatDistance, nextMilestone } from "@ballpark/shared";
-import { useCountUp } from "./game";
-import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, replayMs, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
-import { playBurner, playChime, playSparkle, playSputter, readSound, setSound, unlockAudio } from "./sound";
+import { slam } from "./fx";
+import { haptic } from "./haptic";
+import { CLASSIC_PAINT, IGNITION_MS, climbMs, createSky, tierColor, type RocketPaint, type Scenery, type Sky, type SkyGhost, type SkyTrail } from "./sky";
+import { playBoing, playBurner, playChime, playChute, playPop, playSparkle, playSputter, playThud, readSound, setSound, unlockAudio } from "./sound";
 import "./journey.css";
+import "./polish.css";
 
 /** One answer's climb. */
 export type Hop = {
@@ -29,15 +31,24 @@ export type TrailSegment = SkyTrail;
 function passedLine(ghosts: Ghost[]): string {
   return ghosts.map((ghost) => ghost.label.charAt(0).toLowerCase() + ghost.label.slice(1)).join(" and ");
 }
-type Motion = "idle" | "climb" | "replay";
+type Motion = "idle" | "climb" | "land";
 type Toast = { id: number; born: number; title: string; detail: string };
 
 /**
- * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, whether a climb is
- * still playing (so a result waits for it), and a switch that clears the card away so the climb has the whole screen.
+ * What the screens inside the card can reach: a slot in the heads-up display for the stage strip, a slot at the
+ * bottom of the screen for the answer bar, whether a climb is still playing (so a result waits for it), a switch
+ * that clears the card away so the climb has the whole screen, and the trip home after the last stage.
  */
-type JourneyContextValue = { hudSlot: HTMLElement | null; holding: boolean; setFocus: (on: boolean) => void };
-const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, holding: false, setFocus: () => {} });
+type JourneyContextValue = {
+  hudSlot: HTMLElement | null;
+  dockSlot: HTMLElement | null;
+  holding: boolean;
+  setFocus: (on: boolean) => void;
+  setFloat: (on: boolean) => void;
+  /** The capsule parachutes down to the launch pad, then `onHome` runs. A tap skips it. */
+  land: (onHome: () => void) => void;
+};
+const JourneyContext = createContext<JourneyContextValue>({ hudSlot: null, dockSlot: null, holding: false, setFocus: () => {}, setFloat: () => {}, land: (onHome) => onHome() });
 
 export function useJourney(): JourneyContextValue {
   return useContext(JourneyContext);
@@ -55,10 +66,24 @@ export function useFocusMode() {
   }, [setFocus]);
 }
 
+/**
+ * Like a Krillion dive's last screen: no card and no heads-up display. The screen's content floats over the dimmed
+ * scene and scrolls on its own, with room at the bottom for a bar in the dock slot. The end screens call this.
+ */
+export function useFloatMode() {
+  const { setFloat } = useContext(JourneyContext);
+  useLayoutEffect(() => {
+    setFloat(true);
+    return () => setFloat(false);
+  }, [setFloat]);
+}
+
 /** At this width and up, the card sits on the left and the rocket climbs on the right. */
 const WIDE_MIN = 900;
 /** Where the rocket rests, as a share of the screen height from the top. */
 const ANCHOR = 0.84;
+/** On an end screen the rocket rests this low, mostly behind the bottom bar, so it never sits behind the text. */
+const FLOAT_ANCHOR = 0.985;
 /** The rocket never rests lower than this, even under a tall card. */
 const ANCHOR_MAX = 0.92;
 /** The rocket's nose and a little air need this much room under the card, in pixels. */
@@ -66,6 +91,12 @@ const ROCKET_ROOM = 76;
 /** The heads-up strip at the top. With the card cleared away, the open sky starts under it. */
 const HUD_H = 46;
 const TOAST_MS = 2600;
+/** What the rocket says when it is poked on the pad, in turn. */
+const BOINGS = ["boing!", "wheee!", "hey!", "again!", "zoom?", "ready!"];
+/** The altitude counter clicks round this often on the way up, with a jolt each time. */
+const CRANK_MS = 110;
+const GAIN_POP: Keyframe[] = [{ scale: "1" }, { scale: "1.4", offset: 0.35 }, { scale: "1" }];
+const CRANK: Keyframe[] = [{ transform: "none" }, { transform: "translateY(3px) scale(1.06)", offset: 0.45 }, { transform: "none" }];
 const GHOST_COLORS: Record<Ghost["id"], string> = {
   best: "rgba(232,241,255,0.8)",
   average: "#8fd3ff",
@@ -90,7 +121,7 @@ export function Journey({
   /** 0 is the launch pad and 10 the centre of the Milky Way. Height follows points. */
   progress: number;
   hop: Hop;
-  /** The end screen: the whole climb replays from the launch pad. */
+  /** An end screen: the capsule is home on the launch pad. */
   overview: boolean;
   /** Changes whenever the card shows a new screen, so it starts scrolled to the top. */
   page: string;
@@ -109,6 +140,9 @@ export function Journey({
   children: ReactNode;
 }) {
   const reduced = useReducedMotion();
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
+  const crankAt = useRef(0);
   const stageRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -133,18 +167,31 @@ export function Journey({
   const [motion, setMotion] = useState<Motion>("idle");
   const [landed, setLanded] = useState(progress);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  /** Where the rocket was drawn last frame, for a poke. */
+  const rocketAt = useRef({ x: -999, y: -999 });
+  const [boing, setBoing] = useState<{ id: number; x: number; y: number; word: string } | null>(null);
   const [sound, setSoundOn] = useState(() => readSound());
   const [focus, setFocus] = useState(false);
+  const [float, setFloat] = useState(false);
   const [hudSlot, setHudSlot] = useState<HTMLDivElement | null>(null);
+  const [dockSlot, setDockSlot] = useState<HTMLDivElement | null>(null);
+  const dockRef = useRef<HTMLDivElement | null>(null);
+  const bindDock = useCallback((element: HTMLDivElement | null) => {
+    dockRef.current = element;
+    setDockSlot(element);
+  }, []);
   /** The last answer whose climb has finished. Until the current one lands, a result waits off screen. */
   const [settledHop, setSettledHop] = useState(hop.id);
   const focusRef = useRef(focus);
-  focusRef.current = focus;
+  focusRef.current = focus || float;
+  const floatRef = useRef(float);
+  floatRef.current = float;
 
-  function pushToast(title: string, detail: string) {
+  /** `alone` replaces whatever is showing, for the landmarks rushing past on the way home. */
+  function pushToast(title: string, detail: string, alone = false) {
     toastId.current += 1;
     const toast = { id: toastId.current, born: Date.now(), title, detail };
-    setToasts((list) => [...list, toast].slice(-3));
+    setToasts((list) => (alone ? [toast] : [...list, toast].slice(-3)));
   }
 
   useEffect(() => {
@@ -172,24 +219,37 @@ export function Journey({
       const card = sheet.getBoundingClientRect();
       const top = focusRef.current ? HUD_H : Math.max(0, Math.round(card.bottom - stage.getBoundingClientRect().top));
       stage.style.setProperty("--sheet-bottom", `${top}px`);
-      const under = focusRef.current || wide ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
-      sky.setAnchor(under);
+      // The answer bar at the bottom: the rocket waits just above it.
+      const dock = dockRef.current?.offsetHeight ?? 0;
+      stage.style.setProperty("--dock-h", `${dock}px`);
+      const under = focusRef.current ? ANCHOR : Math.min(ANCHOR_MAX, Math.max(ANCHOR, (top + ROCKET_ROOM) / h));
+      // On an end screen the content floats over the scene, so the rocket waits down behind the bottom bar.
+      sky.setAnchor(floatRef.current ? FLOAT_ANCHOR : dock > 0 ? Math.min(under, (h - dock - 10) / h) : under);
     };
     measureRef.current = measure;
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     observer.observe(sheet);
+    if (dockRef.current) observer.observe(dockRef.current);
 
     sky.onFrame = (frame) => {
+      rocketAt.current = { x: frame.x, y: frame.y };
       const km = altitudeKm(frame.progress);
       const [value, unit] = splitDistance(formatDistance(km));
       const alt = altRef.current;
-      if (alt && alt.textContent !== value) {
+      // On the way up the altitude cranks round in steps, each with a little jolt, like a mechanical counter.
+      const now = performance.now();
+      const step = !frame.climbing || reducedRef.current || now - crankAt.current >= CRANK_MS;
+      if (alt && step && alt.textContent !== value) {
         alt.textContent = value;
         alt.parentElement?.classList.toggle("long", value.length > 5);
+        if (altUnitRef.current && altUnitRef.current.textContent !== unit) altUnitRef.current.textContent = unit;
+        if (frame.climbing && !reducedRef.current) {
+          crankAt.current = now;
+          alt.parentElement?.animate(CRANK, { duration: 120, easing: "cubic-bezier(0.2, 1.6, 0.4, 1)" });
+        }
       }
-      if (altUnitRef.current && altUnitRef.current.textContent !== unit) altUnitRef.current.textContent = unit;
       const share = Math.max(0, Math.min(1, frame.progress / TOP));
       if (markerRef.current) markerRef.current.style.bottom = `${share * 100}%`;
       if (fillRef.current) fillRef.current.style.height = `${share * 100}%`;
@@ -216,8 +276,12 @@ export function Journey({
       }
       lastProgress.current = frame.progress;
     };
-    sky.onMilestone = (index) => {
+    sky.onMilestone = (index, down) => {
       const milestone = MILESTONES[index];
+      if (down) {
+        pushToast(`Back past ${milestone.phrase}`, formatDistance(milestone.km), true);
+        return;
+      }
       pushToast(`Passed ${milestone.phrase}`, formatDistance(milestone.km));
       playChime(index);
     };
@@ -237,7 +301,7 @@ export function Journey({
 
   useLayoutEffect(() => {
     measureRef.current();
-  }, [focus]);
+  }, [focus, float]);
 
   useEffect(() => {
     skyRef.current?.setScene(scenery);
@@ -254,6 +318,32 @@ export function Journey({
   useEffect(() => {
     skyRef.current?.setPaint(paint);
   }, [paint]);
+
+  useEffect(() => {
+    if (!boing) return;
+    const id = window.setTimeout(() => setBoing(null), 1100);
+    return () => window.clearTimeout(id);
+  }, [boing]);
+
+  /** True when a point on the stage is on the resting rocket. */
+  function onRocket(clientX: number, clientY: number): boolean {
+    const stage = stageRef.current;
+    if (!stage) return false;
+    const box = stage.getBoundingClientRect();
+    const dx = clientX - box.left - rocketAt.current.x;
+    const dy = clientY - box.top - rocketAt.current.y;
+    return Math.abs(dx) < 28 && dy > -74 && dy < 16;
+  }
+
+  /** Poke the rocket while it waits: it hops, says something, and boings. */
+  function poke(clientX: number, clientY: number) {
+    if (motion !== "idle" || !onRocket(clientX, clientY)) return;
+    if (!skyRef.current?.hop()) return;
+    playBoing();
+    haptic("tap");
+    const count = (boing?.id ?? 0) + 1;
+    setBoing({ id: count, x: rocketAt.current.x, y: rocketAt.current.y, word: BOINGS[(count - 1) % BOINGS.length] });
+  }
 
   useEffect(() => {
     if (toasts.length === 0) return;
@@ -305,34 +395,57 @@ export function Journey({
         setLanded(to);
         setSettledHop(hopRef.current);
         if (tier >= 3) playSparkle();
+        // The gain beside the rocket punches up once it has its final number.
+        if (tier >= 0 && !reducedRef.current) gainRef.current?.animate(GAIN_POP, { duration: 460, easing: "cubic-bezier(0.2, 1.6, 0.4, 1)" });
       },
     });
   }, [progress, hop.id]);
 
-  /** The end screen replays the whole climb from the launch pad to where the run landed. */
-  useEffect(() => {
+  /**
+   * The last result's Land button: the capsule pops off, falls and parachutes onto the pad, then the end screen
+   * comes in. A tap anywhere skips to the pad.
+   */
+  const land = useCallback((onHome: () => void) => {
     const sky = skyRef.current;
-    if (!sky || !overview) return;
-    const to = progress;
-    climbTier.current = -1;
-    if (to < 0.05) {
-      sky.jump(to);
-      setLanded(to);
+    if (!sky) {
+      onHome();
       return;
     }
-    const best = trail.reduce((top, segment) => (segment.to > segment.from ? Math.max(top, segment.tier) : top), 0);
-    setMotion("replay");
-    playBurner(Math.min(2, best), replayMs(to), 0);
-    sky.climb({
-      from: 0,
-      to,
-      tier: best,
-      replay: true,
+    climbTier.current = -1;
+    setToasts([]);
+    setMotion("land");
+    if (!reduced) playPop();
+    sky.land({
+      onChute: () => playChute(),
+      onTouchdown: () => {
+        playThud();
+        haptic("ok");
+      },
       onLand: () => {
         setMotion("idle");
-        setLanded(to);
+        setLanded(0);
+        lastProgress.current = 0;
+        onHome();
       },
     });
+  }, [reduced]);
+
+  /** An end screen shows the capsule home on the pad. Leaving it puts the rocket back at the run's height. */
+  const wasOverview = useRef(false);
+  useEffect(() => {
+    const sky = skyRef.current;
+    if (!sky) return;
+    if (overview) {
+      climbTier.current = -1;
+      sky.settle();
+      setLanded(0);
+    } else if (wasOverview.current) {
+      sky.jump(progress);
+      lastProgress.current = progress;
+      setLanded(progress);
+      setMotion("idle");
+    }
+    wasOverview.current = overview;
   }, [overview]);
 
   useEffect(() => {
@@ -343,18 +456,30 @@ export function Journey({
   const pending = settledHop !== hop.id;
   const flying = motion !== "idle" || pending;
   const holding = focus && pending;
-  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : ""].join(" ");
+  const stageClass = ["stage", `is-${motion}`, reduced ? "quiet" : "", overview ? "is-overview" : "", focus ? "is-focus" : "", float ? "is-float" : ""].join(" ");
   /** The nearest climber above you: who to beat next. */
   const rival = flying ? null : ghosts.filter((ghost) => ghost.progress > progress + 0.01).sort((a, b) => a.progress - b.progress)[0];
-  // "Above everyone" only when the crowd ghosts are in play. Under 20 players only your best and a friend fly.
+  // "Above everyone" only when the crowd ghosts are in play: today's average and best, bots included.
   const crowdGhost = ghosts.some((ghost) => ghost.id === "average" || ghost.id === "top");
   const next = nextMilestone(landed);
-  const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "replay" && !overview;
+  const showGain = (focus || motion === "climb") && hop.kind !== "idle" && motion !== "land" && !overview;
 
   return (
     <div className={stageClass} ref={stageRef}>
-      <div className="scene">
+      <div
+        className="scene"
+        onPointerDown={(event) => poke(event.clientX, event.clientY)}
+        onPointerMove={(event) => {
+          if (event.pointerType !== "mouse") return;
+          event.currentTarget.classList.toggle("on-rocket", motion === "idle" && !overview && onRocket(event.clientX, event.clientY));
+        }}
+      >
         <canvas ref={canvasRef} className="sky-canvas" aria-hidden="true" />
+        {boing ? (
+          <p className="boing" key={boing.id} style={{ left: boing.x, top: boing.y - 132 }} aria-hidden="true">
+            {boing.word}
+          </p>
+        ) : null}
         <div className={showGain ? "gain on" : "gain"} ref={gainRef} aria-hidden="true" />
         {focus && hop.answer !== undefined ? (
           <div className={`answer-tag ${hop.kind}${holding ? " on" : ""}`} ref={tagRef} aria-hidden="true">
@@ -441,9 +566,15 @@ export function Journey({
           {sound ? "Sound on" : "Sound off"}
         </button>
       </div>
-      <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef}>
-        <JourneyContext.Provider value={{ hudSlot, holding, setFocus }}>{children}</JourneyContext.Provider>
+      <div className={holding ? "sheet holding" : "sheet"} ref={sheetRef} inert={motion === "land" ? true : undefined}>
+        <JourneyContext.Provider value={{ hudSlot, dockSlot, holding, setFocus, setFloat, land }}>{children}</JourneyContext.Provider>
       </div>
+      <div className="dock-slot" ref={bindDock} />
+      {motion === "land" ? (
+        <button className="land-skip" type="button" autoFocus onClick={() => skyRef.current?.settle()}>
+          <span>Tap to skip</span>
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -458,15 +589,41 @@ function skyGhosts(ghosts: Ghost[]): SkyGhost[] {
   return ghosts.map((ghost) => ({ progress: ghost.progress, label: ghost.label, color: GHOST_COLORS[ghost.id], paint: ghost.paint }));
 }
 
-/** The run's score, top right. It holds still while a climb plays, then counts up as the climb lands. */
+const DIGITS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"];
+
+/**
+ * The run's score, top right. It holds still while a climb plays, then rolls round like an odometer as the climb
+ * lands, each digit on its own wheel, and slams once it stops.
+ */
 function ScoreBox({ score, hold }: { score: HudScore; hold: boolean }) {
   const settled = useRef(score.value);
   if (!hold) settled.current = score.value;
-  const shown = useCountUp(hold ? settled.current : score.value, { delay: 120, duration: 600 });
+  const value = hold ? settled.current : score.value;
+  const digits = String(value).padStart(score.digits, "0").split("");
+  const strongRef = useRef<HTMLElement>(null);
+  const before = useRef(value);
+  useEffect(() => {
+    const gained = value > before.current;
+    before.current = value;
+    const strong = strongRef.current;
+    if (gained && strong) slam(strong, { delay: 640, scale: 1.35 });
+  }, [value]);
   return (
-    <p className={shown < score.value ? "scorebox counting" : "scorebox"}>
+    <p className="scorebox">
       <small>{score.label}</small>
-      <strong>{String(shown).padStart(score.digits, "0")}</strong>
+      <strong ref={strongRef}>
+        <span className="sr">{value}</span>
+        {digits.map((digit, index) => (
+          // Keyed from the right, so a wheel keeps its place when the score gains a digit.
+          <span className="odo" key={digits.length - index} aria-hidden="true">
+            <span style={{ transform: `translateY(${-Number(digit)}em)` }}>
+              {DIGITS.map((face) => (
+                <i key={face}>{face}</i>
+              ))}
+            </span>
+          </span>
+        ))}
+      </strong>
     </p>
   );
 }

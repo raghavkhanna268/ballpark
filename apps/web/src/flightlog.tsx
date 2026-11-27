@@ -1,121 +1,12 @@
-import {
-  COMPARE_MIN_PLAYERS,
-  CLASSIC_QUESTIONS,
-  MILESTONES,
-  canCompare,
-  formatAltitude,
-  milestoneAt,
-  type BoardRow,
-  type ClimbCurve,
-  type PublicQuestion,
-  type TodayStats,
-} from "@ballpark/shared";
-import { basePoints, maxPoints, stageStep, tierOf } from "./game";
+import { formatAltitude, milestoneAt, type BoardRow, type PublicQuestion, type TodayStats } from "@ballpark/shared";
+import { basePoints, maxPoints, tierOf } from "./game";
 import { RocketIcon, skinById, SKINS } from "./hangar";
 import { MISS_COLOR, tierColor } from "./sky";
 
 /**
- * The flight log on the end screen: your climb stage by stage past the landmarks, where it sits among today's
- * climbs, and The catch (what you answered and how many others said the same). Crowd numbers wait for 20 players.
+ * Lists on the end screen: your answers (what you said and how many others said the same) and today's board.
+ * The climb log chart is in endview.tsx.
  */
-
-type Stage = { index: number; from: number; to: number; tier: number; boosted: boolean };
-
-function stagesOf(questions: PublicQuestion[]): Stage[] {
-  const stages: Stage[] = [];
-  let at = 0;
-  questions.forEach((question, index) => {
-    if (!question.reveal) return;
-    const step = stageStep(question.type, question.reveal, CLASSIC_QUESTIONS);
-    stages.push({ index, from: at, to: at + step, tier: step > 0 ? tierOf(basePoints(question.reveal), maxPoints(question.type)) : -1, boosted: question.reveal.boosted });
-    at += step;
-  });
-  return stages;
-}
-
-/** Your climb as a staircase: one step per stage in its tier's colour, with the landmarks you passed as lines. */
-export function FlightPath({ questions }: { questions: PublicQuestion[] }) {
-  const stages = stagesOf(questions);
-  const end = stages.length > 0 ? stages[stages.length - 1]!.to : 0;
-  const top = Math.max(1, end * 1.12);
-  const W = 320;
-  const H = 168;
-  const left = 8;
-  const right = 104;
-  const x = (stage: number) => left + (stage / CLASSIC_QUESTIONS) * (W - left - right);
-  const y = (progress: number) => H - 14 - (progress / top) * (H - 30);
-  const passed = MILESTONES.filter((milestone) => milestone.at > 0 && milestone.at <= end + 1e-6);
-  // Up to four landmark lines: the highest ones you passed read best.
-  const lines = passed.slice(-4);
-  return (
-    <figure className="flight-path">
-      <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Your climb, stage by stage, to ${formatAltitude(end)}`}>
-        {lines.map((milestone) => (
-          <g key={milestone.id} className="mile-line">
-            <line x1={left} x2={W - right + 6} y1={y(milestone.at)} y2={y(milestone.at)} />
-            <text x={W - right + 10} y={y(milestone.at) + 3}>
-              {milestone.name}
-            </text>
-          </g>
-        ))}
-        <line className="ground" x1={left} x2={W - right + 6} y1={y(0)} y2={y(0)} />
-        {stages.map((stage, order) => {
-          const x0 = x(order);
-          const x1 = x(order + 1);
-          const color = stage.tier >= 0 ? tierColor(stage.tier) : MISS_COLOR;
-          return (
-            <g key={stage.index}>
-              <path d={`M${x0} ${y(stage.from)} L${x0} ${y(stage.to)} L${x1} ${y(stage.to)}`} stroke={color} strokeWidth="3.5" fill="none" strokeLinecap="round" />
-              <circle cx={x0} cy={y(stage.to)} r="4" fill={color} />
-              {stage.boosted ? (
-                <text className="boost-mark" x={x0 + 6} y={y(stage.to) - 6}>
-                  ×2
-                </text>
-              ) : null}
-            </g>
-          );
-        })}
-      </svg>
-      <figcaption>
-        {formatAltitude(end)}
-        {end > 0 ? ` · past ${milestoneAt(end).name}` : ""}
-      </figcaption>
-    </figure>
-  );
-}
-
-/** Today's finished climbs as bars, with yours marked. */
-export function CurveChart({ curve, players }: { curve: ClimbCurve | null; players: number }) {
-  if (!curve) {
-    return (
-      <p className="hint">
-        The curve of today’s climbs opens at {COMPARE_MIN_PLAYERS} finishers. {players > 0 ? `${players} so far.` : ""}
-      </p>
-    );
-  }
-  const most = Math.max(1, ...curve.bins);
-  const youAt = Math.min(0.999, curve.you / curve.top);
-  return (
-    <figure className="curve">
-      <figcaption>
-        <strong>Higher than {curve.higherThan}%</strong> of today’s climbs
-      </figcaption>
-      <div className="curve-bars" aria-hidden="true">
-        {curve.bins.map((count, index) => {
-          const mine = Math.floor(youAt * curve.bins.length) === index;
-          return <i key={index} className={mine ? "you" : ""} style={{ height: `${Math.max(4, (count / most) * 100)}%` }} />;
-        })}
-        <b className="curve-you" style={{ left: `${youAt * 100}%` }}>
-          You
-        </b>
-      </div>
-      <p className="curve-axis">
-        <span>Launch pad</span>
-        <span>{formatAltitude(curve.top)}</span>
-      </p>
-    </figure>
-  );
-}
 
 /** Each stage: what you answered, its tier, and how many players said the same. */
 export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
@@ -128,11 +19,15 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
         const crowd = reveal.crowd.kind === "named" ? reveal.crowd : null;
         const said =
           crowd && crowd.answer
-            ? canCompare(crowd.submissions)
+            ? !crowd.fromPrior
               ? crowd.count <= 1
-                ? "Only you said it"
-                : `${crowd.count} of ${crowd.submissions} said it`
-              : `Counts at ${COMPARE_MIN_PLAYERS} players`
+                ? "only you"
+                : `${crowd.count} of ${crowd.submissions}`
+              : crowd.blendedPercent !== null
+                ? crowd.blendedPercent < 1
+                  ? "under 1%"
+                  : `${crowd.blendedPercent}%`
+                : ""
             : "";
         return (
           <li key={question.id} style={{ ["--c" as string]: tier >= 0 ? tierColor(tier) : MISS_COLOR }}>
@@ -144,9 +39,11 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
                 <em>{reveal.points > 0 ? reveal.label : ""}</em>
                 {reveal.boosted ? <b className="chip boost">×2</b> : null}
               </p>
-              {said ? <p className="catch-said">{said}</p> : null}
             </div>
-            <b className="catch-points">{reveal.points > 0 ? `+${reveal.points}` : "0"}</b>
+            <p className="catch-right">
+              <b className="catch-points">{reveal.points > 0 ? `+${reveal.points}` : "0"}</b>
+              {said ? <small className="catch-said">{said === "only you" ? "only you said it" : `${said} said it`}</small> : null}
+            </p>
           </li>
         );
       })}
@@ -154,26 +51,22 @@ export function TheCatch({ questions }: { questions: PublicQuestion[] }) {
   );
 }
 
-/** The ten highest climbs today, by callsign, each in its rocket's paint job. Opens at 20 finishers. */
-export function TodayBoard({ today, players }: { today: TodayStats; players: number }) {
-  if (!today.board) {
-    return (
-      <p className="hint">
-        Today’s board opens when {COMPARE_MIN_PLAYERS} players have finished. {players > 0 ? `${players} so far.` : "Be one of the first."}
-      </p>
-    );
-  }
+/** The highest climbs today (ten, or `limit`), by callsign, each in its rocket's paint job, then yours if lower. */
+export function TodayBoard({ today, limit = 10 }: { today: TodayStats; limit?: number }) {
+  if (today.board.length === 0) return <p className="hint">No finished climbs yet today.</p>;
+  const rows = today.board.slice(0, limit);
+  const mine = rows.some((row) => row.you) ? null : (today.board.find((row) => row.you) ?? today.you);
   return (
     <ol className="board">
-      {today.board.map((row) => (
+      {rows.map((row) => (
         <BoardLine key={`${row.rank}-${row.callsign}`} row={row} />
       ))}
-      {today.you ? (
+      {mine ? (
         <>
           <li className="board-gap" aria-hidden="true">
             ⋯
           </li>
-          <BoardLine row={today.you} />
+          <BoardLine row={mine} />
         </>
       ) : null}
     </ol>

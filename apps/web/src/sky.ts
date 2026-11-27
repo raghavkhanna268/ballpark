@@ -38,6 +38,8 @@ export type SkyGhost = { progress: number; label: string; color: string; paint?:
 export type SkyFrame = { progress: number; from: number; x: number; y: number; climbing: boolean };
 /** `boost` is the Afterburner: a hotter, bigger burn. */
 export type ClimbOptions = { from: number; to: number; tier: number; replay?: boolean; boost?: boolean; onLand?: () => void };
+/** The way home after the last stage. `onChute` fires as the parachute opens and `onTouchdown` as the capsule meets the pad. */
+export type LandOptions = { onChute?: () => void; onTouchdown?: () => void; onLand?: () => void };
 
 export type Sky = {
   resize(width: number, height: number, wide: boolean): void;
@@ -52,11 +54,20 @@ export type Sky = {
   /** Puts the rocket at a height with no animation. */
   jump(progress: number): void;
   climb(options: ClimbOptions): void;
+  /**
+   * The capsule comes home: it pops off the booster, falls with a glow if it is high, opens a striped parachute low
+   * down and sways onto the launch pad. It stays there, parachute packed away, until the next jump or climb.
+   */
+  land(options: LandOptions): void;
+  /** Ends a landing now, or puts the capsule straight on the pad if none is playing. */
+  settle(): void;
+  /** A poke: the resting rocket hops and lands with a squash. False if it is busy flying, or motion is reduced. */
+  hop(): boolean;
   progress(): number;
   destroy(): void;
   onFrame: ((frame: SkyFrame) => void) | null;
-  /** Called with a landmark's index in MILESTONES as the rocket passes it. */
-  onMilestone: ((index: number) => void) | null;
+  /** Called with a landmark's index in MILESTONES as the rocket passes it, `down` on the way home. */
+  onMilestone: ((index: number, down?: boolean) => void) | null;
 };
 
 const STOP = 2;
@@ -65,12 +76,14 @@ const STOP = 2;
 export function climbMs(travel: number): number {
   return travel <= 0 ? 1500 : Math.round(1300 + 950 * travel * STOP);
 }
-/** How long the end screen's replay of the whole climb lasts, in ms. */
-export function replayMs(progress: number): number {
+/** How long a replay of a climb from the pad lasts, in ms. */
+function replayMs(progress: number): number {
   return Math.round(Math.min(3600, 1200 + Math.max(0, progress) * STOP * 160));
 }
 /** The pause between locking in and the burner lighting. */
 export const IGNITION_MS = 250;
+/** The landing's beats, in seconds: the capsule pops off, the parachute opens, it glides down, then it sits a moment. */
+const LAND = { sep: 0.45, open: 0.4, glide: 1.6, rest: 0.9 };
 const MILES = MILESTONES.map((milestone) => ({ at: milestone.at * STOP, km: milestone.km, name: milestone.name }));
 const LABEL_FONT = '600 10px Outfit, "Avenir Next", system-ui, sans-serif';
 const GHOST_FONT = '600 10px Outfit, "Avenir Next", system-ui, sans-serif';
@@ -147,6 +160,14 @@ function wrap(v: number, m: number): number {
 function clamp01(v: number): number {
   return Math.max(0, Math.min(1, v));
 }
+function easeInOut(q: number): number {
+  return q < 0.5 ? 4 * q * q * q : 1 - (-2 * q + 2) ** 3 / 2;
+}
+/** Overshoots a little before it settles, like a parachute snapping open. */
+function easeBack(q: number): number {
+  const c = 1.9;
+  return 1 + (c + 1) * (q - 1) ** 3 + c * (q - 1) ** 2;
+}
 function ease(q: number): number {
   return q < 0.5 ? 4 * q * q * q : 1 - Math.pow(-2 * q + 2, 3) / 2;
 }
@@ -181,6 +202,24 @@ type Climb = {
   onLand?: () => void;
 };
 
+type Landing = {
+  t0: number;
+  /** Heights, in the sky's own units: where the landing starts and where the parachute opens. */
+  h0: number;
+  chuteAt: number;
+  fall: number;
+  /** When the parachute opens and when the capsule touches down, in seconds from the start. */
+  open: number;
+  down: number;
+  /** How far below the capsule the camera looks while it falls, so the ground is in view before it arrives. */
+  lead: number;
+  fired: number;
+  options: LandOptions;
+};
+type Bit = { x: number; y: number; vx: number; vy: number; g: number; r: number; life: number; max: number; rgb: string; a: number; ground: boolean };
+/** A soft puff in screen space: smoke from a miss, or steam from the pad. It drifts, grows and fades. */
+type Puff = { x: number; y: number; vx: number; vy: number; r: number; grow: number; life: number; max: number; rgb: string; a: number };
+
 /** The rocket's body, nose up, with its base at 0. */
 const BODY_PATH = "M0 -58 C12 -46 12 -24 9 -6 L-9 -6 C-12 -24 -12 -46 0 -58Z";
 
@@ -211,6 +250,30 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
   const sparks: Array<{ x: number; y: number; vx: number; vy: number; life: number; c: string }> = [];
   const exhaust: Array<{ x: number; y: number; vx: number; vy: number; life: number; s: number; c: string }> = [];
   let ring: { t0: number; c: string } | null = null;
+  let landing: Landing | null = null;
+  /** The capsule is down on the pad after a landing. */
+  let home = false;
+  /** How the capsule hangs this frame: the parachute's size, its swing, how far it has folded away, and the heat glow. */
+  const pose = { chute: 0, swing: 0, fold: 1, heat: 0, v: 0 };
+  let booster: { y: number; vy: number; rot: number; a: number } | null = null;
+  const bits: Bit[] = [];
+  let flash = 0;
+  /** The flash's colour: white, or grey for a miss. */
+  let flashRgb = "255,255,255";
+  /** When each landmark line was passed on the way up, so it can flash. */
+  const lineHit: number[] = [];
+  /** A Supernova's big moment, from this time: rays, a double shock ring and colour-split ghosts of the rocket. */
+  let nova = 0;
+  /** A miss's big moment, from this time: a grey flash, a burst of static and smoke. */
+  let missAt = 0;
+  let missFired = true;
+  /** A shake of the whole scene: when it started, how long it lasts and how hard. */
+  const quake = { t0: 0, ms: 0, amp: 0 };
+  const puffs: Puff[] = [];
+  let steamAt = 0;
+  /** When the resting rocket was poked, for its hop. */
+  let hopAt = 0;
+  let ratio = 1;
   let last = performance.now();
   let raf = 0;
   let dirty = true;
@@ -394,7 +457,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // Weather balloon
     let y = sy(4.6);
     if (y > -60 && y < H + 60) {
-      const x = W * (wide ? 0.45 : 0.24) + Math.sin(T * 0.001) * 4;
+      const x = W * (wide ? 0.2 : 0.24) + Math.sin(T * 0.001) * 4;
       ctx.fillStyle = "#f4f4f8";
       circ(x, y - 30, 15);
       ctx.strokeStyle = "rgba(255,255,255,.6)";
@@ -437,7 +500,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // The Moon
     y = sy(12.6);
     if (y > -90 && y < H + 90) {
-      const x = W * (wide ? 0.46 : 0.3);
+      const x = W * (wide ? 0.78 : 0.3);
       const g = ctx.createRadialGradient(x - 18, y - 18, 8, x, y, 58);
       g.addColorStop(0, "#fbf8ef");
       g.addColorStop(1, "#bdb6a6");
@@ -459,7 +522,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     // Saturn
     y = sy(17.4);
     if (y > -70 && y < H + 70) {
-      const x = W * (wide ? 0.47 : 0.32);
+      const x = W * (wide ? 0.22 : 0.32);
       ctx.save();
       ctx.translate(x, y);
       ctx.rotate(-0.35);
@@ -501,17 +564,32 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
 
   /** A dashed line across the sky at each landmark, with its name and real height. */
   function paintMiles() {
+    // Once the capsule is home the landmark lines have done their job, and they would show through the end screen.
+    if (home) return;
     ctx.save();
     ctx.font = LABEL_FONT;
     ctx.setLineDash([3, 7]);
     ctx.lineWidth = 1;
     const dark = SC.id !== "city" && cam < 1.6;
+    const now = performance.now();
     for (let i = 1; i < MILES.length; i++) {
       const y = sy(MILES[i].at);
       if (y < 70 || y > H + 8) continue;
+      // A line the rocket has just passed flashes white and glows, then settles back to a faint dash.
+      const k = reduce ? 1 : (now - (lineHit[i] ?? -1e9)) / 700;
       ctx.strokeStyle = dark ? "rgba(40,20,60,.22)" : "rgba(255,255,255,.2)";
       line(0, y, W, y);
-      ctx.fillStyle = dark ? "rgba(40,20,60,.6)" : "rgba(255,255,255,.6)";
+      if (k < 1) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(255,255,255,${0.95 * (1 - k)})`;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 16 * (1 - k);
+        line(0, y, W, y);
+        ctx.restore();
+      }
+      ctx.fillStyle = k < 1 ? `rgba(255,255,255,${0.6 + 0.4 * (1 - k)})` : dark ? "rgba(40,20,60,.6)" : "rgba(255,255,255,.6)";
       ctx.textAlign = wide ? "right" : "left";
       ctx.fillText(`${MILES[i].name} · ${formatDistance(MILES[i].km)}`, wide ? W - 56 : 12, y - 6);
     }
@@ -975,8 +1053,184 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       line(gx, y, gx + 12, y - 14);
       line(gx + 12, y, gx, y - 14);
     }
-    ctx.fillStyle = "#ffd27a";
+    // The warning light on top of the tower blinks.
+    const lit = reduce || Math.floor(performance.now() / 800) % 2 === 0;
+    if (lit) {
+      const glow = ctx.createRadialGradient(gx + 6, b - 97, 0, gx + 6, b - 97, 12);
+      glow.addColorStop(0, "rgba(255,90,78,.55)");
+      glow.addColorStop(1, "rgba(255,90,78,0)");
+      ctx.fillStyle = glow;
+      circ(gx + 6, b - 97, 12);
+    }
+    ctx.fillStyle = lit ? "#ff5a4e" : "rgba(255,90,78,.3)";
     circ(gx + 6, b - 97, 2.4);
+  }
+
+  /** Steam drifts out from under the rocket while it waits on the pad. */
+  function steamPad(now: number) {
+    if (reduce || climb || landing || home || h > 0.05) return;
+    const b = sy(0);
+    if (b > H + 20 || now < steamAt) return;
+    steamAt = now + 140 + Math.random() * 120;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    puffs.push({
+      x: RX + side * (10 + Math.random() * 26),
+      y: b - 2,
+      vx: side * (12 + Math.random() * 22),
+      vy: -(6 + Math.random() * 14),
+      r: 3 + Math.random() * 3,
+      grow: 9 + Math.random() * 6,
+      life: 0,
+      max: 1.6 + Math.random() * 0.9,
+      rgb: "220,226,245",
+      a: 0.2,
+    });
+  }
+
+  /** How the poked rocket hops: a squash, a big arc with a tilt, a squash on landing and a small bounce. */
+  function hopPose(now: number): { dy: number; sx: number; sy: number; rot: number } | null {
+    if (!hopAt) return null;
+    const k = (now - hopAt) / 820;
+    if (k >= 1) {
+      hopAt = 0;
+      return null;
+    }
+    if (k < 0.14) {
+      const q = Math.sin((k / 0.14) * Math.PI * 0.5);
+      return { dy: 0, sx: 1 + 0.16 * q, sy: 1 - 0.16 * q, rot: 0 };
+    }
+    if (k < 0.68) {
+      const q = (k - 0.14) / 0.54;
+      const arc = Math.sin(q * Math.PI);
+      return { dy: -42 * arc, sx: 1 - 0.08 * arc, sy: 1 + 0.1 * arc, rot: -0.15 * Math.sin(q * Math.PI * 2) };
+    }
+    if (k < 0.78) {
+      const q = Math.sin(((k - 0.68) / 0.1) * Math.PI);
+      return { dy: 0, sx: 1 + 0.12 * q, sy: 1 - 0.12 * q, rot: 0 };
+    }
+    const q = Math.sin(((k - 0.78) / 0.22) * Math.PI);
+    return { dy: -8 * q, sx: 1, sy: 1 + 0.03 * q, rot: 0.06 * q };
+  }
+
+  function puffBurst(x: number, y: number, count: number, rgb: string, a: number, up: number) {
+    for (let i = 0; i < count; i++) {
+      const side = i % 2 ? 1 : -1;
+      puffs.push({
+        x: x + (Math.random() - 0.5) * 12,
+        y,
+        vx: side * (14 + Math.random() * 40),
+        vy: -(up * (0.5 + Math.random())),
+        r: 5 + Math.random() * 5,
+        grow: 16 + Math.random() * 12,
+        life: 0,
+        max: 1 + Math.random() * 0.7,
+        rgb,
+        a,
+      });
+    }
+  }
+
+  /** Shake the whole scene for a moment. */
+  function shake(ms: number, amp: number) {
+    if (reduce) return;
+    quake.t0 = performance.now();
+    quake.ms = ms;
+    quake.amp = amp;
+  }
+
+  /** A Supernova lands: a white flash, rays wheeling out, a double shock ring and colour-split ghosts of the rocket. */
+  function drawNova(now: number) {
+    if (!nova) return;
+    const k = (now - nova) / 1600;
+    if (k >= 1) {
+      nova = 0;
+      return;
+    }
+    const x = RX;
+    const base = sy(h);
+    const y = base - 30;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const a = k < 0.15 ? k / 0.15 : (1 - k) / 0.85;
+    const r = Math.max(W, H) * (0.3 + 0.35 * k);
+    const g = ctx.createRadialGradient(x, y, 8, x, y, r);
+    g.addColorStop(0, `rgba(255,150,230,${0.5 * a})`);
+    g.addColorStop(0.45, `rgba(255,111,216,${0.2 * a})`);
+    g.addColorStop(1, "rgba(255,111,216,0)");
+    ctx.fillStyle = g;
+    const turn = (k * Math.PI) / 3;
+    ctx.beginPath();
+    for (let i = 0; i < 18; i++) {
+      const a0 = turn + (i / 18) * Math.PI * 2;
+      ctx.moveTo(x, y);
+      ctx.arc(x, y, r, a0, a0 + 0.13);
+      ctx.closePath();
+    }
+    ctx.fill();
+    const rings: Array<[number, string, number]> = [
+      [0, "255,255,255", 5],
+      [150, "255,111,216", 3.5],
+    ];
+    for (const [delay, rgb, width] of rings) {
+      const q = (now - nova - delay) / 760;
+      if (q <= 0 || q >= 1) continue;
+      ctx.strokeStyle = `rgba(${rgb},${0.9 * (1 - q)})`;
+      ctx.lineWidth = width * (1 - q) + 0.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 24 + 200 * (1 - (1 - q) ** 3), 0, 6.283);
+      ctx.stroke();
+    }
+    const split = (now - nova) / 700;
+    if (split < 1) {
+      const off = 18 * (1 - split);
+      ctx.globalAlpha = 0.65 * (1 - split);
+      const ghosts: Array<[number, string]> = [
+        [-off, "#ff4fd0"],
+        [off, "#4fc3ff"],
+      ];
+      for (const [dx, color] of ghosts) {
+        ctx.save();
+        ctx.translate(x + dx, base);
+        ctx.fillStyle = color;
+        ctx.fill(BODY);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** A miss: a grey flash, the scene shakes, static crackles across it and smoke puffs off the rocket. */
+  function missMoment(now: number) {
+    if (missFired || !missAt || now < missAt) return;
+    missFired = true;
+    flashRgb = "139,147,168";
+    flash = Math.max(flash, 0.38);
+    shake(380, 5);
+    puffBurst(RX, sy(h) + 2, 8, "170,176,196", 0.55, 34);
+  }
+
+  function drawStatic(now: number) {
+    if (!missAt || reduce) return;
+    const q = (now - missAt) / 320;
+    if (q < 0 || q >= 1) return;
+    const a = [0.9, 0.25, 0.7][Math.min(2, Math.floor(q * 3))];
+    ctx.fillStyle = `rgba(255,255,255,${0.13 * a})`;
+    for (let y = Math.floor(Math.random() * 3); y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  }
+
+  /** The Afterburner's heat: strips of the picture under the flame wobble side to side, like air over a hot road. */
+  function haze(now: number, power: number) {
+    const w = 84;
+    const left = RX - w / 2;
+    if (left < 0 || left + w > W) return;
+    const top = sy(h) + 6;
+    const rows = 56;
+    for (let i = 0; i < rows; i++) {
+      const y = top + i * 2;
+      if (y < 0 || y + 2 > H) continue;
+      const off = Math.sin(now * 0.022 + i * 0.38) * 2.4 * (1 - i / rows) * Math.min(1, power);
+      ctx.drawImage(canvas, left * ratio, y * ratio, w * ratio, 2 * ratio, left + off, y, w, 2);
+    }
   }
 
   /** Faint outlines of other climbers parked at their heights, with a name under each. */
@@ -1180,9 +1434,24 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       ctx.fillStyle = e.life > 0.6 ? e.c + alphaHex(e.life * 200) : `rgba(170,176,196,${e.life * 0.35})`;
       circ(e.x, e.y, e.s);
     }
-    if (climb && climb.v > 0.35 && !reduce) {
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const puff = puffs[i];
+      puff.life += dt;
+      if (puff.life >= puff.max) {
+        puffs.splice(i, 1);
+        continue;
+      }
+      puff.x += puff.vx * dt;
+      puff.y += puff.vy * dt;
+      puff.vx *= 1 - dt * 1.2;
+      puff.r += puff.grow * dt;
+      ctx.fillStyle = `rgba(${puff.rgb},${(1 - puff.life / puff.max) * puff.a})`;
+      circ(puff.x, puff.y, puff.r);
+    }
+    const speed = climb ? climb.v : landing ? pose.v : 0;
+    if (speed > 0.35 && !reduce) {
       // Speed streaks
-      const v = climb.v;
+      const v = speed;
       const n = Math.min(26, Math.floor(v * 7));
       ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.32, 0.07 + v * 0.07)})`;
       ctx.lineWidth = 1;
@@ -1221,12 +1490,17 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
   }
 
   /** The path climbed so far, one stretch per answer in its tier's colour. It grows with the rocket. */
-  function drawTrail() {
+  function drawTrail(now: number) {
+    // On the way home the trail fades as the capsule falls, and it is gone once the capsule is down.
+    const fade = landing ? 1 - clamp01((now - landing.t0) / 1000 / (LAND.sep + 0.6)) : home ? 0 : 1;
+    if (fade <= 0) return;
+    const top = landing ? landing.h0 : h;
     ctx.save();
+    ctx.globalAlpha = fade;
     ctx.lineCap = "round";
     for (const segment of trail) {
       const a = segment.from * STOP;
-      const b = Math.min(segment.to * STOP, h);
+      const b = Math.min(segment.to * STOP, top);
       if (b <= a + 1e-4) continue;
       const y0 = sy(a);
       const y1 = sy(b);
@@ -1261,7 +1535,10 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     c.p = p;
     while (passedIdx < MILES.length - 1 && MILES[passedIdx + 1].at <= h + 1e-6) {
       passedIdx++;
-      if (!c.miss && !c.replay) api.onMilestone?.(passedIdx);
+      if (!c.miss && !c.replay) {
+        lineHit[passedIdx] = now;
+        api.onMilestone?.(passedIdx);
+      }
     }
     if (p >= 1) {
       climb = null;
@@ -1270,9 +1547,241 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
         lastTier = c.tier;
         if (c.boost) burst("#ffb347");
         else if (c.tier >= 3) burst(tierColor(c.tier));
+        if (c.tier === 4 && !reduce) {
+          nova = now;
+          flashRgb = "255,255,255";
+          flash = Math.max(flash, 0.6);
+          shake(520, 7);
+        }
       }
       c.onLand?.();
     }
+  }
+
+  /* ---------- the way home ---------- */
+  function stepLanding(now: number) {
+    const L = landing;
+    if (!L) return;
+    const t = (now - L.t0) / 1000;
+    const prev = h;
+    const glideFrom = L.chuteAt * 0.85;
+    pose.chute = 0;
+    pose.swing = 0;
+    if (t < LAND.sep) h = L.h0;
+    else if (t < L.open) h = L.h0 + (L.chuteAt - L.h0) * easeInOut((t - LAND.sep) / L.fall);
+    else if (t < L.open + LAND.open) {
+      const k = (t - L.open) / LAND.open;
+      h = L.chuteAt + (glideFrom - L.chuteAt) * k;
+      pose.chute = easeBack(k);
+    } else if (t < L.down) {
+      const k = (t - L.open - LAND.open) / LAND.glide;
+      h = glideFrom * (1 - k) * (1 - k);
+      pose.chute = 1;
+      pose.swing = Math.sin(t * 3) * 0.09 * (1 - k);
+    } else {
+      h = 0;
+      pose.chute = 1;
+    }
+    pose.fold = t > L.down ? clamp01((t - L.down) / 0.7) : 0;
+    // A faint glow from the heat shield while it falls fast through thin air, brightest from where meteors burn up.
+    pose.heat = t > LAND.sep && t < L.open ? clamp01((h - 3.4) / 2.6) * 0.6 : 0;
+    pose.v = Math.abs(h - prev) * 60;
+    if (t >= LAND.sep && !(L.fired & 1)) {
+      L.fired |= 1;
+      booster = { y: 0, vy: 20, rot: 0, a: 1 };
+      flash = 0.28;
+    }
+    if (t >= L.open && !(L.fired & 2)) {
+      L.fired |= 2;
+      flash = Math.max(flash, 0.1);
+      L.options.onChute?.();
+    }
+    if (t >= L.down && !(L.fired & 4)) {
+      L.fired |= 4;
+      for (let i = 0; i < 16; i++) {
+        const side = i % 2 ? 1 : -1;
+        bits.push({ x: 0, y: 0, vx: side * (20 + Math.random() * 70), vy: -(5 + Math.random() * 25), g: 30, r: 4 + Math.random() * 6, life: 0, max: 1 + Math.random() * 0.6, rgb: "225,222,235", a: 0.6, ground: true });
+      }
+      L.options.onTouchdown?.();
+    }
+    if (pose.heat > 0.05) {
+      for (let i = 0; i < Math.ceil(pose.heat * 4); i++) {
+        bits.push({
+          x: (Math.random() - 0.5) * 18,
+          y: -2,
+          vx: (Math.random() - 0.5) * 20,
+          vy: -(120 + Math.random() * 160),
+          g: 0,
+          r: 2 + Math.random() * 3 * pose.heat,
+          life: 0,
+          max: 0.35 + Math.random() * 0.25,
+          rgb: Math.random() < 0.5 ? "255,190,90" : "255,110,60",
+          a: 0.9,
+          ground: false,
+        });
+      }
+    }
+    while (passedIdx > 0 && MILES[passedIdx].at > h + 1e-6) {
+      api.onMilestone?.(passedIdx, true);
+      passedIdx--;
+    }
+    if (t >= L.down + LAND.rest) finishLanding(false);
+  }
+
+  /** The capsule is down. `skipped` clears what was still flying, for a tap that skips the landing. */
+  function finishLanding(skipped: boolean) {
+    const L = landing;
+    landing = null;
+    home = true;
+    climb = null;
+    h = 0;
+    lastFrom = 0;
+    syncPassed();
+    pose.chute = 0;
+    pose.swing = 0;
+    pose.fold = 1;
+    pose.heat = 0;
+    pose.v = 0;
+    if (skipped) {
+      cam = 0;
+      booster = null;
+      bits.length = 0;
+      flash = 0;
+    }
+    dirty = true;
+    L?.options.onLand?.();
+  }
+
+  /** The capsule that comes home, in the rocket's paint, with its base at (x, y). The parachute opens above it. */
+  function drawCapsule(x: number, y: number) {
+    const s = 1.15;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(pose.swing);
+    if (pose.chute > 0 && pose.fold < 1) {
+      // It folds away to the left as it collapses, away from the tower.
+      ctx.save();
+      ctx.globalAlpha = 1 - pose.fold;
+      ctx.rotate(-pose.fold * 1.1);
+      const rise = 58 * s * Math.min(1, pose.chute);
+      const r = 22 * s * pose.chute;
+      const cy = -26 * s - rise;
+      ctx.strokeStyle = "rgba(230,235,245,.8)";
+      ctx.lineWidth = 0.8;
+      line(-4 * s, -20 * s, -r, cy);
+      line(4 * s, -20 * s, r, cy);
+      line(0, -20 * s, 0, cy - r * 0.2);
+      ctx.beginPath();
+      ctx.arc(0, cy, r, Math.PI, 0);
+      ctx.closePath();
+      ctx.fillStyle = "#ff8a3d";
+      ctx.fill();
+      ctx.save();
+      ctx.clip();
+      ctx.fillStyle = "#fff3e0";
+      for (let j = -3; j <= 3; j += 2) ctx.fillRect((j * r) / 4 - r / 8, cy - r, r / 4, r);
+      ctx.restore();
+      ctx.restore();
+    }
+    // Heat shield, body, a band in the accent colour and a window
+    ctx.fillStyle = "#5b4a3a";
+    ctx.beginPath();
+    ctx.ellipse(0, -1 * s, 11 * s, 3 * s, 0, 0, 6.283);
+    ctx.fill();
+    const body = ctx.createLinearGradient(-11 * s, 0, 11 * s, 0);
+    body.addColorStop(0, paint.body[0]);
+    body.addColorStop(0.45, paint.body[1]);
+    body.addColorStop(1, paint.body[2]);
+    ctx.fillStyle = body;
+    ctx.beginPath();
+    ctx.moveTo(-11 * s, -2 * s);
+    ctx.lineTo(-5 * s, -20 * s);
+    ctx.lineTo(5 * s, -20 * s);
+    ctx.lineTo(11 * s, -2 * s);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = paint.accent;
+    ctx.fillRect(-5 * s, -23 * s, 10 * s, 3 * s);
+    if (lastTier >= 0) {
+      ctx.fillStyle = tierColor(lastTier);
+      ctx.fillRect(-9.2 * s, -6.5 * s, 18.4 * s, 2 * s);
+    }
+    ctx.fillStyle = paint.window;
+    circ(-1 * s, -11 * s, 3 * s);
+    ctx.strokeStyle = "#cfd6ea";
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(-1 * s, -11 * s, 3 * s, 0, 6.283);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,.75)";
+    circ(-2 * s, -12 * s, 1);
+    ctx.restore();
+  }
+
+  /** The booster as it falls away: the rocket below the capsule, tumbling and fading. */
+  function drawBooster(x: number, y: number) {
+    if (!booster) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, booster.a);
+    ctx.translate(x, y + booster.y - 14);
+    ctx.rotate(booster.rot);
+    ctx.translate(0, 14);
+    ctx.beginPath();
+    ctx.rect(-20, -27, 40, 30);
+    ctx.clip();
+    drawShip(0, 0, 1, paint, lastTier);
+    ctx.restore();
+  }
+
+  /** The heat glow, the booster, the plasma and dust, and the capsule. */
+  function drawHome(dt: number) {
+    const x = RX;
+    const y = sy(h);
+    const ground = sy(0);
+    if (booster) {
+      booster.vy += 420 * dt;
+      booster.y += booster.vy * dt;
+      booster.rot += dt * 2.2;
+      booster.a -= dt * 0.8;
+      if (booster.a <= 0) booster = null;
+    }
+    drawBooster(x, y);
+    for (let i = bits.length - 1; i >= 0; i--) {
+      const bit = bits[i];
+      bit.life += dt;
+      bit.x += bit.vx * dt;
+      bit.y += bit.vy * dt;
+      bit.vy += bit.g * dt;
+      bit.vx *= 1 - dt * 1.5;
+      if (bit.ground) bit.r += dt * 6;
+      if (bit.life >= bit.max) {
+        bits.splice(i, 1);
+        continue;
+      }
+      ctx.fillStyle = `rgba(${bit.rgb},${(1 - bit.life / bit.max) * bit.a})`;
+      circ(x + bit.x, (bit.ground ? ground : y) + bit.y, bit.r);
+    }
+    if (pose.heat > 0.02) {
+      const r = 46 * (0.5 + pose.heat);
+      const g = ctx.createRadialGradient(x, y + 4, 2, x, y + 4, r);
+      g.addColorStop(0, `rgba(255,245,210,${0.95 * pose.heat})`);
+      g.addColorStop(0.35, `rgba(255,150,60,${0.75 * pose.heat})`);
+      g.addColorStop(1, "rgba(255,80,40,0)");
+      ctx.fillStyle = g;
+      circ(x, y + 4, r);
+    }
+    drawCapsule(x, y);
+  }
+
+  /** Clears the big moments and puffs, for a jump, a new climb or a skip. */
+  function calmDown() {
+    nova = 0;
+    missAt = 0;
+    missFired = true;
+    quake.ms = 0;
+    hopAt = 0;
+    puffs.length = 0;
+    flashRgb = "255,255,255";
   }
 
   function frame(now: number) {
@@ -1283,14 +1792,20 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    const moving = climb !== null || sparks.length > 0 || exhaust.length > 0 || ring !== null;
+    const moving = climb !== null || landing !== null || sparks.length > 0 || exhaust.length > 0 || ring !== null || bits.length > 0 || booster !== null || flash > 0 || puffs.length > 0;
     if (reduce && !dirty && !moving) return;
     dirty = false;
     const t = reduce ? 0 : now;
     stepClimb(now);
+    stepLanding(now);
     const before = cam;
     anc += (ancTarget - anc) * (reduce ? 1 : Math.min(1, dt * 5));
-    if (climb) {
+    if (landing) {
+      // The camera tips down as the capsule pops off, so it falls in the middle of the screen with the ground coming
+      // up to meet it, then holds still once the pad is in view.
+      const k = ease(clamp01((now - landing.t0) / 1000 / LAND.sep));
+      cam = Math.max(0, h - landing.lead * k);
+    } else if (climb) {
       const limit = h - ((anc - 0.5) * H) / P;
       if (cam < limit) cam += (limit - cam) * (reduce ? 1 : 0.2);
     } else cam += (h - cam) * (reduce ? 1 : Math.min(1, dt * 3));
@@ -1298,10 +1813,21 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     const shift = (cam - before) * P;
     for (const e of exhaust) e.y += shift;
     for (const s of sparks) s.y += shift;
+    for (const puff of puffs) puff.y += shift;
     const power = rocketPower();
+    missMoment(now);
+    steamPad(now);
     ctx.save();
     if (climb && climb.tier === 4 && !climb.miss && !climb.replay && climb.p > 0.12 && climb.p < 0.85 && !reduce) {
       ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
+    }
+    // The Afterburner rumbles the whole climb.
+    if (climb && climb.boost && !climb.miss && climb.p > 0.1 && climb.p < 0.95 && !reduce) ctx.translate((Math.random() - 0.5) * 3.2, (Math.random() - 0.5) * 3.2);
+    if (pose.heat > 0.05 && !reduce) ctx.translate((Math.random() - 0.5) * pose.heat * 5, (Math.random() - 0.5) * pose.heat * 5);
+    const quaking = now - quake.t0 < quake.ms;
+    if (quaking) {
+      const k = 1 - (now - quake.t0) / quake.ms;
+      ctx.translate((Math.random() - 0.5) * 2 * quake.amp * k, (Math.random() - 0.5) * 2 * quake.amp * k);
     }
     paintSky(t);
     paintSpace(t);
@@ -1312,13 +1838,40 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     paintFlyers(t);
     paintMiles();
     paintGhosts();
-    drawTrail();
+    drawTrail(now);
     drawPad();
     effects(dt, power);
     const sway = climb && !climb.miss ? Math.sin(climb.p * Math.PI * 4) * 2 * power : 0;
     const flying = climb ? climb.tier : lastTier;
-    drawRocket(RX + sway, sy(h), power, flying, t, climb?.boost === true && !climb.miss);
+    const bounce = hopPose(now);
+    if (home || (landing && now - landing.t0 >= LAND.sep * 1000)) drawHome(dt);
+    else if (bounce) {
+      const base = sy(h);
+      ctx.save();
+      ctx.translate(RX, base + bounce.dy);
+      ctx.rotate(bounce.rot);
+      ctx.scale(bounce.sx, bounce.sy);
+      ctx.translate(-RX, -base);
+      drawRocket(RX, base, 0, flying, t);
+      ctx.restore();
+    } else drawRocket(RX + sway, sy(h), power, flying, t, climb?.boost === true && !climb.miss);
+    drawNova(now);
     ctx.restore();
+    if (climb && climb.boost && !climb.miss && !reduce && power > 0.2) haze(now, power);
+    drawStatic(now);
+    if (pose.heat > 0.05) {
+      const edge = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+      edge.addColorStop(0, "rgba(255,90,40,0)");
+      edge.addColorStop(1, `rgba(255,90,40,${0.5 * pose.heat})`);
+      ctx.fillStyle = edge;
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (flash > 0) {
+      ctx.fillStyle = `rgba(${flashRgb},${flash})`;
+      ctx.fillRect(0, 0, W, H);
+      flash = Math.max(0, flash - dt * 1.8);
+      if (flash === 0) flashRgb = "255,255,255";
+    }
     api.onFrame?.({ progress: h / STOP, from: lastFrom / STOP, x: RX + sway, y: sy(h), climbing: climb !== null && !climb.replay });
   }
 
@@ -1330,8 +1883,9 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       H = Math.max(1, height);
       P = H * 0.95;
       wide = isWide;
-      RX = wide ? W * 0.62 : W / 2;
+      RX = W / 2;
       const dpr = options.pixelRatio ?? Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      ratio = dpr;
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1373,6 +1927,13 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     },
     jump(progress) {
       climb = null;
+      landing = null;
+      home = false;
+      booster = null;
+      bits.length = 0;
+      flash = 0;
+      calmDown();
+      pose.heat = 0;
       h = progress * STOP;
       cam = h;
       lastFrom = h;
@@ -1383,14 +1944,62 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       const start = from * STOP;
       const d = Math.max(0, (to - from) * STOP);
       const miss = !replay && (tier < 0 || d <= 0);
+      landing = null;
+      home = false;
       h = start;
       lastFrom = start;
       if (replay) cam = start;
       syncPassed();
       const dur = reduce ? 0 : replay ? replayMs(to - from) : climbMs(miss ? 0 : to - from);
+      calmDown();
       climb = { from: start, d, t0: performance.now() + (reduce || replay ? 0 : IGNITION_MS), dur, tier, miss, replay, boost: boost && !miss, v: 0, p: 0, onLand };
+      if (miss && !reduce) {
+        // The burner coughs first, then the miss lands: grey flash, static, smoke.
+        missAt = performance.now() + IGNITION_MS + 240;
+        missFired = false;
+      }
       dirty = true;
       if (reduce) stepClimb(performance.now());
+    },
+    land(landOptions) {
+      climb = null;
+      const h0 = h;
+      if (reduce || h0 < 0.02) {
+        landing = { t0: performance.now(), h0, chuteAt: 0, fall: 0, open: 0, down: 0, lead: 0, fired: 7, options: landOptions };
+        finishLanding(true);
+        return;
+      }
+      const chuteAt = Math.max(0, Math.min(1.1, h0 - 0.12));
+      const fall = Math.max(0.6, Math.min(2.6, 0.5 + 0.12 * (h0 - chuteAt)));
+      const open = LAND.sep + fall;
+      const lead = Math.max(0, ((anc - 0.5) * H) / P);
+      landing = { t0: performance.now(), h0, chuteAt, fall, open, down: open + LAND.open + LAND.glide, lead, fired: 0, options: landOptions };
+      dirty = true;
+    },
+    hop() {
+      const now = performance.now();
+      if (reduce || climb || landing || home || (hopAt && now - hopAt < 650)) return false;
+      hopAt = now;
+      puffBurst(RX, sy(h) + 2, 6, "220,226,245", 0.28, 18);
+      dirty = true;
+      return true;
+    },
+    settle() {
+      calmDown();
+      if (landing) {
+        finishLanding(true);
+        return;
+      }
+      climb = null;
+      h = 0;
+      cam = 0;
+      lastFrom = 0;
+      home = true;
+      booster = null;
+      bits.length = 0;
+      flash = 0;
+      syncPassed();
+      dirty = true;
     },
     progress() {
       return h / STOP;

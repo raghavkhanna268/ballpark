@@ -125,6 +125,10 @@ describe("shorthand, share text, and the daily number", () => {
     );
   });
 
+  it("labels a cruise on the share card", () => {
+    expect(classicShareText(12, ["🟩"], 100, "ballpark.local", "🏁 reached the tower", undefined, true).split("\n")[0]).toBe("Ballpark #12 · Cruise");
+  });
+
   it("numbers puzzles from the UTC epoch and rotates the sample seed", () => {
     expect(puzzleNumber("2026-01-01")).toBe(1);
     expect(puzzleNumber("2026-01-12")).toBe(12);

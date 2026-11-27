@@ -1,8 +1,10 @@
-import { COMPARE_MIN_PLAYERS, canCompare, formatAltitude, milestoneAt, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
+import { useId } from "react";
+import { formatAltitude, milestoneAt, parseRace, type LeagueResponse, type Placement, type Race, type RaceMode } from "@ballpark/shared";
 
 /*
- * The competitive layer: your rank after a game, racing a friend's climb from a shared link,
- * and the weekly league. Nothing here needs an account.
+ * The competitive layer: where you stand after a game, racing a friend's climb from a shared link,
+ * and the weekly league. Nothing here needs an account. Rivals the server plays fill every field and table,
+ * and count like everyone else.
  */
 
 const RACE_KEY = "ballpark.race.v1";
@@ -63,31 +65,189 @@ export function FriendResult({ race, mine }: { race: Race; mine: number }) {
   return <p className={diff > 0.05 ? "friend-line won" : "friend-line"}>{text}</p>;
 }
 
-/** "You're #2 of 4 today", and what it takes to climb one more place. */
-export function RankBlock({ place, unit }: { place: Placement; unit: "pts" | "picks" }) {
-  if (!canCompare(place.players)) return <EarlyBlock players={place.players} what="today" />;
-  const gap = place.next ? (unit === "pts" ? `${place.next.gap} pts` : `${place.next.gap} right ${place.next.gap === 1 ? "answer" : "answers"}`) : "";
+/**
+ * Where you stand after a game: "Better than 73% of today's players", everyone's scores as a curve with yours
+ * marked, then your rank and what it takes to climb one more place.
+ */
+export function RankBlock({
+  place,
+  unit,
+  who = "today’s players",
+  among = "today",
+  wouldHave = false,
+  big = false,
+}: {
+  place: Placement;
+  unit: "pts" | "picks";
+  /** Whom the share counts: "today’s players". */
+  who?: string;
+  /** After "#3 of 40": "today", "that day", "who played this chapter". */
+  among?: string;
+  /** A past day: where you would have been. */
+  wouldHave?: boolean;
+  /** The end screen's version, like Krillion's: a wide curve with a scale, then the share in capitals under it. */
+  big?: boolean;
+}) {
+  const gap = place.next ? (unit === "pts" ? `${place.next.gap} pts` : `${place.next.gap} right ${place.next.gap === 1 ? "pick" : "picks"}`) : "";
+  const rank = `${wouldHave ? "You’d have been" : "You’re"} #${place.rank} of ${place.players.toLocaleString("en-US")} ${among}.`;
+  const chase = place.next ? `${gap} behind #${place.next.rank}.` : place.players > 1 ? "Nobody scored higher." : "";
+  if (big) {
+    return (
+      <section className="standing big" aria-label="Where you stand">
+        {place.betterThan !== null ? (
+          <>
+            <SpreadCurve place={place} unit={unit} big />
+            <p className="standing-head">
+              Better than {place.betterThan}% of {who}
+            </p>
+          </>
+        ) : null}
+        <p className="players">
+          {rank} {chase}
+        </p>
+      </section>
+    );
+  }
   return (
-    <div className="rank-block">
-      <h2>
-        You’re #{place.rank} <span>of {place.players} today</span>
-      </h2>
+    <section className="standing" aria-label="Where you stand">
+      {place.betterThan !== null ? (
+        <>
+          <p className="standing-head">
+            <strong>Better than {place.betterThan}%</strong>
+            <span> of {who}</span>
+          </p>
+          <SpreadCurve place={place} unit={unit} />
+        </>
+      ) : null}
       <p className="players">
-        {place.next ? `${gap} behind #${place.next.rank}.` : "Nobody climbed higher today."}
+        {rank} {chase}
       </p>
-    </div>
+    </section>
   );
 }
 
-/** Before 20 players have finished, being early is the news, not a rank among a handful. */
-export function EarlyBlock({ players, what }: { players: number; what: "today" | "this pack" }) {
+const SMALL = { W: 320, BASE: 54, RISE: 44, H: 68 };
+const BIG = { W: 360, BASE: 92, RISE: 78, H: 108 };
+
+/** A round step for the scale under the big curve, so it has at most seven marks. */
+function scaleStep(top: number): number {
+  return [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000].find((step) => top / step <= 7) ?? Math.ceil(top / 7);
+}
+
+/** Everyone's scores as a smooth hill, the part you beat lit up, and a marker at your score. */
+function SpreadCurve({ place, unit, big = false }: { place: Placement; unit: "pts" | "picks"; big?: boolean }) {
+  const { W, BASE, RISE, H } = big ? BIG : SMALL;
+  const id = useId().replace(/:/g, "");
+  const { bins, top, you } = place.spread;
+  // A light blur so a small field reads as a hill rather than a comb.
+  const weights = [0.1, 0.2, 0.4, 0.2, 0.1];
+  const smooth = bins.map((_, index) => {
+    let sum = 0;
+    let weight = 0;
+    weights.forEach((w, offset) => {
+      const at = index + offset - 2;
+      if (at < 0 || at >= bins.length) return;
+      sum += bins[at]! * w;
+      weight += w;
+    });
+    return weight > 0 ? sum / weight : 0;
+  });
+  const high = Math.max(...smooth, 0.001);
+  const points: Array<[number, number]> = [[0, BASE], ...smooth.map((value, index): [number, number] => [((index + 0.5) / bins.length) * W, BASE - (value / high) * RISE]), [W, BASE]];
+  let line = `M ${points[0]![0]} ${points[0]![1]}`;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    const [x, y] = points[index]!;
+    const [nx, ny] = points[index + 1]!;
+    line += ` Q ${x.toFixed(1)} ${y.toFixed(1)} ${((x + nx) / 2).toFixed(1)} ${((y + ny) / 2).toFixed(1)}`;
+  }
+  line += ` L ${W} ${BASE}`;
+  const area = `${line} Z`;
+  const x = Math.max(0, Math.min(1, you / Math.max(1, top))) * W;
+  let y = BASE;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const [x0, y0] = points[index]!;
+    const [x1, y1] = points[index + 1]!;
+    if (x >= x0 && x <= x1) {
+      y = x1 === x0 ? y0 : y0 + ((y1 - y0) * (x - x0)) / (x1 - x0);
+      break;
+    }
+  }
+  const labelX = Math.max(16, Math.min(W - 16, x));
+  if (big) {
+    const step = scaleStep(top);
+    const marks = Array.from({ length: Math.floor(top / step) + 1 }, (_, index) => index * step);
+    return (
+      <svg className="spread big" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Everyone’s scores, with yours at ${you} ${unit === "pts" ? "points" : "right picks"}`}>
+        <defs>
+          <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffb347" stopOpacity="0.5" />
+            <stop offset="100%" stopColor="#ffb347" stopOpacity="0.02" />
+          </linearGradient>
+          <clipPath id={`${id}-beaten`}>
+            <rect x="0" y="0" width={x} height={H} />
+          </clipPath>
+        </defs>
+        {/* The curve draws itself left to right, the hill fades in under it, the part you beat lights up, and the
+            YOU pin drops onto your score with a ripple. */}
+        <path d={area} className="spread-rest" />
+        <path d={area} className="spread-beaten" fill={`url(#${id}-fill)`} clipPath={`url(#${id}-beaten)`} />
+        <path d={line} className="spread-line" pathLength={1} />
+        <line x1="0" y1={BASE} x2={W} y2={BASE} className="spread-base" />
+        {marks.map((mark) => {
+          const at = (mark / Math.max(1, top)) * W;
+          return (
+            <g key={mark}>
+              <line x1={at} x2={at} y1={BASE} y2={BASE + 4} className="spread-base" />
+              {Math.abs(at - x) > 26 ? (
+                <text x={at} y={BASE + 15} textAnchor={mark === 0 ? "start" : at >= W - 1 ? "end" : "middle"} className="spread-axis">
+                  {mark}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+        <g className="spread-pin">
+          <line x1={x} y1={y} x2={x} y2={BASE + 4} className="spread-you-line" />
+          <circle cx={x} cy={y} r="4" className="spread-you-dot" />
+          <text x={labelX} y={BASE + 15} textAnchor="middle" className="spread-you">
+            YOU
+          </text>
+        </g>
+        <circle cx={x} cy={y} r="5" className="spread-ripple" />
+      </svg>
+    );
+  }
   return (
-    <div className="rank-block early">
-      <h2>
-        Early player <span>#{players} {what === "today" ? "to finish today" : "to finish this pack"}</span>
-      </h2>
-      <p className="players">Ranks and averages start once {COMPARE_MIN_PLAYERS} players have finished. Share your climb to get there faster.</p>
-    </div>
+    <svg className="spread" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Everyone’s scores, with yours at ${you} ${unit === "pts" ? "points" : "right picks"}`}>
+      <defs>
+        <linearGradient id={`${id}-fill`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffb347" stopOpacity="0.55" />
+          <stop offset="100%" stopColor="#ffb347" stopOpacity="0.04" />
+        </linearGradient>
+        <clipPath id={`${id}-beaten`}>
+          <rect x="0" y="0" width={x} height={H} />
+        </clipPath>
+      </defs>
+      <path d={area} className="spread-rest" />
+      <path d={area} fill={`url(#${id}-fill)`} clipPath={`url(#${id}-beaten)`} />
+      <path d={line} className="spread-line" />
+      <line x1="0" y1={BASE} x2={W} y2={BASE} className="spread-base" />
+      <line x1={x} y1={Math.min(y, BASE - 4) - 4} x2={x} y2={BASE} className="spread-you-line" />
+      <circle cx={x} cy={y} r="3" className="spread-you-dot" />
+      <text x={labelX} y={H - 2} textAnchor="middle" className="spread-you">
+        YOU
+      </text>
+      {Math.abs(x) > 26 ? (
+        <text x="0" y={H - 2} className="spread-axis">
+          0
+        </text>
+      ) : null}
+      {Math.abs(W - x) > 34 ? (
+        <text x={W} y={H - 2} textAnchor="end" className="spread-axis">
+          {unit === "pts" ? `${top} pts` : `${top}/${top}`}
+        </text>
+      ) : null}
+    </svg>
   );
 }
 
@@ -106,19 +266,6 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
           <p className="streak">{ends}</p>
         </div>
         <p className="hint">Finish a game this week to join. Every point you score counts, and the top {league.moveUp} move up a league each Monday.</p>
-      </section>
-    );
-  }
-  if (!league.open) {
-    return (
-      <section className="card league" aria-label="Weekly league">
-        <div className="mode-top">
-          <h2>{league.name}</h2>
-          <p className="streak">{ends}</p>
-        </div>
-        <p className="hint">
-          You’re in, with {league.you?.points ?? 0} pts this week. The table opens once {COMPARE_MIN_PLAYERS} players are in your group ({league.players} so far). Until then nobody moves up or down.
-        </p>
       </section>
     );
   }
@@ -154,13 +301,6 @@ export function LeagueCard({ league, today }: { league: LeagueResponse; today: s
 /** One line on the end screen: where this week stands now. */
 export function LeagueLine({ league }: { league: LeagueResponse | null }) {
   if (!league?.joined || !league.you) return null;
-  if (!league.open) {
-    return (
-      <p className="league-line">
-        {league.name}: {league.you.points} pts this week. The table opens at {COMPARE_MIN_PLAYERS} players ({league.players} so far).
-      </p>
-    );
-  }
   const zone = league.above && league.you.rank <= league.moveUp ? ` · in the top ${league.moveUp}, on course for the ${league.above}` : "";
   return (
     <p className="league-line">
