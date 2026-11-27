@@ -26,8 +26,11 @@ export type {
 
 export {
   DEFAULT_EPOCH,
+  LEGACY_SLOTS,
+  NEW_DAYS_FROM,
   SEED_SLOTS,
   addUtcDays,
+  firstPlayOf,
   beatPercent,
   distributionBucket,
   isIsoDate,

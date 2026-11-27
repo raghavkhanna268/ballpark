@@ -13,7 +13,7 @@ import {
   raceCode,
   puzzleNumber,
   puzzleSlot,
-  SEED_SLOTS,
+  addUtcDays,
   sliderRange,
   playToday,
   type AcceptedAnswer,
@@ -320,7 +320,7 @@ export async function loadPuzzle(db: D1Database, date: string, epoch: string): P
   }
   const next = await db
     .prepare("SELECT theme FROM puzzles WHERE slot = ?")
-    .bind((slot + 1) % SEED_SLOTS)
+    .bind(puzzleSlot(addUtcDays(date, 1), epoch))
     .first<{ theme: string }>();
   const questionIds = parseStringArray(puzzle.question_ids);
   const questions = await loadQuestions(db, questionIds);

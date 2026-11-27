@@ -1,8 +1,17 @@
 /** Puzzle #1 is this date. Later days count forward from here. */
 export const DEFAULT_EPOCH = "2026-01-01";
 
-/** Sample seed length. Every date maps onto one of these slots until a real calendar replaces it. */
-export const SEED_SLOTS = 17;
+/** The first 17 days. Until NEW_DAYS_FROM they were the whole rotation, and dates before it keep that cycle. */
+export const LEGACY_SLOTS = 17;
+
+/** Every daily slot. Slots from LEGACY_SLOTS up are the days added later. */
+export const SEED_SLOTS = 31;
+
+/**
+ * The first date that plays the added days. Each date before it keeps the 17-day cycle it was played with, so past
+ * results, the archive and recounts still match their questions. It must stay after the deploy that adds the days.
+ */
+export const NEW_DAYS_FROM = "2026-12-01";
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -43,9 +52,21 @@ export function puzzleNumber(date: string, epoch: string = DEFAULT_EPOCH): numbe
   return Math.round(ms / 86_400_000) + 1;
 }
 
+/** The seed slot a date plays: the 17-day cycle before NEW_DAYS_FROM, then the added days, then every slot in turn. */
 export function puzzleSlot(date: string, epoch: string = DEFAULT_EPOCH): number {
   const number = puzzleNumber(date, epoch);
-  return ((number - 1) % SEED_SLOTS + SEED_SLOTS) % SEED_SLOTS;
+  const switchNumber = puzzleNumber(NEW_DAYS_FROM, epoch);
+  if (number < switchNumber) return modulo(number - 1, LEGACY_SLOTS);
+  return modulo(LEGACY_SLOTS + number - switchNumber, SEED_SLOTS);
+}
+
+/** The puzzle number of the first date that plays a slot. */
+export function firstPlayOf(slot: number, epoch: string = DEFAULT_EPOCH): number {
+  return slot < LEGACY_SLOTS ? slot + 1 : puzzleNumber(NEW_DAYS_FROM, epoch) + slot - LEGACY_SLOTS;
+}
+
+function modulo(value: number, size: number): number {
+  return ((value % size) + size) % size;
 }
 
 export function addUtcDays(date: string, days: number): string {

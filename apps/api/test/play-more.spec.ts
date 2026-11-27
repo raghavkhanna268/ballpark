@@ -1,7 +1,7 @@
 import { exports } from "cloudflare:workers";
 import { env } from "cloudflare:test";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ARCHIVE_FREE_DAYS, addUtcDays, puzzleSlot, type ArchiveResponse, type DayResult, type GuessResponse, type PuzzleResponse, type RoundGuessResponse, type RoundResponse, type UnlimitedStatus } from "@ballpark/shared";
+import { ARCHIVE_FREE_DAYS, CLASSIC_QUESTIONS, LEGACY_SLOTS, NEW_DAYS_FROM, addUtcDays, puzzleSlot, type ArchiveResponse, type DayResult, type GuessResponse, type PuzzleResponse, type RoundGuessResponse, type RoundResponse, type UnlimitedStatus } from "@ballpark/shared";
 import { puzzles, questions, type SeedQuestion } from "../seed/content.ts";
 import { crewSize } from "../src/bots.ts";
 import { correctGuess, resetAndSeed, spaceDay } from "./seed-db.ts";
@@ -192,7 +192,12 @@ describe("Unlimited", () => {
     const early = addUtcDays(EPOCH, 3);
     const earlyStatus = (await (await call("/api/unlimited", OTHER, early)).json()) as UnlimitedStatus;
     expect(earlyStatus.pool).toBe(21);
-    expect(status.pool).toBe(questions.filter((item) => puzzles.some((puzzle) => puzzle.questionIds.includes(item.id))).length - 7);
+    // Before NEW_DAYS_FROM only the first days have run, less today's.
+    expect(status.pool).toBe((LEGACY_SLOTS - 1) * CLASSIC_QUESTIONS);
+    // The added days join one by one once they have run.
+    const later = addUtcDays(NEW_DAYS_FROM, 3);
+    const laterStatus = (await (await call("/api/unlimited", OTHER, later)).json()) as UnlimitedStatus;
+    expect(laterStatus.pool).toBe((LEGACY_SLOTS + 3) * CLASSIC_QUESTIONS);
   });
 
   it("keeps rounds to the device that started them", async () => {

@@ -6,7 +6,8 @@
  * any of them as official. See the README for how production content should
  * stay out of this public repository.
  */
-import { CLASSIC_QUESTIONS, COUNTRIES, ELEMENTS, METRIC_COPY, PACK_QUESTIONS, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { CLASSIC_QUESTIONS, COUNTRIES, ELEMENTS, LEGACY_SLOTS, METRIC_COPY, PACK_QUESTIONS, SEED_SLOTS, normalizeAnswer, suggestionsFor, type SliderScale } from "@ballpark/shared";
+import { addedDays, addedNameOne } from "./added-days.ts";
 import { extraFacts } from "./more-facts.ts";
 import { metricForExisting } from "./metrics.ts";
 import { funDays, funNameOne, packNameOne, packs as funPacks, type SeedPack as FunPack } from "./fun.ts";
@@ -375,17 +376,22 @@ function fromNameOne(named: NameOneSeed): SeedQuestion {
 }
 
 export const questions: SeedQuestion[] = [
-  ...baseNamed,
-  ...Object.values(moreBase).flat().map(fromNameOne),
-  ...funNameOne.map(fromNameOne),
-  ...packNameOne.map(fromNameOne),
-  ...journeyNameOne.map(fromNameOne),
-].map((item) => ({ ...item, nudge: NUDGES[item.id] ?? null }));
+  ...[
+    ...baseNamed,
+    ...Object.values(moreBase).flat().map(fromNameOne),
+    ...funNameOne.map(fromNameOne),
+    ...packNameOne.map(fromNameOne),
+    ...journeyNameOne.map(fromNameOne),
+  ].map((item) => ({ ...item, nudge: NUDGES[item.id] ?? null })),
+  // The added days carry their own nudges.
+  ...addedNameOne.map((item) => ({ ...fromNameOne(item), nudge: item.nudge })),
+];
 
-/** The fun week opens the rotation. The older themes follow it. */
+/** The fun week opens the rotation and the older themes follow it. The added days come after both, from LEGACY_SLOTS. */
 export const puzzles: SeedPuzzle[] = [
   ...funDays.map((day, slot) => ({ slot, ...day })),
   ...basePuzzles.map((item) => ({ ...item, slot: item.slot + funDays.length })),
+  ...addedDays.map((day, index) => ({ slot: LEGACY_SLOTS + index, ...day })),
 ];
 
 /** Unlimited draws from every daily question. The server holds back days that have not run yet. */
@@ -409,6 +415,7 @@ export function assertSeed(): void {
   const expectedQuestions = SEED_SLOTS * CLASSIC_QUESTIONS + chapters.length * PACK_QUESTIONS;
   if (questions.length !== expectedQuestions) throw new Error(`Expected ${expectedQuestions} questions, found ${questions.length}`);
   if (puzzles.length !== SEED_SLOTS) throw new Error(`Expected ${SEED_SLOTS} puzzles`);
+  if (funDays.length + basePuzzles.length !== LEGACY_SLOTS) throw new Error(`Expected ${LEGACY_SLOTS} days before the added ones`);
   if (packs.length !== 3) throw new Error("Expected 3 packs");
   assertNudges();
 
