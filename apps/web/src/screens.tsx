@@ -1,4 +1,4 @@
-import { ClockFuse, ClockRing, DangerEdge, QuestionTimer, useDanger, useQuestionClock } from "./timer";
+import { ClockFuse, ClockRing, DangerEdge, QUESTION_SECONDS, QuestionTimer, useDanger, useQuestionClock } from "./timer";
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { burnAway, caretSparks, dropAway, flash, jolt, sparks, zap } from "./fx";
 import { playWhoosh } from "./sound";
@@ -31,12 +31,26 @@ const BUCKETS = ["0–140", "141–280", "281–420", "421–560", "561+"];
 
 export type StreakView = { streak: number; shield: "ready" | "used" | "saved" };
 
-/** One small tile on the home screen. It opens a panel in the card (the league, logbook or stats), or a page of its own. */
-export type HomePanel = { id: string; icon: string; title: string; note: string; content?: ReactNode; onOpen?: () => void };
+/** One tile in the home menu. It opens a panel in the card (the league, logbook or stats), or a page of its own. */
+export type HomePanel = {
+  id: string;
+  icon: string;
+  title: string;
+  note: string;
+  content?: ReactNode;
+  onOpen?: () => void;
+  /** Something new inside, such as a paint job just earned. Puts a dot on the menu button and the tile. */
+  alert?: boolean;
+};
 
 /** Cruise: today's Classic with no clock, kept for the streak but left off the board. Locked once the day has started. */
 export type CruiseView = { on: boolean; locked: boolean; onToggle: () => void };
 
+/**
+ * The home screen, like a game's title screen: the day, the rules in one line, the play button, the streak and a
+ * short row of other ways to play. Everything else (the league, today's board, the Hangar, the logbook, stats, how to
+ * play, Ballpark+ and tomorrow's theme) sits behind the Menu button.
+ */
 export function HomeScreen({
   puzzle,
   classicStreak,
@@ -45,8 +59,9 @@ export function HomeScreen({
   onResult,
   challenge,
   cruise = null,
-  more,
+  play = [],
   panels,
+  plus = null,
   ad,
 }: {
   puzzle: PuzzleResponse;
@@ -58,23 +73,42 @@ export function HomeScreen({
   /** A friend's race link, shown above the play button. */
   challenge?: ReactNode;
   cruise?: CruiseView | null;
-  /** Journeys, the archive and Unlimited, under today's Classic. */
-  more?: ReactNode;
-  /** The league, packs, logbook and stats. Each is a tile that opens in the card, so the home screen never scrolls. */
+  /** Journeys, the archive and Unlimited: a short row under the play button, and tiles in the menu. */
+  play?: HomePanel[];
+  /** The league, today's board, the Hangar, the logbook and stats. Each is a menu tile that opens in the card. */
   panels: HomePanel[];
+  /** Ballpark+, a wide row at the foot of the menu. */
+  plus?: HomePanel | null;
   /** An ad space, for free players only. It sits at the bottom of the screen, outside the card. */
   ad?: ReactNode;
 }) {
   const [open, setOpen] = useState<string | null>(null);
+  const [menu, setMenu] = useState(false);
+  const menuButton = useRef<HTMLButtonElement>(null);
   const done = puzzle.result !== null;
   const started = puzzle.questions.some((question) => question.reveal);
-  const panel = panels.find((item) => item.id === open);
+  const howTo: HomePanel = { id: "how", icon: "❓", title: "How to play", note: "The rules", content: <HowToPlay count={puzzle.questions.length} /> };
+  const panel = [...panels, howTo].find((item) => item.id === open);
+  const alert = [...play, ...panels].some((item) => item.alert);
+
+  function pick(item: HomePanel) {
+    setMenu(false);
+    if (item.onOpen) item.onOpen();
+    else setOpen(item.id);
+  }
 
   if (panel) {
     return (
       <div className="stack home-panel">
-        <button className="text-button back" type="button" onClick={() => setOpen(null)}>
-          ← Back
+        <button
+          className="text-button back"
+          type="button"
+          onClick={() => {
+            setOpen(null);
+            setMenu(true);
+          }}
+        >
+          ← Menu
         </button>
         {panel.content}
       </div>
@@ -94,28 +128,31 @@ export function HomeScreen({
             ))}
             <span aria-hidden="true">.</span>
           </h1>
-          <Countdown />
+          <button ref={menuButton} type="button" className={alert ? "menu-button alert" : "menu-button"} aria-haspopup="dialog" aria-expanded={menu} onClick={() => setMenu(true)}>
+            <span className="burger" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+            </span>
+            Menu
+          </button>
         </header>
 
         <section className="day-card">
           <p className="kicker">
             #{puzzle.puzzleNumber} · Today’s climb
-            {puzzle.today.climbing > 0 ? <span className="climbing"> · {puzzle.today.climbing.toLocaleString("en-US")} climbing today</span> : null}
+            {puzzle.today.climbing > 0 ? <span className="climbing"> · {puzzle.today.climbing.toLocaleString("en-US")} climbing</span> : null}
           </p>
           <p className="theme">{puzzle.theme}</p>
-          <p className="blurb">{puzzle.blurb}</p>
-          <p className="tomorrow">Tomorrow · {puzzle.nextTheme}</p>
+          <p className="rules">
+            {puzzle.questions.length} questions · {cruise?.on ? "no clock" : `${QUESTION_SECONDS} seconds each`} · rarer answers climb higher
+          </p>
           {puzzle.devDate ? <p className="dev-flag">Dev date {puzzle.date}. This does not change the real UTC day.</p> : null}
         </section>
 
         {challenge}
 
         <section className="mode-card">
-          <div className="mode-top">
-            <h2>{cruise?.on ? "Cruise" : "Classic"}</h2>
-            <StreakTag view={classicStreak} />
-          </div>
-          <p>Seven questions. Name any right answer: the fewer players who think of it, the higher you climb.</p>
           {done ? (
             <button className="primary" type="button" onClick={onResult}>
               See today’s result · {puzzle.result?.score} pts
@@ -125,18 +162,19 @@ export function HomeScreen({
               {started ? (cruise?.on ? "Continue your cruise" : "Continue Classic") : cruise?.on ? "Cruise today’s Classic" : "Play today’s Classic"}
             </button>
           )}
-          {cruise && !done && !cruise.locked ? (
-            <button type="button" className={`cruise-switch${cruise.on ? " on" : ""}`} role="switch" aria-checked={cruise.on} onClick={cruise.onToggle}>
-              <span className="knob" aria-hidden="true" />
-              <span>
-                <strong>Cruise</strong> {cruise.on ? "on: no clock, off the board" : "· no clock, not ranked"}
-              </span>
-            </button>
-          ) : null}
-          {cruise?.on && cruise.locked && !done ? <p className="cruise-note">⛵ Cruising today: no clock, off the board.</p> : null}
+          <div className="home-meta">
+            <StreakTag view={classicStreak} />
+            {cruise && !done && !cruise.locked ? (
+              <button type="button" className={`cruise-switch${cruise.on ? " on" : ""}`} role="switch" aria-checked={cruise.on} onClick={cruise.onToggle}>
+                <span className="knob" aria-hidden="true" />
+                <span>
+                  <strong>Cruise</strong> · {cruise.on ? "not ranked" : "no clock"}
+                </span>
+              </button>
+            ) : null}
+            {cruise?.on && cruise.locked && !done ? <p className="cruise-note">⛵ Cruising: no clock</p> : null}
+          </div>
         </section>
-
-        {more}
 
         {headToHead ? (
           <section className="mode-card">
@@ -150,20 +188,156 @@ export function HomeScreen({
           </section>
         ) : null}
 
-        <nav className="tiles" aria-label="More">
-          {panels.map((item) => (
-            <button key={item.id} className="tile" type="button" onClick={() => (item.onOpen ? item.onOpen() : setOpen(item.id))}>
-              <span className="tile-icon" aria-hidden="true">
-                {item.icon}
-              </span>
-              <strong>{item.title}</strong>
-              <small>{item.note}</small>
-            </button>
-          ))}
-        </nav>
+        {play.length > 0 ? (
+          <nav className="quick-play" aria-label="More to play">
+            {play.map((item) => (
+              <button key={item.id} type="button" onClick={() => pick(item)}>
+                <span aria-hidden="true">{item.icon}</span>
+                {item.title}
+              </button>
+            ))}
+          </nav>
+        ) : null}
       </div>
       {ad}
+      {menu ? (
+        <HomeMenu
+          puzzle={puzzle}
+          daily={{ note: done ? `Done · ${puzzle.result?.score ?? 0} pts` : started ? "Carry on" : `#${puzzle.puzzleNumber} · ${puzzle.theme}`, onOpen: done ? onResult : onPlay }}
+          play={play}
+          more={[...panels, howTo]}
+          plus={plus}
+          onPick={pick}
+          onClose={() => {
+            setMenu(false);
+            menuButton.current?.focus();
+          }}
+        />
+      ) : null}
     </>
+  );
+}
+
+/**
+ * The home menu: a modal over the scene with today's theme, every way to play, your league, board, Hangar, logbook and
+ * stats, how to play, Ballpark+ and tomorrow's theme. A native dialog, so Escape closes it and focus stays inside.
+ */
+function HomeMenu({
+  puzzle,
+  daily,
+  play,
+  more,
+  plus,
+  onPick,
+  onClose,
+}: {
+  puzzle: PuzzleResponse;
+  daily: { note: string; onOpen: () => void };
+  play: HomePanel[];
+  more: HomePanel[];
+  plus: HomePanel | null;
+  onPick: (item: HomePanel) => void;
+  onClose: () => void;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  useEffect(() => {
+    const dialog = ref.current;
+    if (dialog && !dialog.open) dialog.showModal();
+  }, []);
+  // Closing the dialog itself hands focus back to the Menu button, and its close event tells the home screen.
+  const close = () => ref.current?.close();
+  const tiles = (items: HomePanel[]) =>
+    items.map((item) => (
+      <button key={item.id} type="button" className={item.alert ? "menu-tile alert" : "menu-tile"} onClick={() => onPick(item)}>
+        <span className="tile-icon" aria-hidden="true">
+          {item.icon}
+        </span>
+        <strong>{item.title}</strong>
+        <small>{item.note}</small>
+      </button>
+    ));
+  return (
+    <dialog
+      ref={ref}
+      className="home-menu"
+      aria-labelledby="home-menu-title"
+      onClose={onClose}
+      onClick={(event) => {
+        // A tap on the dimmed sky around the panel closes it.
+        if (event.target === event.currentTarget) close();
+      }}
+    >
+      <div className="menu-body">
+        <header className="menu-head">
+          <h2 id="home-menu-title">Menu</h2>
+          <button type="button" className="menu-close" aria-label="Close the menu" onClick={close}>
+            ✕
+          </button>
+        </header>
+        <p className="menu-today">
+          <b>{puzzle.theme}</b> · {puzzle.blurb}
+        </p>
+        <p className="menu-label">Play</p>
+        <div className="menu-grid">
+          <button type="button" className="menu-tile daily" onClick={daily.onOpen}>
+            <span className="tile-icon" aria-hidden="true">
+              ▶️
+            </span>
+            <strong>Today’s Classic</strong>
+            <small>{daily.note}</small>
+          </button>
+          {tiles(play)}
+        </div>
+        <p className="menu-label">You</p>
+        <div className="menu-grid">{tiles(more)}</div>
+        {plus ? (
+          <button type="button" className="menu-plus" onClick={() => onPick(plus)}>
+            <span aria-hidden="true">{plus.icon}</span>
+            <strong>{plus.title}</strong>
+            <small>{plus.note}</small>
+            <span className="go" aria-hidden="true">
+              →
+            </span>
+          </button>
+        ) : null}
+        <div className="menu-foot">
+          <p>Tomorrow · {puzzle.nextTheme}</p>
+          <Countdown />
+        </div>
+      </div>
+    </dialog>
+  );
+}
+
+/** The rules, in the menu. */
+function HowToPlay({ count }: { count: number }) {
+  return (
+    <section className="card how-to" aria-labelledby="how-to-title">
+      <div className="mode-top">
+        <h2 id="how-to-title">How to play</h2>
+      </div>
+      <ol>
+        <li>
+          <b>One theme a day, {count} questions.</b> Each one asks you to name something.
+        </li>
+        <li>
+          <b>Any right answer counts.</b> The fewer players who name it, the higher your rocket climbs: Liftoff, Orbit, Moonshot, Deep space, then
+          Supernova.
+        </li>
+        <li>
+          <b>{QUESTION_SECONDS} seconds a question.</b> A name that isn’t on the list costs 2 seconds, then try another.
+        </li>
+        <li>
+          <b>Afterburner ×2.</b> Once a day, double one answer you’re sure of.
+        </li>
+        <li>
+          <b>Cruise</b> turns the clock off. It keeps your streak but stays off the board and the league.
+        </li>
+        <li>
+          <b>A new climb at midnight India time.</b> Your streak shield covers one missed day a week.
+        </li>
+      </ol>
+    </section>
   );
 }
 

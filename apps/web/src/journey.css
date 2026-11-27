@@ -560,29 +560,145 @@
 .sheet .standing .players { font-size: 0.78rem; line-height: 1.35; }
 .sheet .friend-line, .sheet .league-line { padding: 6px 9px; font-size: 0.8rem; line-height: 1.35; }
 
-/* Home: the day and the play button up top, the rest as tiles that open in the card. */
-.home-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+/* Home: a title screen. The day, the rules in one line, the play button and the streak up front; the rest sits
+   behind the Menu button. */
+.home-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .sheet .home-head .wordmark { margin: 0; font-size: 1.9rem; line-height: 1; }
-.sheet .home-head .countdown { font-size: 0.7rem; text-align: right; }
 .sheet .day-card { display: flex; flex-direction: column; gap: 2px; padding: 0; }
 .sheet .day-card .kicker { font-size: 0.68rem; }
-.sheet .day-card .theme { margin: 0; font-size: 1.5rem; line-height: 1.15; }
-.sheet .day-card .blurb { font-size: 0.82rem; line-height: 1.35; }
-.sheet .day-card .tomorrow { margin: 0; font-size: 0.72rem; }
-.sheet .mode-card { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0; border-top: 1px solid rgba(143, 211, 255, 0.14); }
+.sheet .day-card .theme { margin: 0; font-size: 1.6rem; line-height: 1.15; }
+.sheet .day-card .rules { margin: 0; color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+.sheet .mode-card { display: flex; flex-direction: column; gap: 6px; padding: 4px 0 0; }
 .sheet .mode-card h2 { margin: 0; font-size: 1.05rem; }
 .sheet .mode-card p { font-size: 0.8rem; line-height: 1.35; }
-.tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.tile {
+.home-meta { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 32px; }
+.sheet .home-meta .streak { margin: 0; font-size: 0.74rem; }
+.sheet .home-meta .cruise-note { font-size: 0.74rem; }
+.home-meta .cruise-switch { flex: none; }
+
+/* The Menu button, top right of the card: three glowing bars and the word. A pink dot means something new inside. */
+.menu-button {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid rgba(143, 211, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(143, 211, 255, 0.06);
+  color: var(--line-art);
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.menu-button:hover, .menu-button:focus-visible { border-color: var(--amber); color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.3); }
+.burger { display: grid; gap: 3px; width: 14px; }
+.burger i { display: block; height: 2px; border-radius: 1px; background: currentColor; box-shadow: 0 0 4px currentColor; }
+.menu-button.alert::after, .menu-tile.alert::after {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff6fd8;
+  box-shadow: 0 0 8px #ff6fd8;
+}
+
+/* Journeys, the archive and Unlimited: one slim row under the play button. */
+.quick-play { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.quick-play button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 6px;
+  border: 1px solid rgba(255, 179, 71, 0.38);
+  border-radius: 8px;
+  background: rgba(255, 179, 71, 0.06);
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 0.56rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.quick-play button span { font-size: 0.9rem; letter-spacing: 0; }
+.quick-play button:hover, .quick-play button:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.3); }
+
+/* The home menu: a native dialog over the dimmed scene, in the card's bracket frame, where the card sits. */
+.home-menu {
+  position: fixed;
+  inset: 0;
+  width: min(520px, calc(100% - 20px));
+  max-width: none;
+  height: fit-content;
+  max-height: calc(100% - 58px);
+  margin: 50px auto auto;
+  padding: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+  border: 1px solid rgba(143, 211, 255, 0.22);
+  border-radius: 6px;
+  background:
+    linear-gradient(var(--amber), var(--amber)) top left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) top right / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom left / 2px 16px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 16px 2px no-repeat,
+    linear-gradient(var(--amber), var(--amber)) bottom right / 2px 16px no-repeat,
+    var(--card);
+  color: var(--ink);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6), inset 0 0 30px rgba(143, 211, 255, 0.05);
+  pointer-events: auto;
+}
+.home-menu::-webkit-scrollbar { display: none; }
+.home-menu::backdrop { background: rgba(4, 7, 16, 0.62); -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px); }
+.menu-body { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; }
+.menu-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.menu-head h2 { margin: 0; font-family: var(--display); font-size: 0.92rem; font-weight: 700; letter-spacing: 0.26em; text-transform: uppercase; color: var(--amber); text-shadow: 0 0 10px rgba(255, 179, 71, 0.5); }
+.menu-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(143, 211, 255, 0.35);
+  border-radius: 8px;
+  background: rgba(143, 211, 255, 0.06);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+.menu-close:hover, .menu-close:focus-visible { border-color: var(--amber); color: var(--amber); outline: none; }
+.menu-today { display: -webkit-box; margin: 0; overflow: hidden; color: var(--muted); font-size: 0.76rem; line-height: 1.35; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.menu-today b { color: var(--ink); font-weight: 600; }
+.menu-label { margin: 2px 0 -2px; font-family: var(--display); font-size: 0.58rem; font-weight: 700; letter-spacing: 0.22em; text-transform: uppercase; color: var(--line-art); }
+.menu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.menu-tile {
+  position: relative;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
   grid-template-rows: auto auto;
-  column-gap: 6px;
+  column-gap: 9px;
   align-items: center;
   justify-items: start;
   min-width: 0;
-  min-height: 44px;
-  padding: 4px 7px;
+  min-height: 50px;
+  padding: 6px 10px;
   text-align: left;
   border: 1px solid rgba(143, 211, 255, 0.22);
   border-radius: 8px;
@@ -591,10 +707,62 @@
   font: inherit;
   cursor: pointer;
 }
-.tile:hover, .tile:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.25); }
-.tile-icon { grid-row: span 2; font-size: 1.1rem; line-height: 1.2; }
-.tile strong { font-size: 0.78rem; font-weight: 600; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tile small { font-size: 0.62rem; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu-tile .tile-icon { grid-row: span 2; font-size: 1.2rem; line-height: 1.2; }
+.menu-tile strong { max-width: 100%; overflow: hidden; font-size: 0.82rem; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.menu-tile small { max-width: 100%; overflow: hidden; color: var(--muted); font-size: 0.66rem; text-overflow: ellipsis; white-space: nowrap; }
+.menu-tile:hover, .menu-tile:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.25); }
+.menu-tile.daily { border-color: var(--amber); background: rgba(255, 179, 71, 0.12); box-shadow: 0 0 12px rgba(255, 179, 71, 0.22); }
+.menu-tile.daily small { color: var(--amber); }
+.menu-plus {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 1px solid rgba(255, 179, 71, 0.45);
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(255, 179, 71, 0.14), rgba(255, 111, 216, 0.08));
+  color: var(--ink);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-plus strong { font-size: 0.84rem; font-weight: 700; }
+.menu-plus small { overflow: hidden; color: var(--muted); font-size: 0.7rem; text-overflow: ellipsis; white-space: nowrap; }
+.menu-plus .go { color: var(--amber); font-weight: 700; }
+.menu-plus:hover, .menu-plus:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 12px rgba(255, 179, 71, 0.3); }
+.menu-foot { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding-top: 7px; border-top: 1px solid rgba(143, 211, 255, 0.14); }
+.menu-foot p { margin: 0; color: var(--muted); font-size: 0.68rem; }
+.menu-foot .countdown { text-align: right; }
+/* The same width as the card: the screen less the sheet's padding, up to 520 px, or 460 px on a wider screen. */
+@media (min-width: 640px) {
+  .home-menu { width: min(460px, calc(100% - 20px)); }
+}
+@media (min-width: 900px) {
+  .home-menu { width: min(460px, calc(100% - 32px)); margin-top: 64px; }
+}
+
+/* How to play: the rules as numbered steps, in the card. */
+.how-to ol { display: flex; flex-direction: column; gap: 9px; margin: 8px 0 0; padding: 0; list-style: none; counter-reset: rule; }
+.how-to li { position: relative; padding-left: 30px; color: var(--muted); font-size: 0.84rem; line-height: 1.4; counter-increment: rule; }
+.how-to li::before {
+  content: counter(rule);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--amber);
+  border-radius: 4px;
+  color: var(--amber);
+  font-family: var(--display);
+  font-size: 0.62rem;
+  font-weight: 700;
+}
+.how-to li b { color: var(--ink); font-weight: 600; }
 .home-panel .back { align-self: flex-start; min-height: 28px; font-size: 0.85rem; }
 .sheet .home-panel .card { padding: 0; }
 .sheet .stats-panel { display: flex; flex-direction: column; gap: 10px; }
@@ -1105,31 +1273,6 @@
 .cruise-switch.on .knob::after { transform: translateX(13px); background: var(--line-art); box-shadow: var(--glow-cyan); }
 .cruise-note { margin: 0; color: var(--line-art); font-size: 0.8rem; line-height: 1.35; }
 .cruise-clock { margin: 0; font-family: var(--display); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--line-art); }
-
-/* More to play: three wide buttons under today's Classic. */
-.play-more { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.more-button {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: auto auto;
-  column-gap: 6px;
-  align-items: center;
-  justify-items: start;
-  min-width: 0;
-  min-height: 44px;
-  padding: 4px 8px;
-  text-align: left;
-  border: 1px solid rgba(255, 179, 71, 0.38);
-  border-radius: 8px;
-  background: rgba(255, 179, 71, 0.07);
-  color: var(--ink);
-  font: inherit;
-  cursor: pointer;
-}
-.more-button:hover, .more-button:focus-visible { border-color: var(--amber); outline: none; box-shadow: 0 0 10px rgba(255, 179, 71, 0.3); }
-.more-button > span { grid-row: span 2; font-size: 1.1rem; line-height: 1.2; }
-.more-button strong { font-size: 0.78rem; font-weight: 700; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.more-button small { font-size: 0.62rem; color: var(--amber); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Pages for journeys, the archive and Unlimited. */
 .more-page { gap: 12px; }

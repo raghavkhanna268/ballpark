@@ -43,7 +43,7 @@ import { TodayBoard } from "./flightlog";
 import { ReminderSwitch } from "./reminder";
 import { Journey, type Ghost, type Hop, type HudScore, type TrailSegment } from "./journey";
 import { LogbookCard, loadLogbook, recordFind, recordRun, type Logbook } from "./logbook";
-import { ArchiveScreen, JourneyScreen, PacksScreen, PlayMore, UnlimitedScreen } from "./more";
+import { ArchiveScreen, JourneyScreen, PacksScreen, UnlimitedScreen, playMoreTiles } from "./more";
 import { AdSlot, PlusScreen } from "./plus";
 import { RoundRun } from "./rounds";
 import { FriendResult, LeagueCard, LeagueLine, RaceBanner, RankBlock, captureRace, raceFor } from "./rivals";
@@ -343,16 +343,15 @@ export function App() {
           onPlay={startClassic}
           onResult={() => setPhase({ name: "end" })}
           cruise={{ on: cruise, locked: puzzle.cruise !== null, onToggle: () => setCruisePick((current) => !current) }}
-          more={
-            <PlayMore
-              packs={packs}
-              plus={plus}
-              unlimited={unlimited}
-              onPacks={() => setPhase({ name: "packs" })}
-              onArchive={() => setPhase({ name: "archive" })}
-              onUnlimited={() => setPhase({ name: "unlimited" })}
-            />
-          }
+          play={playMoreTiles({
+            packs,
+            plus,
+            unlimited,
+            onPacks: () => setPhase({ name: "packs" }),
+            onArchive: () => setPhase({ name: "archive" }),
+            onUnlimited: () => setPhase({ name: "unlimited" }),
+          })}
+          plus={{ id: "plus", icon: "⭐", title: "Ballpark+", note: plus?.plus ? "Your pass" : "No ads, more play", onOpen: () => setPhase({ name: "plus" }) }}
           challenge={challenge ? <RaceBanner race={challenge} onRace={challenge.mode === "classic" ? startClassic : startHeadToHead} /> : null}
           panels={[
             {
@@ -363,16 +362,9 @@ export function App() {
               content: league ? <LeagueCard league={league} today={today} /> : <p className="hint">Loading the league…</p>,
             },
             {
-              id: "plus",
-              icon: "⭐",
-              title: "Ballpark+",
-              note: plus?.plus ? "Your pass" : "No ads, more play",
-              onOpen: () => setPhase({ name: "plus" }),
-            },
-            {
               id: "today",
               icon: "🏁",
-              title: "Today",
+              title: "Today’s board",
               note: puzzle.today.climbing > 0 ? `${puzzle.today.climbing.toLocaleString("en-US")} climbing` : "Top ten climbs",
               content: (
                 <section className="card today-card" aria-label="Today’s board">
@@ -389,6 +381,7 @@ export function App() {
               icon: "🚀",
               title: "Hangar",
               note: fresh.length > 0 ? `New: ${fresh[0]!.name}` : `${SKINS.filter((item) => isUnlocked(item, earned)).length}/${SKINS.length} paint jobs`,
+              alert: fresh.length > 0,
               content: <HangarCard state={hangar} earned={earned} streak={classicStreak.streak} onPick={pickSkin} />,
             },
             {

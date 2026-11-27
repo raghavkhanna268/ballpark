@@ -204,3 +204,24 @@
 @keyframes icon-pop { to { transform: scale(1); } }
 @keyframes band-scan { 40% { opacity: 0.95; background-color: rgba(143, 211, 255, 0.12); } }
 @keyframes band-sweep { to { transform: scaleX(1); } }
+
+/* The home menu drops in over a fading backdrop, its tiles rise in turn, and the new-thing dot pulses. */
+@media (prefers-reduced-motion: no-preference) {
+  .home-menu[open] { animation: menu-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.15); }
+  .home-menu[open]::backdrop { animation: menu-fade 0.22s ease-out; }
+  .home-menu[open] .menu-tile, .home-menu[open] .menu-plus { animation: tile-rise 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2) both; }
+  .home-menu .menu-grid:first-of-type .menu-tile:nth-child(2) { animation-delay: 0.03s; }
+  .home-menu .menu-grid:first-of-type .menu-tile:nth-child(3) { animation-delay: 0.06s; }
+  .home-menu .menu-grid:first-of-type .menu-tile:nth-child(4) { animation-delay: 0.09s; }
+  .home-menu .menu-grid + .menu-label + .menu-grid .menu-tile { animation-delay: 0.12s; }
+  .home-menu .menu-grid + .menu-label + .menu-grid .menu-tile:nth-child(n + 3) { animation-delay: 0.15s; }
+  .home-menu .menu-grid + .menu-label + .menu-grid .menu-tile:nth-child(n + 5) { animation-delay: 0.18s; }
+  .home-menu[open] .menu-plus { animation-delay: 0.21s; }
+  .menu-button.alert::after, .menu-tile.alert::after { animation: alert-pulse 1.6s ease-in-out infinite; }
+  .menu-button:hover .burger i:nth-child(2) { transform: scaleX(0.6); }
+  .burger i { transition: transform 0.2s; transform-origin: left center; }
+}
+@keyframes menu-in { from { opacity: 0; transform: translateY(-12px) scale(0.97); } }
+@keyframes menu-fade { from { opacity: 0; } }
+@keyframes tile-rise { from { opacity: 0; transform: translateY(8px); } }
+@keyframes alert-pulse { 50% { transform: scale(1.35); box-shadow: 0 0 14px #ff6fd8; } }

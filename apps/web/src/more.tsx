@@ -3,14 +3,15 @@ import { ARCHIVE_FREE_DAYS, UNLIMITED_QUESTIONS, type ArchiveDay, type ArchiveRe
 import { errorCopy, getArchive, getJourney, getUnlimited, postUnlimited } from "./api";
 import { haptic } from "./haptic";
 import { Loader } from "./loader";
+import type { HomePanel } from "./screens";
 
 /*
  * More to play, beyond the daily: pack journeys, the archive of past days, and Unlimited. All of them are for fun:
  * none adds to the streak, the rank or the league.
  */
 
-/** The row under today's Classic on the home screen. */
-export function PlayMore({
+/** Journeys, the archive and Unlimited: a short row under the play button, and tiles in the home menu. */
+export function playMoreTiles({
   packs,
   plus,
   unlimited,
@@ -24,30 +25,22 @@ export function PlayMore({
   onPacks: () => void;
   onArchive: () => void;
   onUnlimited: () => void;
-}) {
+}): HomePanel[] {
   const member = plus?.plus ?? false;
   const journeys = packs.filter((pack) => !pack.locked);
   const done = journeys.reduce((sum, pack) => sum + pack.chaptersDone, 0);
   const total = journeys.reduce((sum, pack) => sum + pack.chapters, 0);
-  return (
-    <nav className="play-more" aria-label="More to play">
-      <button type="button" className="more-button" onClick={onPacks}>
-        <span aria-hidden="true">🗺️</span>
-        <strong>Journeys</strong>
-        <small>{member && total > 0 ? `${done}/${total} chapters` : "Ballpark+"}</small>
-      </button>
-      <button type="button" className="more-button" onClick={onArchive}>
-        <span aria-hidden="true">🗓️</span>
-        <strong>Archive</strong>
-        <small>{member ? "All past days" : `${ARCHIVE_FREE_DAYS} days free`}</small>
-      </button>
-      <button type="button" className="more-button" onClick={onUnlimited}>
-        <span aria-hidden="true">♾️</span>
-        <strong>Unlimited</strong>
-        <small>{member ? (unlimited?.open ? "Round in progress" : unlimited?.best != null ? `Best ${unlimited.best}` : "Play now") : "Ballpark+"}</small>
-      </button>
-    </nav>
-  );
+  return [
+    { id: "journeys", icon: "🗺️", title: "Journeys", note: member && total > 0 ? `${done}/${total} chapters` : "Ballpark+", onOpen: onPacks },
+    { id: "archive", icon: "🗓️", title: "Archive", note: member ? "All past days" : `${ARCHIVE_FREE_DAYS} days free`, onOpen: onArchive },
+    {
+      id: "unlimited",
+      icon: "♾️",
+      title: "Unlimited",
+      note: member ? (unlimited?.open ? "Round in progress" : unlimited?.best != null ? `Best ${unlimited.best}` : "Play now") : "Ballpark+",
+      onOpen: onUnlimited,
+    },
+  ];
 }
 
 function PageHead({ kicker, title, children, onBack, backLabel = "Home" }: { kicker: string; title: string; children?: ReactNode; onBack: () => void; backLabel?: string }) {
