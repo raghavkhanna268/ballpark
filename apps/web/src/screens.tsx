@@ -1,8 +1,11 @@
-import { ClockFuse, ClockRing, QuestionTimer, useQuestionClock } from "./timer";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { ClockFuse, ClockRing, DangerEdge, QuestionTimer, useDanger, useQuestionClock } from "./timer";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
+import { burnAway, caretSparks, dropAway, flash, jolt, sparks, zap } from "./fx";
+import { playWhoosh } from "./sound";
 import { createPortal } from "react-dom";
 import { CountUp, answerTitle, basePoints, flavourLine, maxPoints, resultIcon, tierOf } from "./game";
 import { tierStyle, useFloatMode, useFocusMode, useJourney } from "./journey";
+import { tierColor } from "./sky";
 import { haptic } from "./haptic";
 import { BigScore, ClimbLog, EndDock, EndRule, EndTop, FlightRating, maxScore } from "./endview";
 import { TheCatch, TodayBoard } from "./flightlog";
@@ -82,8 +85,14 @@ export function HomeScreen({
     <>
       <div className="stack home">
         <header className="home-head">
-          <h1 className="wordmark">
-            Ballpark<span>.</span>
+          <h1 className="wordmark" aria-label="Ballpark">
+            {/* Each letter bobs on its own beat, with a colour split, and the title flickers now and then. */}
+            {Array.from("Ballpark", (letter, index) => (
+              <span className="wl" aria-hidden="true" key={index} style={{ animationDelay: `${index * -0.35}s` }}>
+                {letter}
+              </span>
+            ))}
+            <span aria-hidden="true">.</span>
           </h1>
           <Countdown />
         </header>
@@ -237,6 +246,18 @@ export function QuestionScreen({
 }) {
   const readTime = useReadTime(question.id);
   const reading = clock ? readTime : 0;
+  const cardRef = useRef<HTMLDivElement>(null);
+  /** An answer is on its way. If the result replaces this screen, the card burns away. */
+  const sent = useRef(false);
+  const send = (guess: Guess) => {
+    sent.current = true;
+    onSubmit(guess);
+  };
+  useEffect(() => {
+    // The answer came back: not on the list, a spelling to confirm, or an error. The card stays.
+    if (rejections > 0 || correction || error) sent.current = false;
+  }, [rejections, correction?.key, error]);
+  useBurnAway(cardRef, sent);
   const locked = busy || reading > 0;
   const stuck = useStuck(question.id, reading === 0 && !busy);
   const naming = question.type === "name_one";
@@ -245,10 +266,10 @@ export function QuestionScreen({
     questionKey: question.id,
     running: clock && naming && !busy && reading === 0,
     penaltyMs: rejections * RETRY_PENALTY_MS,
-    onExpire: () => onSubmit({ type: "name_one", text: "", timedOut: true }),
+    onExpire: () => send({ type: "name_one", text: "", timedOut: true }),
   });
   return (
-    <div className="stack ask">
+    <div className="stack ask" ref={cardRef}>
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       {naming ? null : clock ? (
         <QuestionTimer
@@ -256,7 +277,7 @@ export function QuestionScreen({
           running={!busy && reading === 0}
           penaltyMs={rejections * RETRY_PENALTY_MS}
           waitLabel={`Clock starts in ${reading}`}
-          onExpire={() => onSubmit({ type: "name_one", text: "", timedOut: true })}
+          onExpire={() => send({ type: "name_one", text: "", timedOut: true })}
         />
       ) : (
         <p className="cruise-clock">⛵ Cruise · take your time</p>
@@ -277,13 +298,13 @@ export function QuestionScreen({
         </button>
       ) : null}
       {question.type === "estimate" && question.slider && question.unit ? (
-        <EstimateForm unit={question.unit} slider={question.slider} busy={locked} onSubmit={(value, confidence) => onSubmit({ type: "estimate", value, confidence })} />
+        <EstimateForm unit={question.unit} slider={question.slider} busy={locked} onSubmit={(value, confidence) => send({ type: "estimate", value, confidence })} />
       ) : null}
       {question.type === "compare" ? (
-        <CompareForm items={question.items} busy={locked} onSubmit={(choiceId) => onSubmit({ type: "compare", choiceId })} />
+        <CompareForm items={question.items} busy={locked} onSubmit={(choiceId) => send({ type: "compare", choiceId })} />
       ) : null}
       {question.type === "rank" ? (
-        <RankForm items={question.items} busy={locked} onSubmit={(order) => onSubmit({ type: "rank", order })} />
+        <RankForm items={question.items} busy={locked} onSubmit={(order) => send({ type: "rank", order })} />
       ) : null}
       {naming ? (
         <NameForm
@@ -292,7 +313,7 @@ export function QuestionScreen({
           rejections={rejections}
           correction={correction}
           clock={clock ? { left: dockClock.left, total: dockClock.total, read: reading } : null}
-          onSubmit={(text) => onSubmit({ type: "name_one", text })}
+          onSubmit={(text) => send({ type: "name_one", text })}
         />
       ) : null}
       {rejections > 0 && rejectedText && onReport ? <ReportButton key={`${question.id}-${rejections}`} text={rejectedText} onReport={onReport} /> : null}
@@ -314,6 +335,23 @@ function useStuck(questionKey: string, running: boolean): boolean {
     return () => window.clearTimeout(id);
   }, [running, questionKey, stuck]);
   return stuck;
+}
+
+/**
+ * When an answer's result replaces the question, the card burns away and the answer bar drops off the screen. React
+ * runs this cleanup while the old card is still on the page, so it can be copied as it looked.
+ */
+function useBurnAway(cardRef: RefObject<HTMLDivElement | null>, sent: RefObject<boolean>) {
+  useLayoutEffect(() => {
+    const card = cardRef.current;
+    return () => {
+      if (!sent.current || !card) return;
+      burnAway(card);
+      const bar = card.closest(".stage")?.querySelector<HTMLElement>(".dock-slot > .answer-dock");
+      if (bar) dropAway(bar);
+      playWhoosh();
+    };
+  }, [cardRef, sent]);
 }
 
 /** "Stuck? Get a nudge": one line that points at a corner of the answers. The answer after it scores at most a Moonshot. */
@@ -399,7 +437,7 @@ export function RevealScreen({
       <PlayHeader puzzle={puzzle} index={index} onHome={onHome} />
       <section className={`reveal band-${reveal.band} tier-${tier < 0 ? "miss" : tier}`} style={tierStyle(tier)} aria-live="polite">
         <p className="result-icon" aria-hidden="true">
-          {named ? resultIcon(reveal.label, reveal.emoji) : reveal.emoji}
+          <span>{named ? resultIcon(reveal.label, reveal.emoji) : reveal.emoji}</span>
         </p>
         {named ? (
           <>
@@ -591,15 +629,22 @@ export function DevDate() {
 }
 
 function PlayHeader({ puzzle, index, onHome }: { puzzle: PuzzleResponse; index: number; onHome: () => void }) {
-  const { hudSlot } = useJourney();
+  const { hudSlot, holding } = useJourney();
   const total = puzzle.questions.length;
   // The stage strip lives in the heads-up display, so it stays in view when the card clears away for the climb.
+  // Each answered stage's square takes its tier's colour. The one just answered pops in that colour once its climb
+  // lands; the one being asked pulses.
   const strip = (
     <div className="stage-strip">
       <div className="dots" aria-hidden="true">
-        {puzzle.questions.map((question, dot) => (
-          <i key={question.id} className={dot === index ? "on" : question.reveal ? `done band-${question.reveal.band}` : ""} />
-        ))}
+        {puzzle.questions.map((question, dot) => {
+          const reveal = question.reveal;
+          const asking = dot === index && (!reveal || holding);
+          if (asking || !reveal) return <i key={question.id} className={asking ? "on" : ""} />;
+          const tier = reveal.points > 0 ? tierOf(basePoints(reveal), maxPoints(question.type)) : -1;
+          const fresh = dot === index ? " fresh" : "";
+          return <i key={question.id} className={`done band-${reveal.band}${tier < 0 ? " miss" : ""}${fresh}`} style={{ ["--c" as string]: tierColor(tier) }} />;
+        })}
       </div>
       <b className="stage-no">
         Stage {index + 1}/{total}
@@ -980,7 +1025,10 @@ function NameForm({
   const [localError, setLocalError] = useState<string | null>(null);
   const [offer, setOffer] = useState<Correction | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const goRef = useRef<HTMLButtonElement>(null);
   useKeyboardLift();
+  const seconds = clock ? Math.ceil(clock.left / 1000) : 0;
+  const danger = useDanger(seconds, clock !== null && clock.read === 0 && !busy);
 
   useEffect(() => {
     // Fill in the spelling from the list. Lock in sends it as it stands; any edit puts the box back in the player's hands.
@@ -999,12 +1047,23 @@ function NameForm({
     const input = inputRef.current;
     if (!input) return;
     input.focus({ preventScroll: true });
-    if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      input.closest(".number-field")?.animate(
-        [{ transform: "translateX(0)" }, { transform: "translateX(-8px)" }, { transform: "translateX(7px)" }, { transform: "translateX(-4px)" }, { transform: "translateX(0)" }],
-        { duration: 380, easing: "ease-out" },
-      );
+    // Not on our list: the box jolts and flashes red, and static crackles over the screen.
+    const field = input.closest(".number-field");
+    if (field) {
+      jolt(field);
+      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        field.animate(
+          [
+            { borderColor: "#ff5a4e", boxShadow: "0 0 0 1px #ff5a4e, 0 0 18px rgba(255, 90, 78, 0.55)" },
+            { borderColor: "#ff5a4e", boxShadow: "0 0 0 1px #ff5a4e, 0 0 18px rgba(255, 90, 78, 0.55)", offset: 0.6 },
+            {},
+          ],
+          { duration: 900, easing: "ease-out" },
+        );
+      }
     }
+    zap();
+    flash("#ff5a4e", 0.12, 300);
   }, [rejections]);
 
   useEffect(() => {
@@ -1036,8 +1095,12 @@ function NameForm({
           event.preventDefault();
           if (text.trim().length < 1) {
             setLocalError("Type an answer first.");
+            const field = inputRef.current?.closest(".number-field");
+            if (field) jolt(field, 5);
             return;
           }
+          const go = goRef.current?.getBoundingClientRect();
+          if (go) sparks(go.left + go.width / 2, go.top + go.height / 2, { count: 16, spread: 60, size: 4, rise: 14, ms: 600, colors: ["#ffffff", "#8fd3ff", "#fff3d6"] });
           onSubmit(text.trim());
         }}
       >
@@ -1055,7 +1118,9 @@ function NameForm({
             disabled={locked}
             value={text}
             onChange={(event) => {
-              setText(event.target.value);
+              const input = event.target;
+              if (input.value.length > text.length) caretSparks(input);
+              setText(input.value);
               setOffer(null);
             }}
             aria-describedby={offer ? "did-you-mean" : undefined}
@@ -1066,13 +1131,18 @@ function NameForm({
           />
           {clock ? <ClockFuse left={clock.left} total={clock.total} read={clock.read} /> : null}
         </label>
-        <button className="dock-go" type="submit" disabled={busy || locked}>
+        <button className="dock-go" type="submit" disabled={busy || locked} ref={goRef}>
           {busy ? "…" : "Lock in"}
         </button>
       </form>
     </div>
   );
-  return dockSlot ? createPortal(dock, dockSlot) : dock;
+  return (
+    <>
+      {dockSlot ? createPortal(dock, dockSlot) : dock}
+      {danger ? <DangerEdge /> : null}
+    </>
+  );
 }
 
 /**

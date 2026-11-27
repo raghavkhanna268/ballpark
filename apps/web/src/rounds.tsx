@@ -10,6 +10,7 @@ import { RankBlock } from "./rivals";
 import { QuestionScreen, RevealScreen, type Correction } from "./screens";
 import type { SkyTrail } from "./sky";
 import { playBonk } from "./sound";
+import { Loader } from "./loader";
 
 /*
  * Rounds outside the daily, played with the Classic question and reveal screens: a pack chapter, a past day from
@@ -91,7 +92,7 @@ export function RoundRun({
       </div>
     );
   }
-  if (!round || phase.name === "loading") return <p className="status">{words.loading}</p>;
+  if (!round || phase.name === "loading") return <Loader label={words.loading} />;
 
   const puzzle = asPuzzle(round);
 

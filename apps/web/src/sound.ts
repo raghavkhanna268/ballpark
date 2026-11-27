@@ -1,6 +1,7 @@
 /**
  * The game's sounds, made with WebAudio so there are no files to load: a burner that roars louder and longer for
  * rarer answers, a chime for each landmark passed, a sputter for a miss, a bonk for a name that is not on the list,
+ * a tick for each of the last seconds, a whoosh as the card burns away, a boing when the rocket is poked,
  * and a pop, a parachute and a thud for the trip home.
  * Sound is on unless the player turns it off. Browsers only allow sound after a tap or a key press, so the page calls
  * unlockAudio from one.
@@ -268,4 +269,60 @@ export function playBonk() {
   tone.connect(gain).connect(context.destination);
   tone.start(start);
   tone.stop(start + 0.35);
+}
+
+/** One of the last five seconds: a dry clock tick, a little higher on the very last one. */
+export function playTick(last = false) {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const click = context.createOscillator();
+  click.type = "square";
+  click.frequency.setValueAtTime(last ? 1760 : 1320, start);
+  click.frequency.exponentialRampToValueAtTime(last ? 880 : 660, start + 0.04);
+  const high = context.createBiquadFilter();
+  high.type = "highpass";
+  high.frequency.value = 500;
+  click.connect(high).connect(envelope(context, start, last ? 0.07 : 0.05, 0.002, 0.01, 0.06)).connect(context.destination);
+  click.start(start);
+  click.stop(start + 0.1);
+}
+
+/** The card burning away after Lock in: a quick rising rush of air. */
+export function playWhoosh() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const rush = context.createBufferSource();
+  rush.buffer = noiseBuffer(context);
+  const band = context.createBiquadFilter();
+  band.type = "bandpass";
+  band.Q.value = 1.2;
+  band.frequency.setValueAtTime(400, start);
+  band.frequency.exponentialRampToValueAtTime(2600, start + 0.32);
+  rush.connect(band).connect(envelope(context, start, 0.2, 0.06, 0.08, 0.28)).connect(context.destination);
+  rush.start(start, Math.random());
+  rush.stop(start + 0.5);
+}
+
+/** The rocket poked on the pad: a springy boing. */
+export function playBoing() {
+  const context = ready();
+  if (!context) return;
+  const start = context.currentTime;
+  const spring = context.createOscillator();
+  spring.type = "sine";
+  spring.frequency.setValueAtTime(170, start);
+  spring.frequency.exponentialRampToValueAtTime(520, start + 0.09);
+  spring.frequency.exponentialRampToValueAtTime(240, start + 0.42);
+  const wobble = context.createOscillator();
+  wobble.frequency.value = 18;
+  const depth = context.createGain();
+  depth.gain.value = 24;
+  wobble.connect(depth).connect(spring.frequency);
+  spring.connect(envelope(context, start, 0.16, 0.01, 0.12, 0.32)).connect(context.destination);
+  spring.start(start);
+  wobble.start(start);
+  spring.stop(start + 0.5);
+  wobble.stop(start + 0.5);
 }

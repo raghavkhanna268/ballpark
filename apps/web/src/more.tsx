@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { ARCHIVE_FREE_DAYS, UNLIMITED_QUESTIONS, type ArchiveDay, type ArchiveResponse, type JourneyResponse, type PackSummary, type PlusStatus, type UnlimitedStatus } from "@ballpark/shared";
 import { errorCopy, getArchive, getJourney, getUnlimited, postUnlimited } from "./api";
 import { haptic } from "./haptic";
+import { Loader } from "./loader";
 
 /*
  * More to play, beyond the daily: pack journeys, the archive of past days, and Unlimited. All of them are for fun:
@@ -136,7 +137,7 @@ export function JourneyScreen({ deviceId, packId, onChapter, onBack }: { deviceI
       </div>
     );
   }
-  if (!journey) return <p className="status">Loading the route…</p>;
+  if (!journey) return <Loader label="Loading the route…" />;
 
   const finished = journey.chapters.filter((chapter) => chapter.score !== null);
   const current = journey.chapters.find((chapter) => chapter.score === null && !chapter.locked);
@@ -229,7 +230,7 @@ export function ArchiveScreen({ deviceId, onDay, onPlus, onHome }: { deviceId: s
         <p className="blurb">Play a day you missed. Rarity is the day as it was played, and it never touches your streak, rank or league.</p>
       </PageHead>
       {error ? <p className="form-error">{error}</p> : null}
-      {!page && !error ? <p className="status">Loading past days…</p> : null}
+      {!page && !error ? <Loader label="Loading past days…" /> : null}
       {page && days.length === 0 ? <p className="hint">No past days yet. Come back tomorrow.</p> : null}
       <ul className="day-list">
         {days.map((day) => {
@@ -307,7 +308,7 @@ export function UnlimitedScreen({ deviceId, onRound, onPlus, onHome }: { deviceI
         <p className="blurb">Seven questions from every day that has run, dealt fresh each round. Play as many as you like.</p>
       </PageHead>
       {error ? <p className="form-error">{error}</p> : null}
-      {!status && !error ? <p className="status">Loading…</p> : null}
+      {!status && !error ? <Loader label="Loading…" /> : null}
       {status && status.plus ? (
         <>
           <div className="stats unlimited-stats">

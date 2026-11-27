@@ -61,6 +61,8 @@ export type Sky = {
   land(options: LandOptions): void;
   /** Ends a landing now, or puts the capsule straight on the pad if none is playing. */
   settle(): void;
+  /** A poke: the resting rocket hops and lands with a squash. False if it is busy flying, or motion is reduced. */
+  hop(): boolean;
   progress(): number;
   destroy(): void;
   onFrame: ((frame: SkyFrame) => void) | null;
@@ -215,6 +217,8 @@ type Landing = {
   options: LandOptions;
 };
 type Bit = { x: number; y: number; vx: number; vy: number; g: number; r: number; life: number; max: number; rgb: string; a: number; ground: boolean };
+/** A soft puff in screen space: smoke from a miss, or steam from the pad. It drifts, grows and fades. */
+type Puff = { x: number; y: number; vx: number; vy: number; r: number; grow: number; life: number; max: number; rgb: string; a: number };
 
 /** The rocket's body, nose up, with its base at 0. */
 const BODY_PATH = "M0 -58 C12 -46 12 -24 9 -6 L-9 -6 C-12 -24 -12 -46 0 -58Z";
@@ -254,6 +258,22 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
   let booster: { y: number; vy: number; rot: number; a: number } | null = null;
   const bits: Bit[] = [];
   let flash = 0;
+  /** The flash's colour: white, or grey for a miss. */
+  let flashRgb = "255,255,255";
+  /** When each landmark line was passed on the way up, so it can flash. */
+  const lineHit: number[] = [];
+  /** A Supernova's big moment, from this time: rays, a double shock ring and colour-split ghosts of the rocket. */
+  let nova = 0;
+  /** A miss's big moment, from this time: a grey flash, a burst of static and smoke. */
+  let missAt = 0;
+  let missFired = true;
+  /** A shake of the whole scene: when it started, how long it lasts and how hard. */
+  const quake = { t0: 0, ms: 0, amp: 0 };
+  const puffs: Puff[] = [];
+  let steamAt = 0;
+  /** When the resting rocket was poked, for its hop. */
+  let hopAt = 0;
+  let ratio = 1;
   let last = performance.now();
   let raf = 0;
   let dirty = true;
@@ -551,12 +571,25 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     ctx.setLineDash([3, 7]);
     ctx.lineWidth = 1;
     const dark = SC.id !== "city" && cam < 1.6;
+    const now = performance.now();
     for (let i = 1; i < MILES.length; i++) {
       const y = sy(MILES[i].at);
       if (y < 70 || y > H + 8) continue;
+      // A line the rocket has just passed flashes white and glows, then settles back to a faint dash.
+      const k = reduce ? 1 : (now - (lineHit[i] ?? -1e9)) / 700;
       ctx.strokeStyle = dark ? "rgba(40,20,60,.22)" : "rgba(255,255,255,.2)";
       line(0, y, W, y);
-      ctx.fillStyle = dark ? "rgba(40,20,60,.6)" : "rgba(255,255,255,.6)";
+      if (k < 1) {
+        ctx.save();
+        ctx.setLineDash([]);
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(255,255,255,${0.95 * (1 - k)})`;
+        ctx.shadowColor = "#ffffff";
+        ctx.shadowBlur = 16 * (1 - k);
+        line(0, y, W, y);
+        ctx.restore();
+      }
+      ctx.fillStyle = k < 1 ? `rgba(255,255,255,${0.6 + 0.4 * (1 - k)})` : dark ? "rgba(40,20,60,.6)" : "rgba(255,255,255,.6)";
       ctx.textAlign = wide ? "right" : "left";
       ctx.fillText(`${MILES[i].name} · ${formatDistance(MILES[i].km)}`, wide ? W - 56 : 12, y - 6);
     }
@@ -1020,8 +1053,184 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       line(gx, y, gx + 12, y - 14);
       line(gx + 12, y, gx, y - 14);
     }
-    ctx.fillStyle = "#ffd27a";
+    // The warning light on top of the tower blinks.
+    const lit = reduce || Math.floor(performance.now() / 800) % 2 === 0;
+    if (lit) {
+      const glow = ctx.createRadialGradient(gx + 6, b - 97, 0, gx + 6, b - 97, 12);
+      glow.addColorStop(0, "rgba(255,90,78,.55)");
+      glow.addColorStop(1, "rgba(255,90,78,0)");
+      ctx.fillStyle = glow;
+      circ(gx + 6, b - 97, 12);
+    }
+    ctx.fillStyle = lit ? "#ff5a4e" : "rgba(255,90,78,.3)";
     circ(gx + 6, b - 97, 2.4);
+  }
+
+  /** Steam drifts out from under the rocket while it waits on the pad. */
+  function steamPad(now: number) {
+    if (reduce || climb || landing || home || h > 0.05) return;
+    const b = sy(0);
+    if (b > H + 20 || now < steamAt) return;
+    steamAt = now + 140 + Math.random() * 120;
+    const side = Math.random() < 0.5 ? -1 : 1;
+    puffs.push({
+      x: RX + side * (10 + Math.random() * 26),
+      y: b - 2,
+      vx: side * (12 + Math.random() * 22),
+      vy: -(6 + Math.random() * 14),
+      r: 3 + Math.random() * 3,
+      grow: 9 + Math.random() * 6,
+      life: 0,
+      max: 1.6 + Math.random() * 0.9,
+      rgb: "220,226,245",
+      a: 0.2,
+    });
+  }
+
+  /** How the poked rocket hops: a squash, a big arc with a tilt, a squash on landing and a small bounce. */
+  function hopPose(now: number): { dy: number; sx: number; sy: number; rot: number } | null {
+    if (!hopAt) return null;
+    const k = (now - hopAt) / 820;
+    if (k >= 1) {
+      hopAt = 0;
+      return null;
+    }
+    if (k < 0.14) {
+      const q = Math.sin((k / 0.14) * Math.PI * 0.5);
+      return { dy: 0, sx: 1 + 0.16 * q, sy: 1 - 0.16 * q, rot: 0 };
+    }
+    if (k < 0.68) {
+      const q = (k - 0.14) / 0.54;
+      const arc = Math.sin(q * Math.PI);
+      return { dy: -42 * arc, sx: 1 - 0.08 * arc, sy: 1 + 0.1 * arc, rot: -0.15 * Math.sin(q * Math.PI * 2) };
+    }
+    if (k < 0.78) {
+      const q = Math.sin(((k - 0.68) / 0.1) * Math.PI);
+      return { dy: 0, sx: 1 + 0.12 * q, sy: 1 - 0.12 * q, rot: 0 };
+    }
+    const q = Math.sin(((k - 0.78) / 0.22) * Math.PI);
+    return { dy: -8 * q, sx: 1, sy: 1 + 0.03 * q, rot: 0.06 * q };
+  }
+
+  function puffBurst(x: number, y: number, count: number, rgb: string, a: number, up: number) {
+    for (let i = 0; i < count; i++) {
+      const side = i % 2 ? 1 : -1;
+      puffs.push({
+        x: x + (Math.random() - 0.5) * 12,
+        y,
+        vx: side * (14 + Math.random() * 40),
+        vy: -(up * (0.5 + Math.random())),
+        r: 5 + Math.random() * 5,
+        grow: 16 + Math.random() * 12,
+        life: 0,
+        max: 1 + Math.random() * 0.7,
+        rgb,
+        a,
+      });
+    }
+  }
+
+  /** Shake the whole scene for a moment. */
+  function shake(ms: number, amp: number) {
+    if (reduce) return;
+    quake.t0 = performance.now();
+    quake.ms = ms;
+    quake.amp = amp;
+  }
+
+  /** A Supernova lands: a white flash, rays wheeling out, a double shock ring and colour-split ghosts of the rocket. */
+  function drawNova(now: number) {
+    if (!nova) return;
+    const k = (now - nova) / 1600;
+    if (k >= 1) {
+      nova = 0;
+      return;
+    }
+    const x = RX;
+    const base = sy(h);
+    const y = base - 30;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const a = k < 0.15 ? k / 0.15 : (1 - k) / 0.85;
+    const r = Math.max(W, H) * (0.3 + 0.35 * k);
+    const g = ctx.createRadialGradient(x, y, 8, x, y, r);
+    g.addColorStop(0, `rgba(255,150,230,${0.5 * a})`);
+    g.addColorStop(0.45, `rgba(255,111,216,${0.2 * a})`);
+    g.addColorStop(1, "rgba(255,111,216,0)");
+    ctx.fillStyle = g;
+    const turn = (k * Math.PI) / 3;
+    ctx.beginPath();
+    for (let i = 0; i < 18; i++) {
+      const a0 = turn + (i / 18) * Math.PI * 2;
+      ctx.moveTo(x, y);
+      ctx.arc(x, y, r, a0, a0 + 0.13);
+      ctx.closePath();
+    }
+    ctx.fill();
+    const rings: Array<[number, string, number]> = [
+      [0, "255,255,255", 5],
+      [150, "255,111,216", 3.5],
+    ];
+    for (const [delay, rgb, width] of rings) {
+      const q = (now - nova - delay) / 760;
+      if (q <= 0 || q >= 1) continue;
+      ctx.strokeStyle = `rgba(${rgb},${0.9 * (1 - q)})`;
+      ctx.lineWidth = width * (1 - q) + 0.5;
+      ctx.beginPath();
+      ctx.arc(x, y, 24 + 200 * (1 - (1 - q) ** 3), 0, 6.283);
+      ctx.stroke();
+    }
+    const split = (now - nova) / 700;
+    if (split < 1) {
+      const off = 18 * (1 - split);
+      ctx.globalAlpha = 0.65 * (1 - split);
+      const ghosts: Array<[number, string]> = [
+        [-off, "#ff4fd0"],
+        [off, "#4fc3ff"],
+      ];
+      for (const [dx, color] of ghosts) {
+        ctx.save();
+        ctx.translate(x + dx, base);
+        ctx.fillStyle = color;
+        ctx.fill(BODY);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** A miss: a grey flash, the scene shakes, static crackles across it and smoke puffs off the rocket. */
+  function missMoment(now: number) {
+    if (missFired || !missAt || now < missAt) return;
+    missFired = true;
+    flashRgb = "139,147,168";
+    flash = Math.max(flash, 0.38);
+    shake(380, 5);
+    puffBurst(RX, sy(h) + 2, 8, "170,176,196", 0.55, 34);
+  }
+
+  function drawStatic(now: number) {
+    if (!missAt || reduce) return;
+    const q = (now - missAt) / 320;
+    if (q < 0 || q >= 1) return;
+    const a = [0.9, 0.25, 0.7][Math.min(2, Math.floor(q * 3))];
+    ctx.fillStyle = `rgba(255,255,255,${0.13 * a})`;
+    for (let y = Math.floor(Math.random() * 3); y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  }
+
+  /** The Afterburner's heat: strips of the picture under the flame wobble side to side, like air over a hot road. */
+  function haze(now: number, power: number) {
+    const w = 84;
+    const left = RX - w / 2;
+    if (left < 0 || left + w > W) return;
+    const top = sy(h) + 6;
+    const rows = 56;
+    for (let i = 0; i < rows; i++) {
+      const y = top + i * 2;
+      if (y < 0 || y + 2 > H) continue;
+      const off = Math.sin(now * 0.022 + i * 0.38) * 2.4 * (1 - i / rows) * Math.min(1, power);
+      ctx.drawImage(canvas, left * ratio, y * ratio, w * ratio, 2 * ratio, left + off, y, w, 2);
+    }
   }
 
   /** Faint outlines of other climbers parked at their heights, with a name under each. */
@@ -1225,6 +1434,20 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       ctx.fillStyle = e.life > 0.6 ? e.c + alphaHex(e.life * 200) : `rgba(170,176,196,${e.life * 0.35})`;
       circ(e.x, e.y, e.s);
     }
+    for (let i = puffs.length - 1; i >= 0; i--) {
+      const puff = puffs[i];
+      puff.life += dt;
+      if (puff.life >= puff.max) {
+        puffs.splice(i, 1);
+        continue;
+      }
+      puff.x += puff.vx * dt;
+      puff.y += puff.vy * dt;
+      puff.vx *= 1 - dt * 1.2;
+      puff.r += puff.grow * dt;
+      ctx.fillStyle = `rgba(${puff.rgb},${(1 - puff.life / puff.max) * puff.a})`;
+      circ(puff.x, puff.y, puff.r);
+    }
     const speed = climb ? climb.v : landing ? pose.v : 0;
     if (speed > 0.35 && !reduce) {
       // Speed streaks
@@ -1312,7 +1535,10 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     c.p = p;
     while (passedIdx < MILES.length - 1 && MILES[passedIdx + 1].at <= h + 1e-6) {
       passedIdx++;
-      if (!c.miss && !c.replay) api.onMilestone?.(passedIdx);
+      if (!c.miss && !c.replay) {
+        lineHit[passedIdx] = now;
+        api.onMilestone?.(passedIdx);
+      }
     }
     if (p >= 1) {
       climb = null;
@@ -1321,6 +1547,12 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
         lastTier = c.tier;
         if (c.boost) burst("#ffb347");
         else if (c.tier >= 3) burst(tierColor(c.tier));
+        if (c.tier === 4 && !reduce) {
+          nova = now;
+          flashRgb = "255,255,255";
+          flash = Math.max(flash, 0.6);
+          shake(520, 7);
+        }
       }
       c.onLand?.();
     }
@@ -1541,6 +1773,17 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     drawCapsule(x, y);
   }
 
+  /** Clears the big moments and puffs, for a jump, a new climb or a skip. */
+  function calmDown() {
+    nova = 0;
+    missAt = 0;
+    missFired = true;
+    quake.ms = 0;
+    hopAt = 0;
+    puffs.length = 0;
+    flashRgb = "255,255,255";
+  }
+
   function frame(now: number) {
     raf = requestAnimationFrame(frame);
     render(now);
@@ -1549,7 +1792,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
   function render(now: number) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
-    const moving = climb !== null || landing !== null || sparks.length > 0 || exhaust.length > 0 || ring !== null || bits.length > 0 || booster !== null || flash > 0;
+    const moving = climb !== null || landing !== null || sparks.length > 0 || exhaust.length > 0 || ring !== null || bits.length > 0 || booster !== null || flash > 0 || puffs.length > 0;
     if (reduce && !dirty && !moving) return;
     dirty = false;
     const t = reduce ? 0 : now;
@@ -1570,12 +1813,22 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     const shift = (cam - before) * P;
     for (const e of exhaust) e.y += shift;
     for (const s of sparks) s.y += shift;
+    for (const puff of puffs) puff.y += shift;
     const power = rocketPower();
+    missMoment(now);
+    steamPad(now);
     ctx.save();
     if (climb && climb.tier === 4 && !climb.miss && !climb.replay && climb.p > 0.12 && climb.p < 0.85 && !reduce) {
       ctx.translate((Math.random() - 0.5) * 3, (Math.random() - 0.5) * 3);
     }
+    // The Afterburner rumbles the whole climb.
+    if (climb && climb.boost && !climb.miss && climb.p > 0.1 && climb.p < 0.95 && !reduce) ctx.translate((Math.random() - 0.5) * 3.2, (Math.random() - 0.5) * 3.2);
     if (pose.heat > 0.05 && !reduce) ctx.translate((Math.random() - 0.5) * pose.heat * 5, (Math.random() - 0.5) * pose.heat * 5);
+    const quaking = now - quake.t0 < quake.ms;
+    if (quaking) {
+      const k = 1 - (now - quake.t0) / quake.ms;
+      ctx.translate((Math.random() - 0.5) * 2 * quake.amp * k, (Math.random() - 0.5) * 2 * quake.amp * k);
+    }
     paintSky(t);
     paintSpace(t);
     if (SC.id === "city") groundCity(t);
@@ -1590,9 +1843,22 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
     effects(dt, power);
     const sway = climb && !climb.miss ? Math.sin(climb.p * Math.PI * 4) * 2 * power : 0;
     const flying = climb ? climb.tier : lastTier;
+    const bounce = hopPose(now);
     if (home || (landing && now - landing.t0 >= LAND.sep * 1000)) drawHome(dt);
-    else drawRocket(RX + sway, sy(h), power, flying, t, climb?.boost === true && !climb.miss);
+    else if (bounce) {
+      const base = sy(h);
+      ctx.save();
+      ctx.translate(RX, base + bounce.dy);
+      ctx.rotate(bounce.rot);
+      ctx.scale(bounce.sx, bounce.sy);
+      ctx.translate(-RX, -base);
+      drawRocket(RX, base, 0, flying, t);
+      ctx.restore();
+    } else drawRocket(RX + sway, sy(h), power, flying, t, climb?.boost === true && !climb.miss);
+    drawNova(now);
     ctx.restore();
+    if (climb && climb.boost && !climb.miss && !reduce && power > 0.2) haze(now, power);
+    drawStatic(now);
     if (pose.heat > 0.05) {
       const edge = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
       edge.addColorStop(0, "rgba(255,90,40,0)");
@@ -1601,9 +1867,10 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       ctx.fillRect(0, 0, W, H);
     }
     if (flash > 0) {
-      ctx.fillStyle = `rgba(255,255,255,${flash})`;
+      ctx.fillStyle = `rgba(${flashRgb},${flash})`;
       ctx.fillRect(0, 0, W, H);
       flash = Math.max(0, flash - dt * 1.8);
+      if (flash === 0) flashRgb = "255,255,255";
     }
     api.onFrame?.({ progress: h / STOP, from: lastFrom / STOP, x: RX + sway, y: sy(h), climbing: climb !== null && !climb.replay });
   }
@@ -1618,6 +1885,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       wide = isWide;
       RX = W / 2;
       const dpr = options.pixelRatio ?? Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      ratio = dpr;
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -1664,6 +1932,7 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       booster = null;
       bits.length = 0;
       flash = 0;
+      calmDown();
       pose.heat = 0;
       h = progress * STOP;
       cam = h;
@@ -1682,7 +1951,13 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       if (replay) cam = start;
       syncPassed();
       const dur = reduce ? 0 : replay ? replayMs(to - from) : climbMs(miss ? 0 : to - from);
+      calmDown();
       climb = { from: start, d, t0: performance.now() + (reduce || replay ? 0 : IGNITION_MS), dur, tier, miss, replay, boost: boost && !miss, v: 0, p: 0, onLand };
+      if (miss && !reduce) {
+        // The burner coughs first, then the miss lands: grey flash, static, smoke.
+        missAt = performance.now() + IGNITION_MS + 240;
+        missFired = false;
+      }
       dirty = true;
       if (reduce) stepClimb(performance.now());
     },
@@ -1701,7 +1976,16 @@ export function createSky(canvas: HTMLCanvasElement, reduce: boolean, options: {
       landing = { t0: performance.now(), h0, chuteAt, fall, open, down: open + LAND.open + LAND.glide, lead, fired: 0, options: landOptions };
       dirty = true;
     },
+    hop() {
+      const now = performance.now();
+      if (reduce || climb || landing || home || (hopAt && now - hopAt < 650)) return false;
+      hopAt = now;
+      puffBurst(RX, sy(h) + 2, 6, "220,226,245", 0.28, 18);
+      dirty = true;
+      return true;
+    },
     settle() {
+      calmDown();
       if (landing) {
         finishLanding(true);
         return;

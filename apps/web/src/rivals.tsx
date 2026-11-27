@@ -187,9 +187,11 @@ function SpreadCurve({ place, unit, big = false }: { place: Placement; unit: "pt
             <rect x="0" y="0" width={x} height={H} />
           </clipPath>
         </defs>
+        {/* The curve draws itself left to right, the hill fades in under it, the part you beat lights up, and the
+            YOU pin drops onto your score with a ripple. */}
         <path d={area} className="spread-rest" />
-        <path d={area} fill={`url(#${id}-fill)`} clipPath={`url(#${id}-beaten)`} />
-        <path d={line} className="spread-line" />
+        <path d={area} className="spread-beaten" fill={`url(#${id}-fill)`} clipPath={`url(#${id}-beaten)`} />
+        <path d={line} className="spread-line" pathLength={1} />
         <line x1="0" y1={BASE} x2={W} y2={BASE} className="spread-base" />
         {marks.map((mark) => {
           const at = (mark / Math.max(1, top)) * W;
@@ -204,11 +206,14 @@ function SpreadCurve({ place, unit, big = false }: { place: Placement; unit: "pt
             </g>
           );
         })}
-        <line x1={x} y1={y} x2={x} y2={BASE + 4} className="spread-you-line" />
-        <circle cx={x} cy={y} r="4" className="spread-you-dot" />
-        <text x={labelX} y={BASE + 15} textAnchor="middle" className="spread-you">
-          YOU
-        </text>
+        <g className="spread-pin">
+          <line x1={x} y1={y} x2={x} y2={BASE + 4} className="spread-you-line" />
+          <circle cx={x} cy={y} r="4" className="spread-you-dot" />
+          <text x={labelX} y={BASE + 15} textAnchor="middle" className="spread-you">
+            YOU
+          </text>
+        </g>
+        <circle cx={x} cy={y} r="5" className="spread-ripple" />
       </svg>
     );
   }

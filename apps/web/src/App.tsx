@@ -38,6 +38,7 @@ import { HeadToHeadScreen } from "./headtohead";
 import { haptic } from "./haptic";
 import { basePoints, currentCombo, gainLevel, maxPoints, stageStep, tierOf, trailOf } from "./game";
 import { HangarCard, RocketIcon, SKINS, activeSkin, earnedFrom, isUnlocked, loadHangar, newlyEarned, saveHangar, skinById, type HangarState } from "./hangar";
+import { Loader } from "./loader";
 import { TodayBoard } from "./flightlog";
 import { ReminderSwitch } from "./reminder";
 import { Journey, type Ghost, type Hop, type HudScore, type TrailSegment } from "./journey";
@@ -324,7 +325,7 @@ export function App() {
       page={"index" in phase ? `${phase.name}-${phase.index}` : phase.name === "round" ? roundKey(phase.round) : phase.name === "journey" ? `journey-${phase.id}` : phase.name}
     >
     <main>
-      {loading && !puzzle ? <p className="status">Loading today’s puzzle…</p> : null}
+      {loading && !puzzle ? <Loader label="Loading today’s puzzle…" /> : null}
       {error && phase.name === "home" ? <p className="form-error banner">{error}</p> : null}
       {puzzle && phase.name === "home" ? (
         <HomeScreen
